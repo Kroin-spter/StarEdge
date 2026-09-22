@@ -24,6 +24,7 @@
 - Modify: `Assets/Scenes/sence_test.unity` — 将本地地图引用组件挂到施工区域并绑定激活的 Cesium Tileset。
 - Create: `Assets/Tests/EditMode/CesiumLocalMapReferenceTests.cs` — 验证环境变量、同级目录和 `file://` URL 规则。
 - Create: `Assets/Tests/EditMode/CesiumLocalMapReferenceTests.cs.meta` — Unity 测试脚本 GUID。
+- Modify: `Assets/Tests/EditMode/ExcavatorControls.Editor.Tests.asmdef` — 让 EditMode 测试程序集引用 `WebDelivery.Runtime`。
 - Modify: `README.md` — 说明场景自动引用本地地图及缺失地图时的行为。
 
 ### Task 1: 新增可复用的本地地图引用组件
@@ -32,6 +33,7 @@
 - Create: `Assets/WebDelivery/Runtime/CesiumLocalMapReference.cs`
 - Create: `Assets/WebDelivery/Runtime/CesiumLocalMapReference.cs.meta`
 - Test: `Assets/Tests/EditMode/CesiumLocalMapReferenceTests.cs`
+- Modify: `Assets/Tests/EditMode/ExcavatorControls.Editor.Tests.asmdef`
 
 **Interfaces:**
 - Consumes: `CesiumForUnity.Cesium3DTileset`, `Application.dataPath`、`CESIUM_TILESET_DIR` 和地图名称。
@@ -63,7 +65,7 @@
 - [ ] **Step 5: 提交组件和测试**
 
   ```bash
-  git add Assets/WebDelivery/Runtime/CesiumLocalMapReference.cs Assets/WebDelivery/Runtime/CesiumLocalMapReference.cs.meta Assets/Tests/EditMode/CesiumLocalMapReferenceTests.cs Assets/Tests/EditMode/CesiumLocalMapReferenceTests.cs.meta
+  git add Assets/WebDelivery/Runtime/CesiumLocalMapReference.cs Assets/WebDelivery/Runtime/CesiumLocalMapReference.cs.meta Assets/Tests/EditMode/CesiumLocalMapReferenceTests.cs Assets/Tests/EditMode/CesiumLocalMapReferenceTests.cs.meta Assets/Tests/EditMode/ExcavatorControls.Editor.Tests.asmdef
   git commit -m "feat: 增加 Cesium 本地地图引用组件"
   ```
 
@@ -140,4 +142,3 @@
   ```
 
   预期工作区干净、最近提交者为 `shenkai`、提交说明前缀后的描述为中文，且地图大文件未出现在 Git 变更中。
-
