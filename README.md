@@ -39,7 +39,7 @@ osgb_small_005_004/tileset.json
 export CESIUM_TILESET_DIR=/absolute/path/to/osgb_small_005_004
 ```
 
-地图数据不随源码提交。缺少地图时，Unity 项目仍可打开和编译，但主场景会提示 Cesium 地图缺失，挖掘机将保持安全等待状态。
+主场景 `Assets/Scenes/sence_test.unity` 已挂载 `CesiumLocalMapReference`，打开场景时会自动选择上述本地地图并设置 Cesium 的 `From URL` 引用。地图数据不随源码提交；缺少地图时，Unity 项目仍可打开和编译，但主场景会提示 Cesium 地图缺失，挖掘机将保持安全等待状态。
 
 ## 当前场景模式
 
