@@ -977,6 +977,7 @@ GameObject:
   - component: {fileID: 471781300}
   - component: {fileID: 471781301}
   - component: {fileID: 471781302}
+  - component: {fileID: 2098765431}
   m_Layer: 0
   m_Name: ZX200 construction site
   m_TagString: Untagged
@@ -1046,6 +1047,20 @@ MonoBehaviour:
   cutTimeoutSeconds: 8
   dumpTimeoutSeconds: 12
   soilFloorMargin: 0.04
+--- !u!114 &2098765431
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 471781299}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ebc0f4d63c8340a6a4a5f15de9f260b1, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  tileset: {fileID: 1601958135}
+  mapName: osgb_small_005_004
 --- !u!1 &832138054
 GameObject:
   m_ObjectHideFlags: 0

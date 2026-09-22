@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.IO;
 using System.Linq;
 using CesiumForUnity;
 using UnityEngine;
@@ -52,16 +51,10 @@ public sealed class CesiumMoundSite : MonoBehaviour
     private void ResolveTilesetUrl()
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
+        tileset.tilesetSource = CesiumDataSource.FromUrl;
         tileset.url = new Uri(new Uri(Application.absoluteURL), $"maps/{mapName}/tileset.json").AbsoluteUri;
 #else
-        string configuredDirectory = Environment.GetEnvironmentVariable("CESIUM_TILESET_DIR");
-        string directory = string.IsNullOrWhiteSpace(configuredDirectory)
-            ? Path.Combine(Application.dataPath, "../../tilesets", mapName)
-            : configuredDirectory;
-        string tilesetPath = Path.GetFullPath(Path.Combine(directory, "tileset.json"));
-        tileset.url = new Uri(tilesetPath).AbsoluteUri;
-        if (!File.Exists(tilesetPath))
-            Debug.LogWarning($"Cesium local map is missing: {tilesetPath}. Set CESIUM_TILESET_DIR or place the map beside the project.", this);
+        CesiumLocalMapReference.ApplyLocalMap(tileset, mapName, this);
 #endif
     }
 
