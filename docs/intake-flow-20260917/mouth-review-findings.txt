@@ -1,0 +1,13 @@
+Read-only final review: distributed soil discharge
+
+Reviewed final BucketSoilUnloader.cs, SoilFlightTransport.cs, SoilMouthFlowTests.cs (five tests), and neighboring BucketSoilCutter/SoilReceivingZone contracts against /home/sk/Unity/intake-flow-backup-20260917-171212/Assets.
+
+No actionable P1/P2 findings identified in the final diff.
+
+Checks: outlet count is bounded to 3..5; mouth width uses the cutter's established lossy-scale convention; roll weighting follows the gravity-low side; each outlet is obstructed before the single inventory debit; blocked outlet weights reduce debit; the final parcel receives the arithmetic remainder; no receiver requirement gates emission; tail alternates pauses and limits release before an explicit final-small-remainder drain; temporal variation is deterministic and resettable.
+
+The receiver-engulfment fix resolves the previously reported failure mechanism: subsequent parcels already below a surface raised by another parcel are accepted/spilled before a negative sweep intersection can strand them. It bounds that recovery to the upright, enabled, unit-scale receiving bed's footprint and vertical volume and reuses the same accounting/spill handler as a normal surface hit.
+
+The five new tests cover scaled mouth spread, roll bias, partial obstruction with debit/parcel conservation, tail narrowing/outlet count, and rising-receiver engulfment. Optional coverage gaps (not blockers): directly assert deterministic repeatability/temporal variation and alternating tail pauses. Existing EmptyTerminationInvalidTimeAndBlockersDoNotLoseSoil covers end-to-end empty termination.
+
+Limitations: static review only; no Unity invocation and no production edits. Root owns final execution results and runtime performance validation.

@@ -1,0 +1,7 @@
+Final scoped read-only intake review: no open P1/P2 findings in the reviewed correction.
+
+RESOLVED — P2 stale forward travel consumed by a subsequent vertical press, including an allowed mouth tilted down eight degrees. BucketSoilCutter.SamplePose now applies CanCollectMovement(frameMovement) whenever per-frame travel exceeds the bounded solver-jitter budget. A 14 mm vertical press fails its horizontal-fraction check and resets previous before reaching any terrain mutation, even when an earlier 14 mm forward movement was accumulated. The retained accumulated-segment validation still applies afterward.
+
+The regression VerticalPressCannotSpendOldSubthresholdForwardTravel now covers both 0 and 8 degrees, asserting zero bucket volume and zero independently measured terrain removal. Confirmed from supplied XML: /tmp/intake-tilted-red.xml has 0-degree passed and 8-degree failed before the correction; /tmp/intake-flow-edit-final.xml has 122 passed, 0 failed, with both regression cases and SmallJointOscillationDoesNotEraseSlowNetScoopingTravel passed. The <=2 mm jitter budget still allows the test's 1 mm reverse oscillation while checking its 4 mm forward frames normally.
+
+Review limitation: static review plus inspection of existing test results only. I did not execute Unity or modify production files. The root agent owns ongoing PlayMode integration validation and retained-capacity integration coverage.

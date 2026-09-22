@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="6" result="Passed" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-16 07:48:27Z" end-time="2026-09-16 07:49:33Z" duration="65.797553">
+  <test-suite type="TestSuite" id="1224" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="173" result="Passed" start-time="2026-09-16 07:48:27Z" end-time="2026-09-16 07:49:33Z" duration="65.797553" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <test-suite type="Assembly" id="1221" name="Zx200KeyboardPhysics.PlayMode.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/Zx200KeyboardPhysics.PlayMode.Tests.dll" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-09-16 07:48:27Z" end-time="2026-09-16 07:49:33Z" duration="65.787033" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="3419890" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestSuite" id="1222" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-09-16 07:48:27Z" end-time="2026-09-16 07:49:33Z" duration="65.786303" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1223" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-09-16 07:48:27Z" end-time="2026-09-16 07:49:33Z" duration="65.785772" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1193" name="Zx200BucketPhysicsTests" fullname="ExcavatorControls.Tests.Zx200BucketPhysicsTests" classname="ExcavatorControls.Tests.Zx200BucketPhysicsTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 07:48:27Z" end-time="2026-09-16 07:48:46Z" duration="19.106992" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1195" name="BucketAcceptsCarriesAndReleasesDynamicSphere" fullname="ExcavatorControls.Tests.Zx200BucketPhysicsTests.BucketAcceptsCarriesAndReleasesDynamicSphere" methodname="BucketAcceptsCarriesAndReleasesDynamicSphere" classname="ExcavatorControls.Tests.Zx200BucketPhysicsTests" runstate="Runnable" seed="1224986110" result="Passed" start-time="2026-09-16 07:48:27Z" end-time="2026-09-16 07:48:46Z" duration="19.089345" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). The partial hull will be used. Consider simplifying your mesh. Source mesh name: body
+ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Ball position in bucket: (-0.23, 0.87, 0.19)
+Ball position in bucket: (-0.24, 0.87, 0.19)
+Ball position in bucket: (-0.24, 0.87, 0.19)
+]]></output>
+            </test-case>
+            <test-case id="1194" name="SphereFitsInsideBucketCavity" fullname="ExcavatorControls.Tests.Zx200BucketPhysicsTests.SphereFitsInsideBucketCavity" methodname="SphereFitsInsideBucketCavity" classname="ExcavatorControls.Tests.Zx200BucketPhysicsTests" runstate="Runnable" seed="1871634737" result="Passed" start-time="2026-09-16 07:48:46Z" end-time="2026-09-16 07:48:46Z" duration="0.007612" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1200" name="Zx200SoilDemoTests" fullname="ExcavatorControls.Tests.Zx200SoilDemoTests" classname="ExcavatorControls.Tests.Zx200SoilDemoTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 07:48:46Z" end-time="2026-09-16 07:49:06Z" duration="19.301692" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1202" name="BoundedFillSceneCutsAndCarriesSoil" fullname="ExcavatorControls.Tests.Zx200SoilDemoTests.BoundedFillSceneCutsAndCarriesSoil" methodname="BoundedFillSceneCutsAndCarriesSoil" classname="ExcavatorControls.Tests.Zx200SoilDemoTests" runstate="Runnable" seed="1152067827" result="Passed" start-time="2026-09-16 07:48:46Z" end-time="2026-09-16 07:48:56Z" duration="9.665178" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+交付场景初态：斗尖=(0.09, 0.92, 7.95)，斗量=0.00000
+交付场景试切：斗尖=(-2.17, 1.40, 7.69)，斗量=0.28816
+]]></output>
+            </test-case>
+            <test-case id="1201" name="DeliveredSceneStartsEmptyAndCutsWithManualBoom" fullname="ExcavatorControls.Tests.Zx200SoilDemoTests.DeliveredSceneStartsEmptyAndCutsWithManualBoom" methodname="DeliveredSceneStartsEmptyAndCutsWithManualBoom" classname="ExcavatorControls.Tests.Zx200SoilDemoTests" runstate="Runnable" seed="1003695745" result="Passed" start-time="2026-09-16 07:48:56Z" end-time="2026-09-16 07:49:06Z" duration="9.635439" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+交付场景初态：斗尖=(0.09, 0.92, 7.95)，斗量=0.00000
+交付场景试切：斗尖=(-2.17, 1.40, 7.69)，斗量=0.30389
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1203" name="Zx200SoilPhysicsTests" fullname="ExcavatorControls.Tests.Zx200SoilPhysicsTests" classname="ExcavatorControls.Tests.Zx200SoilPhysicsTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-16 07:49:06Z" end-time="2026-09-16 07:49:17Z" duration="11.340310" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1204" name="RealBucketCutsConservesVolumeAndLiftsWithoutCutting" fullname="ExcavatorControls.Tests.Zx200SoilPhysicsTests.RealBucketCutsConservesVolumeAndLiftsWithoutCutting" methodname="RealBucketCutsConservesVolumeAndLiftsWithoutCutting" classname="ExcavatorControls.Tests.Zx200SoilPhysicsTests" runstate="Runnable" seed="861864372" result="Passed" start-time="2026-09-16 07:49:06Z" end-time="2026-09-16 07:49:17Z" duration="11.339176" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+实际铲斗切削：斗尖=(0.09, 0.08, 7.79)，斗量=0.37438m³
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1219" name="Zx200UnloadingDemoTests" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-16 07:49:17Z" end-time="2026-09-16 07:49:33Z" duration="16.034658" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1220" name="RealBucketDigsAndUnloadsIntoDeliveredPlatform" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.RealBucketDigsAndUnloadsIntoDeliveredPlatform" methodname="RealBucketDigsAndUnloadsIntoDeliveredPlatform" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="1265529189" result="Passed" start-time="2026-09-16 07:49:17Z" end-time="2026-09-16 07:49:33Z" duration="16.033965" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Before dump: tip=(5.15, 2.08, 6.15), angle=66.13675, volume=0.263581747537067
+GPUResidentDrawer The current platform does not support UnityEngine.Rendering.BatchBufferTarget
+After dump: tip=(6.15, 2.68, 6.15), angle=30.73828, volume=0, received=0.263581747537067, status=空斗
+Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

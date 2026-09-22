@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="1" result="Passed" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 04:24:51Z" end-time="2026-09-17 04:25:18Z" duration="26.9005849">
+  <test-suite type="TestSuite" id="1226" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="175" result="Passed" start-time="2026-09-17 04:24:51Z" end-time="2026-09-17 04:25:18Z" duration="26.900585" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <test-suite type="Assembly" id="1223" name="Zx200KeyboardPhysics.PlayMode.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/Zx200KeyboardPhysics.PlayMode.Tests.dll" runstate="Runnable" testcasecount="22" result="Passed" start-time="2026-09-17 04:24:51Z" end-time="2026-09-17 04:25:18Z" duration="26.892223" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="293822" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestSuite" id="1224" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="22" result="Passed" start-time="2026-09-17 04:24:51Z" end-time="2026-09-17 04:25:18Z" duration="26.891393" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1225" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="22" result="Passed" start-time="2026-09-17 04:24:51Z" end-time="2026-09-17 04:25:18Z" duration="26.890769" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1219" name="Zx200UnloadingDemoTests" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 04:24:51Z" end-time="2026-09-17 04:25:18Z" duration="26.889301" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1221" name="GravityDemoLoadsPlatform" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.GravityDemoLoadsPlatform" methodname="GravityDemoLoadsPlatform" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="1484320136" result="Passed" start-time="2026-09-17 04:24:51Z" end-time="2026-09-17 04:25:18Z" duration="26.878922" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). The partial hull will be used. Consider simplifying your mesh. Source mesh name: body
+ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Before dump: tip=(4.20, 2.24, 5.01), angle=126.0221, volume=0.183061577367522
+GPUResidentDrawer The current platform does not support UnityEngine.Rendering.BatchBufferTarget
+After dump: tip=(6.24, 2.98, 6.24), angle=18.42832, volume=0, received=0.0759823395398882, status=空斗
+Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

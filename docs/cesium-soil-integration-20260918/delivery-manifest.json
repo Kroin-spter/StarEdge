@@ -1,0 +1,9 @@
+{
+  "Assets/WebDelivery/Runtime/CesiumTerrainConformer.cs": "9fcad0e528f29c1af7026141f0e19ab27004eed514576ba81c9352d7976f3ba6",
+  "Assets/Scripts/Excavation/DeformableSoilTerrain.cs": "ed8a606ae2e8b291a95be0488c9fa1ab0d5a5243d92cca802e5392bd89fd703c",
+  "Assets/Tests/EditMode/ConstructionSiteClipTests.cs": "1a8882420b5eb9188afa59d8489f7570203188ac3ef5c34e453f63d8c04da3aa",
+  "Assets/Tests/EditMode/SoilCuttingTests.cs": "b2a3409a6d092945e5ecc69016c4e73ea8a4685a4f39f6dcd5b736bec42733be",
+  "Assets/Tests/PlayMode/BladeMainSceneTests.cs": "56891cc0cacbf1b3aa5aa0ff8936d5aa60f69d65bbbc9af7a4d8a9c681137fec",
+  "Assets/WebDelivery/Runtime/ConstructionSiteSurfaceAppearance.cs": "53ccc49d75e888856580f124045e4f6dfbc8f488e8e59f26a26b6dc673aa4529",
+  "Assets/WebDelivery/Runtime/ConstructionSiteSurfaceAppearance.cs.meta": "66d67e6fa8c8f2ee36c5d03bf72f847bcb752143e69a97385e3c60fe71abe052"
+}

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="4" result="Passed" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-18 03:16:10Z" end-time="2026-09-18 03:17:45Z" duration="94.8970456">
+  <test-suite type="TestSuite" id="1234" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="180" result="Passed" start-time="2026-09-18 03:16:10Z" end-time="2026-09-18 03:17:45Z" duration="94.897046" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <test-suite type="Assembly" id="1231" name="Zx200KeyboardPhysics.PlayMode.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/Zx200KeyboardPhysics.PlayMode.Tests.dll" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-09-18 03:16:10Z" end-time="2026-09-18 03:17:45Z" duration="94.887154" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="1221550" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestSuite" id="1232" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-09-18 03:16:10Z" end-time="2026-09-18 03:17:45Z" duration="94.886580" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1233" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-09-18 03:16:10Z" end-time="2026-09-18 03:17:45Z" duration="94.886183" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1193" name="BladeMainSceneTests" fullname="ExcavatorControls.Tests.BladeMainSceneTests" classname="ExcavatorControls.Tests.BladeMainSceneTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-18 03:16:10Z" end-time="2026-09-18 03:16:20Z" duration="10.298585" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1194" name="MainSceneDownwardEntryCutsAtTeethAndAccountsForDisplacement" fullname="ExcavatorControls.Tests.BladeMainSceneTests.MainSceneDownwardEntryCutsAtTeethAndAccountsForDisplacement" methodname="MainSceneDownwardEntryCutsAtTeethAndAccountsForDisplacement" classname="ExcavatorControls.Tests.BladeMainSceneTests" runstate="Runnable" seed="1515718808" result="Passed" start-time="2026-09-18 03:16:10Z" end-time="2026-09-18 03:16:20Z" duration="10.289781" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). The partial hull will be used. Consider simplifying your mesh. Source mesh name: body
+ZX200 digging controller ready. Focus the Game view and press Space to dig.
+GPUResidentDrawer The current platform does not support UnityEngine.Rendering.BatchBufferTarget
+Worksite map imagery applied to pad and soil perimeter.
+Cesium surface copied into excavatable Terrain: 263169/263169 samples
+VERTICAL MAIN cut=0.008332, collected=0.007416, displaced=0.000916, bucket=0.007416, tip=(330.10, 8.28, 406.15), status=刃口切削：进斗 90 % / 其余侧落
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1195" name="MobileMainSceneTests" fullname="ExcavatorControls.Tests.MobileMainSceneTests" classname="ExcavatorControls.Tests.MobileMainSceneTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-18 03:16:20Z" end-time="2026-09-18 03:16:40Z" duration="19.614995" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1196" name="DrivesThenExcavatesWithDynamicBase" fullname="ExcavatorControls.Tests.MobileMainSceneTests.DrivesThenExcavatesWithDynamicBase" methodname="DrivesThenExcavatesWithDynamicBase" classname="ExcavatorControls.Tests.MobileMainSceneTests" runstate="Runnable" seed="1208979295" result="Passed" start-time="2026-09-18 03:16:20Z" end-time="2026-09-18 03:16:40Z" duration="19.613956" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+[2026-09-18 11:16:20.737] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:16:20.777] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:16:20.778] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:16:20.790] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:16:20.790] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:16:20.799] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:16:20.800] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+Worksite map imagery applied to pad and soil perimeter.
+Cesium surface copied into excavatable Terrain: 263169/263169 samples
+MOBILE travel=0.403, contacts=6, speed=0.0016
+MOBILE scoop=0.043067, cut=0.048346, drift=0.0001, tilt=0.052
+MOBILE final bucket=0.041902, drift=0.0001, tilt=0.052
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1225" name="Zx200UnloadingDemoTests" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-09-18 03:16:40Z" end-time="2026-09-18 03:17:45Z" duration="64.970111" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1227" name="MainCesiumSceneLoadsTruck" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.MainCesiumSceneLoadsTruck" methodname="MainCesiumSceneLoadsTruck" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="154582074" result="Passed" start-time="2026-09-18 03:16:40Z" end-time="2026-09-18 03:17:14Z" duration="34.178639" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+[2026-09-18 11:16:40.380] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:16:40.381] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:16:40.398] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+Worksite map imagery applied to pad and soil perimeter.
+Cesium surface copied into excavatable Terrain: 263169/263169 samples
+Before dump: tip=(333.88, 10.56, 402.89), angle=124.9825, volume=0.0814844371215394
+After dump: tip=(335.77, 11.00, 404.03), angle=31.78745, volume=0, received=0.0814844371215393, status=空斗
+SITE ACCOUNTING cut=0.086580, bucket=0.000000, flight=0.000000, pending=0.000000, returned=0.004780, truck=0.081484, ground=0.000315, netTerrain=0.081800
+]]></output>
+            </test-case>
+            <test-case id="1228" name="MainCesiumSceneReturnsSoilToTerrain" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.MainCesiumSceneReturnsSoilToTerrain" methodname="MainCesiumSceneReturnsSoilToTerrain" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="656820476" result="Passed" start-time="2026-09-18 03:17:14Z" end-time="2026-09-18 03:17:45Z" duration="30.789779" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+[2026-09-18 11:17:14.527] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:17:14.576] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:17:14.577] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:17:14.577] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:17:14.577] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:17:14.584] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-18 11:17:14.584] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+Worksite map imagery applied to pad and soil perimeter.
+Cesium surface copied into excavatable Terrain: 263169/263169 samples
+Before dump: tip=(330.10, 10.32, 404.33), angle=127.5678, volume=0.0814844371215394
+After dump: tip=(330.10, 10.99, 406.42), angle=31.80105, volume=0, received=0, status=空斗
+SITE ACCOUNTING cut=0.086580, bucket=0.000000, flight=0.000000, pending=0.000000, returned=0.082374, truck=0.000000, ground=0.004206, netTerrain=0.004206
+Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

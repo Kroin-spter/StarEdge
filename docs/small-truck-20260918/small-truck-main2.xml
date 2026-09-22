@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="1" result="Failed(Child)" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-18 08:17:00Z" end-time="2026-09-18 08:17:37Z" duration="36.3940703">
+  <test-suite type="TestSuite" id="1237" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="182" result="Failed" site="Child" start-time="2026-09-18 08:17:00Z" end-time="2026-09-18 08:17:37Z" duration="36.394070" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="1234" name="Zx200KeyboardPhysics.PlayMode.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/Zx200KeyboardPhysics.PlayMode.Tests.dll" runstate="Runnable" testcasecount="29" result="Failed" site="Child" start-time="2026-09-18 08:17:00Z" end-time="2026-09-18 08:17:37Z" duration="36.386870" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="1469170" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="1235" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="29" result="Failed" site="Child" start-time="2026-09-18 08:17:00Z" end-time="2026-09-18 08:17:37Z" duration="36.386092" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="1236" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="29" result="Failed" site="Child" start-time="2026-09-18 08:17:00Z" end-time="2026-09-18 08:17:37Z" duration="36.385499" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="1228" name="Zx200UnloadingDemoTests" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" testcasecount="5" result="Failed" site="Child" start-time="2026-09-18 08:17:00Z" end-time="2026-09-18 08:17:37Z" duration="36.384137" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1230" name="MainCesiumSceneLoadsTruck" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.MainCesiumSceneLoadsTruck" methodname="MainCesiumSceneLoadsTruck" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="1296625382" result="Failed" start-time="2026-09-18 08:17:00Z" end-time="2026-09-18 08:17:37Z" duration="36.375249" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: 0.096508284841227643d +/- 1.0000000000000001E-05d
+  But was:  0.097018007505498494d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.Zx200UnloadingDemoTests+<CheckScene>d__5.MoveNext () [0x00d18] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/PlayMode/Zx200UnloadingDemoTests.cs:173
+at UnityEngine.TestTools.TestEnumerator+<Execute>d__7.MoveNext () [0x0003a] in ./Library/PackageCache/com.unity.test-framework@773a3a4953ad/UnityEngine.TestRunner/NUnitExtensions/Attributes/TestEnumerator.cs:44
+]]></stack-trace>
+              </failure>
+              <output><![CDATA[Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). The partial hull will be used. Consider simplifying your mesh. Source mesh name: body
+MOUND READY ground=7.511, truck=7.415, soil=(327.01, 7.25, 402.27)
+ZX200 digging controller ready. Focus the Game view and press Space to dig.
+GPUResidentDrawer The current platform does not support UnityEngine.Rendering.BatchBufferTarget
+Before dump: tip=(333.79, 10.62, 402.84), angle=129.6881, volume=0.0820036477888907
+After dump: tip=(335.73, 10.99, 404.07), angle=31.63613, volume=0, received=0.0820036477888906, status=空斗
+Truck receiver=(335.01, 8.43, 403.27), size=(2.00, 4.74), floor=8.429984
+Loose soil at (330.69, 8.27, 405.16): 0.000000 m3
+Loose soil at (329.50, 8.32, 405.17): 0.000000 m3
+SITE ACCOUNTING cut=0.097018, bucket=0.000000, flight=0.000000, pending=0.000000, returned=0.014505, truck=0.082004, ground=0.000000, netTerrain=0.082004
+Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

@@ -1,0 +1,770 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="111" result="Passed" total="111" passed="111" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.6534322">
+  <test-suite type="TestSuite" id="1000" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="140" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.653432" total="111" passed="111" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <test-suite type="Assembly" id="1139" name="ExcavatorControls.Editor.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/ExcavatorControls.Editor.Tests.dll" runstate="Runnable" testcasecount="111" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.647564" total="111" passed="111" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="428166" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <test-suite type="TestSuite" id="1140" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="111" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.646683" total="111" passed="111" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1141" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="111" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.645863" total="111" passed="111" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1002" name="BucketSoilFillTests" fullname="ExcavatorControls.Tests.BucketSoilFillTests" classname="ExcavatorControls.Tests.BucketSoilFillTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.116987" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1003" name="CalibratedFillDoesNotIntersectActualBucketShell" fullname="ExcavatorControls.Tests.BucketSoilFillTests.CalibratedFillDoesNotIntersectActualBucketShell" methodname="CalibratedFillDoesNotIntersectActualBucketShell" classname="ExcavatorControls.Tests.BucketSoilFillTests" runstate="Runnable" seed="334213029" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.095346" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). The partial hull will be used. Consider simplifying your mesh. Source mesh name: body
+]]></output>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1007" name="FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction" fullname="ExcavatorControls.Tests.BucketSoilFillTests.FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction" classname="ExcavatorControls.Tests.BucketSoilFillTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.013091" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1004" name="FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction(0.1d)" fullname="ExcavatorControls.Tests.BucketSoilFillTests.FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction(0.1d)" methodname="FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction" classname="ExcavatorControls.Tests.BucketSoilFillTests" runstate="Runnable" seed="774013585" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.009762" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1005" name="FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction(0.5d)" fullname="ExcavatorControls.Tests.BucketSoilFillTests.FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction(0.5d)" methodname="FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction" classname="ExcavatorControls.Tests.BucketSoilFillTests" runstate="Runnable" seed="1124922098" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000919" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1006" name="FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction(1.0d)" fullname="ExcavatorControls.Tests.BucketSoilFillTests.FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction(1.0d)" methodname="FillIsClosedAndItsGeometricFractionMatchesMeasuredFraction" classname="ExcavatorControls.Tests.BucketSoilFillTests" runstate="Runnable" seed="300366373" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000666" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+          </test-suite>
+          <test-suite type="TestFixture" id="1008" name="ConstructionSiteClipTests" fullname="ExcavatorControls.Tests.ConstructionSiteClipTests" classname="ExcavatorControls.Tests.ConstructionSiteClipTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.005911" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1009" name="LocalClipUpdatesRenderingAndCollisionAndPreservesOutsideTriangle" fullname="ExcavatorControls.Tests.ConstructionSiteClipTests.LocalClipUpdatesRenderingAndCollisionAndPreservesOutsideTriangle" methodname="LocalClipUpdatesRenderingAndCollisionAndPreservesOutsideTriangle" classname="ExcavatorControls.Tests.ConstructionSiteClipTests" runstate="Runnable" seed="678158357" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.005223" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1010" name="ConstructionSiteSetupTests" fullname="ExcavatorControls.Tests.ConstructionSiteSetupTests" classname="ExcavatorControls.Tests.ConstructionSiteSetupTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.007443" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1011" name="TruckHasSolidFloorFourWallsAndReceiverInsideBed" fullname="ExcavatorControls.Tests.ConstructionSiteSetupTests.TruckHasSolidFloorFourWallsAndReceiverInsideBed" methodname="TruckHasSolidFloorFourWallsAndReceiverInsideBed" classname="ExcavatorControls.Tests.ConstructionSiteSetupTests" runstate="Runnable" seed="582072315" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.006826" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1012" name="FreeSoilDischargeTests" fullname="ExcavatorControls.Tests.FreeSoilDischargeTests" classname="ExcavatorControls.Tests.FreeSoilDischargeTests" runstate="Runnable" testcasecount="6" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.365695" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1018" name="DownwardBucketEmitsEvenWithoutReceiverOrGround" fullname="ExcavatorControls.Tests.FreeSoilDischargeTests.DownwardBucketEmitsEvenWithoutReceiverOrGround" methodname="DownwardBucketEmitsEvenWithoutReceiverOrGround" classname="ExcavatorControls.Tests.FreeSoilDischargeTests" runstate="Runnable" seed="1966578937" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.018562" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1016" name="FullReceiverOverflowsToGroundInsteadOfHoldingSoilInBucket" fullname="ExcavatorControls.Tests.FreeSoilDischargeTests.FullReceiverOverflowsToGroundInsteadOfHoldingSoilInBucket" methodname="FullReceiverOverflowsToGroundInsteadOfHoldingSoilInBucket" classname="ExcavatorControls.Tests.FreeSoilDischargeTests" runstate="Runnable" seed="707878990" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.169100" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1013" name="OffMapFlightDoesNotPreventLaterTerrainResidueFromSettling" fullname="ExcavatorControls.Tests.FreeSoilDischargeTests.OffMapFlightDoesNotPreventLaterTerrainResidueFromSettling" methodname="OffMapFlightDoesNotPreventLaterTerrainResidueFromSettling" classname="ExcavatorControls.Tests.FreeSoilDischargeTests" runstate="Runnable" seed="1754722053" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.121642" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1015" name="PlainGroundReceivesConicalPileAndNoSoilIsLost" fullname="ExcavatorControls.Tests.FreeSoilDischargeTests.PlainGroundReceivesConicalPileAndNoSoilIsLost" methodname="PlainGroundReceivesConicalPileAndNoSoilIsLost" classname="ExcavatorControls.Tests.FreeSoilDischargeTests" runstate="Runnable" seed="1231357085" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.026622" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1014" name="ReleasedSoilLandsOnTerrainAndCanBeCutAgain" fullname="ExcavatorControls.Tests.FreeSoilDischargeTests.ReleasedSoilLandsOnTerrainAndCanBeCutAgain" methodname="ReleasedSoilLandsOnTerrainAndCanBeCutAgain" classname="ExcavatorControls.Tests.FreeSoilDischargeTests" runstate="Runnable" seed="2054032547" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.026103" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1017" name="ResetCancelsAirborneInventoryAndGrossCounters" fullname="ExcavatorControls.Tests.FreeSoilDischargeTests.ResetCancelsAirborneInventoryAndGrossCounters" methodname="ResetCancelsAirborneInventoryAndGrossCounters" classname="ExcavatorControls.Tests.FreeSoilDischargeTests" runstate="Runnable" seed="403543959" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001779" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1019" name="GravitySoilFillTests" fullname="ExcavatorControls.Tests.GravitySoilFillTests" classname="ExcavatorControls.Tests.GravitySoilFillTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.032051" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1020" name="GravityPlaneCanChangeWithoutChangingContainedMeshVolume" fullname="ExcavatorControls.Tests.GravitySoilFillTests.GravityPlaneCanChangeWithoutChangingContainedMeshVolume" methodname="GravityPlaneCanChangeWithoutChangingContainedMeshVolume" classname="ExcavatorControls.Tests.GravitySoilFillTests" runstate="Runnable" seed="397223415" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002628" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1025" name="LowestMouthLipLimitsRetentionAndDownwardOpeningEmpties" fullname="ExcavatorControls.Tests.GravitySoilFillTests.LowestMouthLipLimitsRetentionAndDownwardOpeningEmpties" methodname="LowestMouthLipLimitsRetentionAndDownwardOpeningEmpties" classname="ExcavatorControls.Tests.GravitySoilFillTests" runstate="Runnable" seed="393908452" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001397" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1024" name="RolledAndPitchedFillStaysInsideCalibratedProfile" fullname="ExcavatorControls.Tests.GravitySoilFillTests.RolledAndPitchedFillStaysInsideCalibratedProfile" classname="ExcavatorControls.Tests.GravitySoilFillTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.025623" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1021" name="RolledAndPitchedFillStaysInsideCalibratedProfile(0.1d)" fullname="ExcavatorControls.Tests.GravitySoilFillTests.RolledAndPitchedFillStaysInsideCalibratedProfile(0.1d)" methodname="RolledAndPitchedFillStaysInsideCalibratedProfile" classname="ExcavatorControls.Tests.GravitySoilFillTests" runstate="Runnable" seed="469909103" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.007785" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1022" name="RolledAndPitchedFillStaysInsideCalibratedProfile(0.5d)" fullname="ExcavatorControls.Tests.GravitySoilFillTests.RolledAndPitchedFillStaysInsideCalibratedProfile(0.5d)" methodname="RolledAndPitchedFillStaysInsideCalibratedProfile" classname="ExcavatorControls.Tests.GravitySoilFillTests" runstate="Runnable" seed="2086814872" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.007636" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1023" name="RolledAndPitchedFillStaysInsideCalibratedProfile(1.0d)" fullname="ExcavatorControls.Tests.GravitySoilFillTests.RolledAndPitchedFillStaysInsideCalibratedProfile(1.0d)" methodname="RolledAndPitchedFillStaysInsideCalibratedProfile" classname="ExcavatorControls.Tests.GravitySoilFillTests" runstate="Runnable" seed="1871541698" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.009570" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+          </test-suite>
+          <test-suite type="TestFixture" id="1026" name="SoilCuttingTests" fullname="ExcavatorControls.Tests.SoilCuttingTests" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" testcasecount="10" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.018813" total="10" passed="10" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1034" name="ActualBucketPose_DigsForward_ButLiftAndJitterDoNotDig" fullname="ExcavatorControls.Tests.SoilCuttingTests.ActualBucketPose_DigsForward_ButLiftAndJitterDoNotDig" methodname="ActualBucketPose_DigsForward_ButLiftAndJitterDoNotDig" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="38769866" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.003093" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1032" name="BoundaryAndFloor_RejectOutsideSweep_AndNeverCutBelowFloor" fullname="ExcavatorControls.Tests.SoilCuttingTests.BoundaryAndFloor_RejectOutsideSweep_AndNeverCutBelowFloor" methodname="BoundaryAndFloor_RejectOutsideSweep_AndNeverCutBelowFloor" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="932713537" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001420" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1029" name="BucketMouthClipsSideSoilBeforeVolumeIsCounted" fullname="ExcavatorControls.Tests.SoilCuttingTests.BucketMouthClipsSideSoilBeforeVolumeIsCounted" methodname="BucketMouthClipsSideSoilBeforeVolumeIsCounted" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1021815303" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001328" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1031" name="Capacity_PreventsOverfill_AndRepeatedSweepDoesNotCreateSoil" fullname="ExcavatorControls.Tests.SoilCuttingTests.Capacity_PreventsOverfill_AndRepeatedSweepDoesNotCreateSoil" methodname="Capacity_PreventsOverfill_AndRepeatedSweepDoesNotCreateSoil" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="346837743" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001804" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1027" name="CollectedSoilFollowsBucketWithoutLossAndResetClearsBothRepresentations" fullname="ExcavatorControls.Tests.SoilCuttingTests.CollectedSoilFollowsBucketWithoutLossAndResetClearsBothRepresentations" methodname="CollectedSoilFollowsBucketWithoutLossAndResetClearsBothRepresentations" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1990261399" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.003255" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1036" name="CollisionException_IsLimitedToSoil_AndRestoredWhenCutterIsDestroyed" fullname="ExcavatorControls.Tests.SoilCuttingTests.CollisionException_IsLimitedToSoil_AndRestoredWhenCutterIsDestroyed" methodname="CollisionException_IsLimitedToSoil_AndRestoredWhenCutterIsDestroyed" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="195429110" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001484" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1035" name="ContinuousSlowBucketTravel_AccumulatesUntilCutThreshold" fullname="ExcavatorControls.Tests.SoilCuttingTests.ContinuousSlowBucketTravel_AccumulatesUntilCutThreshold" methodname="ContinuousSlowBucketTravel_AccumulatesUntilCutThreshold" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1241003724" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001300" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1030" name="Cut_LowersRealTerrain_AndConservesMeasuredVolume" fullname="ExcavatorControls.Tests.SoilCuttingTests.Cut_LowersRealTerrain_AndConservesMeasuredVolume" methodname="Cut_LowersRealTerrain_AndConservesMeasuredVolume" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="350825629" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001033" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1028" name="MostlySidewaysBucketTravelDoesNotRemoveOrCollectSoil" fullname="ExcavatorControls.Tests.SoilCuttingTests.MostlySidewaysBucketTravelDoesNotRemoveOrCollectSoil" methodname="MostlySidewaysBucketTravelDoesNotRemoveOrCollectSoil" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1007838348" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001088" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1033" name="Reset_RestoresTerrain_WithoutMutatingSourceAsset" fullname="ExcavatorControls.Tests.SoilCuttingTests.Reset_RestoresTerrain_WithoutMutatingSourceAsset" methodname="Reset_RestoresTerrain_WithoutMutatingSourceAsset" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="741509050" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001211" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1037" name="SoilDepositionTests" fullname="ExcavatorControls.Tests.SoilDepositionTests" classname="ExcavatorControls.Tests.SoilDepositionTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.008774" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1039" name="CutDepositRecutAndResetConserveSignedTerrainVolume" fullname="ExcavatorControls.Tests.SoilDepositionTests.CutDepositRecutAndResetConserveSignedTerrainVolume" methodname="CutDepositRecutAndResetConserveSignedTerrainVolume" classname="ExcavatorControls.Tests.SoilDepositionTests" runstate="Runnable" seed="861480036" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002980" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1040" name="DepositClampsHeightPreservesRimAndStopsAtCapacity" fullname="ExcavatorControls.Tests.SoilDepositionTests.DepositClampsHeightPreservesRimAndStopsAtCapacity" methodname="DepositClampsHeightPreservesRimAndStopsAtCapacity" classname="ExcavatorControls.Tests.SoilDepositionTests" runstate="Runnable" seed="197755166" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001556" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1038" name="DepositRaisesRadialMoundAndReturnsIndependentlyMeasuredVolume" fullname="ExcavatorControls.Tests.SoilDepositionTests.DepositRaisesRadialMoundAndReturnsIndependentlyMeasuredVolume" methodname="DepositRaisesRadialMoundAndReturnsIndependentlyMeasuredVolume" classname="ExcavatorControls.Tests.SoilDepositionTests" runstate="Runnable" seed="1828195535" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001832" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1041" name="InvalidOutsideAndTinyRequestsDoNotCreateSoil" fullname="ExcavatorControls.Tests.SoilDepositionTests.InvalidOutsideAndTinyRequestsDoNotCreateSoil" methodname="InvalidOutsideAndTinyRequestsDoNotCreateSoil" classname="ExcavatorControls.Tests.SoilDepositionTests" runstate="Runnable" seed="1955175081" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001480" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1042" name="SoilResistanceTests" fullname="ExcavatorControls.Tests.SoilResistanceTests" classname="ExcavatorControls.Tests.SoilResistanceTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.003801" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1043" name="ContactReportsDepthAndFloorAndClearsAboveSurface" fullname="ExcavatorControls.Tests.SoilResistanceTests.ContactReportsDepthAndFloorAndClearsAboveSurface" methodname="ContactReportsDepthAndFloorAndClearsAboveSurface" classname="ExcavatorControls.Tests.SoilResistanceTests" runstate="Runnable" seed="491934385" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002864" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1044" name="CuttingInteractionExposesControllerFeedback" fullname="ExcavatorControls.Tests.SoilResistanceTests.CuttingInteractionExposesControllerFeedback" methodname="CuttingInteractionExposesControllerFeedback" classname="ExcavatorControls.Tests.SoilResistanceTests" runstate="Runnable" seed="1338055626" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000233" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1045" name="SoilUnloadingTests" fullname="ExcavatorControls.Tests.SoilUnloadingTests" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" testcasecount="8" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.020524" total="8" passed="8" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1050" name="EmptyTerminationInvalidTimeAndBlockersDoNotLoseSoil" fullname="ExcavatorControls.Tests.SoilUnloadingTests.EmptyTerminationInvalidTimeAndBlockersDoNotLoseSoil" methodname="EmptyTerminationInvalidTimeAndBlockersDoNotLoseSoil" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" seed="1464132035" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.005271" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1049" name="GravityGateDwellAndFreeDischargeConserveSoil" fullname="ExcavatorControls.Tests.SoilUnloadingTests.GravityGateDwellAndFreeDischargeConserveSoil" methodname="GravityGateDwellAndFreeDischargeConserveSoil" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" seed="1143520374" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002062" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1047" name="MultipleReceiversAndSharedTerrainResetDoNotDuplicateMaterial" fullname="ExcavatorControls.Tests.SoilUnloadingTests.MultipleReceiversAndSharedTerrainResetDoNotDuplicateMaterial" methodname="MultipleReceiversAndSharedTerrainResetDoNotDuplicateMaterial" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" seed="1116055897" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002194" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1048" name="ReceivingFootprintHeightAndOrientationRejectInvalidTargets" fullname="ExcavatorControls.Tests.SoilUnloadingTests.ReceivingFootprintHeightAndOrientationRejectInvalidTargets" methodname="ReceivingFootprintHeightAndOrientationRejectInvalidTargets" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" seed="1931352015" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001844" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1051" name="ResetPreservesOtherTerrainContributionsAndCapturedDensity" fullname="ExcavatorControls.Tests.SoilUnloadingTests.ResetPreservesOtherTerrainContributionsAndCapturedDensity" methodname="ResetPreservesOtherTerrainContributionsAndCapturedDensity" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" seed="1882403694" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002729" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1046" name="TipInsideExternalSolidCannotUnloadThroughIt" fullname="ExcavatorControls.Tests.SoilUnloadingTests.TipInsideExternalSolidCannotUnloadThroughIt" methodname="TipInsideExternalSolidCannotUnloadThroughIt" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" seed="1003738843" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001625" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1052" name="TransferCapsAtReceiverCapacityAndResetRestoresConservation" fullname="ExcavatorControls.Tests.SoilUnloadingTests.TransferCapsAtReceiverCapacityAndResetRestoresConservation" methodname="TransferCapsAtReceiverCapacityAndResetRestoresConservation" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" seed="1613993358" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002118" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1053" name="UnloadingComponentsExist" fullname="ExcavatorControls.Tests.SoilUnloadingTests.UnloadingComponentsExist" methodname="UnloadingComponentsExist" classname="ExcavatorControls.Tests.SoilUnloadingTests" runstate="Runnable" seed="1555994696" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001242" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1054" name="Zx200CameraControllerTests" fullname="ExcavatorControls.Tests.Zx200CameraControllerTests" classname="ExcavatorControls.Tests.Zx200CameraControllerTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.003006" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1057" name="AddLookInput_ClampsPitch" fullname="ExcavatorControls.Tests.Zx200CameraControllerTests.AddLookInput_ClampsPitch" methodname="AddLookInput_ClampsPitch" classname="ExcavatorControls.Tests.Zx200CameraControllerTests" runstate="Runnable" seed="413228550" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000545" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1058" name="AddZoomInput_ClampsDistance" fullname="ExcavatorControls.Tests.Zx200CameraControllerTests.AddZoomInput_ClampsDistance" methodname="AddZoomInput_ClampsDistance" classname="ExcavatorControls.Tests.Zx200CameraControllerTests" runstate="Runnable" seed="393560283" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000325" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1055" name="DefaultOrbitYaw_PlacesCameraBehindExcavatorForwardAxis" fullname="ExcavatorControls.Tests.Zx200CameraControllerTests.DefaultOrbitYaw_PlacesCameraBehindExcavatorForwardAxis" methodname="DefaultOrbitYaw_PlacesCameraBehindExcavatorForwardAxis" classname="ExcavatorControls.Tests.Zx200CameraControllerTests" runstate="Runnable" seed="1937192075" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000436" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1056" name="ToggleView_ChangesBetweenThirdAndFirstPerson" fullname="ExcavatorControls.Tests.Zx200CameraControllerTests.ToggleView_ChangesBetweenThirdAndFirstPerson" methodname="ToggleView_ChangesBetweenThirdAndFirstPerson" classname="ExcavatorControls.Tests.Zx200CameraControllerTests" runstate="Runnable" seed="2040764479" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000283" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1059" name="Zx200DigControllerTests" fullname="ExcavatorControls.Tests.Zx200DigControllerTests" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" testcasecount="31" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.021516" total="31" passed="31" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1096" name="AdjustManualPose_AppliesSimultaneousClampedDeltas" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.AdjustManualPose_AppliesSimultaneousClampedDeltas" methodname="AdjustManualPose_AppliesSimultaneousClampedDeltas" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1242404396" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002029" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1095" name="AnimateTo_ZeroDurationStillWaitsForSolverConvergence" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.AnimateTo_ZeroDurationStillWaitsForSolverConvergence" methodname="AnimateTo_ZeroDurationStillWaitsForSolverConvergence" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="905199369" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001548" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1068" name="ApplyWorkReadyPose_DoesNotOverwriteSolverJointPositions" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.ApplyWorkReadyPose_DoesNotOverwriteSolverJointPositions" methodname="ApplyWorkReadyPose_DoesNotOverwriteSolverJointPositions" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1394498920" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000454" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1067" name="ApplyWorkReadyPose_UpdatesEveryDriveWithinLimits" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.ApplyWorkReadyPose_UpdatesEveryDriveWithinLimits" methodname="ApplyWorkReadyPose_UpdatesEveryDriveWithinLimits" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="179533516" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000410" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1066" name="ClampTarget_RestrictsTargetToDriveLimits" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.ClampTarget_RestrictsTargetToDriveLimits" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001368" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1063" name="ClampTarget_RestrictsTargetToDriveLimits(-100.0f,-65.0f,-5.0f,-65.0f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.ClampTarget_RestrictsTargetToDriveLimits(-100.0f,-65.0f,-5.0f,-65.0f)" methodname="ClampTarget_RestrictsTargetToDriveLimits" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="2136087784" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000427" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1064" name="ClampTarget_RestrictsTargetToDriveLimits(20.0f,-65.0f,-5.0f,-5.0f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.ClampTarget_RestrictsTargetToDriveLimits(20.0f,-65.0f,-5.0f,-5.0f)" methodname="ClampTarget_RestrictsTargetToDriveLimits" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1067760168" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000264" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1065" name="ClampTarget_RestrictsTargetToDriveLimits(-35.0f,-65.0f,-5.0f,-35.0f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.ClampTarget_RestrictsTargetToDriveLimits(-35.0f,-65.0f,-5.0f,-35.0f)" methodname="ClampTarget_RestrictsTargetToDriveLimits" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1276051196" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000236" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-case id="1061" name="Defaults_UseCalibratedDigAndRightDumpTrajectory" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.Defaults_UseCalibratedDigAndRightDumpTrajectory" methodname="Defaults_UseCalibratedDigAndRightDumpTrajectory" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="995691772" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000428" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1060" name="Defaults_UseNormalWorkReadyPose" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.Defaults_UseNormalWorkReadyPose" methodname="Defaults_UseNormalWorkReadyPose" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="429877916" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000346" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1093" name="IsAngleWithinTolerance_UsesShortestAngularDistance" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.IsAngleWithinTolerance_UsesShortestAngularDistance" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001445" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1090" name="IsAngleWithinTolerance_UsesShortestAngularDistance(10.0f,10.4f,0.5f,True)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.IsAngleWithinTolerance_UsesShortestAngularDistance(10.0f,10.4f,0.5f,True)" methodname="IsAngleWithinTolerance_UsesShortestAngularDistance" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1103943674" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000493" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1091" name="IsAngleWithinTolerance_UsesShortestAngularDistance(10.0f,10.6f,0.5f,False)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.IsAngleWithinTolerance_UsesShortestAngularDistance(10.0f,10.6f,0.5f,False)" methodname="IsAngleWithinTolerance_UsesShortestAngularDistance" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="2063975486" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000272" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1092" name="IsAngleWithinTolerance_UsesShortestAngularDistance(-179.0f,179.0f,3.0f,True)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.IsAngleWithinTolerance_UsesShortestAngularDistance(-179.0f,179.0f,3.0f,True)" methodname="IsAngleWithinTolerance_UsesShortestAngularDistance" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="592521407" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000250" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-case id="1094" name="IsPoseWithinTolerance_UsesDriveLimitedTarget" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.IsPoseWithinTolerance_UsesDriveLimitedTarget" methodname="IsPoseWithinTolerance_UsesDriveLimitedTarget" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1224380200" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000409" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1073" name="PrepareForPhysics_KeepsGravityAndCollidersEnabled" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_KeepsGravityAndCollidersEnabled" methodname="PrepareForPhysics_KeepsGravityAndCollidersEnabled" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="956327032" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.003159" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1080" name="PrepareForPhysics_RejectsInvalidDriveSetting" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidDriveSetting" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.002067" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1075" name="PrepareForPhysics_RejectsInvalidDriveSetting(&quot;stiffness&quot;,float.NaN)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidDriveSetting(&quot;stiffness&quot;,float.NaN)" methodname="PrepareForPhysics_RejectsInvalidDriveSetting" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="591434406" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000500" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1076" name="PrepareForPhysics_RejectsInvalidDriveSetting(&quot;damping&quot;,float.PositiveInfinity)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidDriveSetting(&quot;damping&quot;,float.PositiveInfinity)" methodname="PrepareForPhysics_RejectsInvalidDriveSetting" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="960703154" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000281" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1077" name="PrepareForPhysics_RejectsInvalidDriveSetting(&quot;forceLimit&quot;,0.0f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidDriveSetting(&quot;forceLimit&quot;,0.0f)" methodname="PrepareForPhysics_RejectsInvalidDriveSetting" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="302136843" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000245" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1078" name="PrepareForPhysics_RejectsInvalidDriveSetting(&quot;jointToleranceDegrees&quot;,-0.1f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidDriveSetting(&quot;jointToleranceDegrees&quot;,-0.1f)" methodname="PrepareForPhysics_RejectsInvalidDriveSetting" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="354853999" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000233" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1079" name="PrepareForPhysics_RejectsInvalidDriveSetting(&quot;settleTimeoutSeconds&quot;,0.0f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidDriveSetting(&quot;settleTimeoutSeconds&quot;,0.0f)" methodname="PrepareForPhysics_RejectsInvalidDriveSetting" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="2073586557" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000236" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="ParameterizedMethod" id="1089" name="PrepareForPhysics_RejectsInvalidHoldDuration" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidHoldDuration" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001343" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1086" name="PrepareForPhysics_RejectsInvalidHoldDuration(float.NaN)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidHoldDuration(float.NaN)" methodname="PrepareForPhysics_RejectsInvalidHoldDuration" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="207135821" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000436" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1087" name="PrepareForPhysics_RejectsInvalidHoldDuration(float.PositiveInfinity)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidHoldDuration(float.PositiveInfinity)" methodname="PrepareForPhysics_RejectsInvalidHoldDuration" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="148775956" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000266" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1088" name="PrepareForPhysics_RejectsInvalidHoldDuration(-0.1f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidHoldDuration(-0.1f)" methodname="PrepareForPhysics_RejectsInvalidHoldDuration" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1465030003" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000225" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="ParameterizedMethod" id="1085" name="PrepareForPhysics_RejectsInvalidStageDuration" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidStageDuration" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001216" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1082" name="PrepareForPhysics_RejectsInvalidStageDuration(float.NaN)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidStageDuration(float.NaN)" methodname="PrepareForPhysics_RejectsInvalidStageDuration" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1075881846" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000364" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1083" name="PrepareForPhysics_RejectsInvalidStageDuration(float.PositiveInfinity)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidStageDuration(float.PositiveInfinity)" methodname="PrepareForPhysics_RejectsInvalidStageDuration" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="905063928" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000238" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1084" name="PrepareForPhysics_RejectsInvalidStageDuration(-0.1f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsInvalidStageDuration(-0.1f)" methodname="PrepareForPhysics_RejectsInvalidStageDuration" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="479329674" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000217" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-case id="1081" name="PrepareForPhysics_RejectsNonFinitePoseTarget" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_RejectsNonFinitePoseTarget" methodname="PrepareForPhysics_RejectsNonFinitePoseTarget" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="783192516" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000321" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1074" name="PrepareForPhysics_UnlocksZeroRangeSwingJoint" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.PrepareForPhysics_UnlocksZeroRangeSwingJoint" methodname="PrepareForPhysics_UnlocksZeroRangeSwingJoint" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="677229837" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000758" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1062" name="ResolveJoints_FindsAllFourNamedArticulations" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.ResolveJoints_FindsAllFourNamedArticulations" methodname="ResolveJoints_FindsAllFourNamedArticulations" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1832572170" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000480" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1072" name="SmoothProgress_ClampsAndSmooths" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.SmoothProgress_ClampsAndSmooths" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001363" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1069" name="SmoothProgress_ClampsAndSmooths(-1.0f,0.0f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.SmoothProgress_ClampsAndSmooths(-1.0f,0.0f)" methodname="SmoothProgress_ClampsAndSmooths" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="559415663" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000443" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1070" name="SmoothProgress_ClampsAndSmooths(0.5f,0.5f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.SmoothProgress_ClampsAndSmooths(0.5f,0.5f)" methodname="SmoothProgress_ClampsAndSmooths" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="1973199601" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000260" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1071" name="SmoothProgress_ClampsAndSmooths(2.0f,1.0f)" fullname="ExcavatorControls.Tests.Zx200DigControllerTests.SmoothProgress_ClampsAndSmooths(2.0f,1.0f)" methodname="SmoothProgress_ClampsAndSmooths" classname="ExcavatorControls.Tests.Zx200DigControllerTests" runstate="Runnable" seed="920264066" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000232" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+          </test-suite>
+          <test-suite type="TestFixture" id="1097" name="Zx200FixedBasePhysicsTests" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.007686" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1099" name="Configure_AppliesFixedBaseProxyMassesAndGravity" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_AppliesFixedBaseProxyMassesAndGravity" methodname="Configure_AppliesFixedBaseProxyMassesAndGravity" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="1795463116" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000783" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1098" name="Configure_CreatesOneRearCounterweight" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_CreatesOneRearCounterweight" methodname="Configure_CreatesOneRearCounterweight" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="1721774766" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001265" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1100" name="Configure_IgnoresAdjacentCollisionWithoutDisablingColliders" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_IgnoresAdjacentCollisionWithoutDisablingColliders" methodname="Configure_IgnoresAdjacentCollisionWithoutDisablingColliders" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="266950902" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000657" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1101" name="Configure_ReenablesColliderDisabledByLegacyVisualSetup" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_ReenablesColliderDisabledByLegacyVisualSetup" methodname="Configure_ReenablesColliderDisabledByLegacyVisualSetup" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="31512494" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000423" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1108" name="Configure_RejectsInvalidProxyMass" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_RejectsInvalidProxyMass" methodname="Configure_RejectsInvalidProxyMass" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="1295918500" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000363" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1112" name="Configure_RejectsInvalidStabilityValue" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_RejectsInvalidStabilityValue" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001338" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1109" name="Configure_RejectsInvalidStabilityValue(&quot;linearDamping&quot;,float.NaN)" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_RejectsInvalidStabilityValue(&quot;linearDamping&quot;,float.NaN)" methodname="Configure_RejectsInvalidStabilityValue" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="1042356730" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000418" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1110" name="Configure_RejectsInvalidStabilityValue(&quot;angularDamping&quot;,float.PositiveInfinity)" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_RejectsInvalidStabilityValue(&quot;angularDamping&quot;,float.PositiveInfinity)" methodname="Configure_RejectsInvalidStabilityValue" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="627588272" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000241" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1111" name="Configure_RejectsInvalidStabilityValue(&quot;jointFriction&quot;,-0.01f)" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.Configure_RejectsInvalidStabilityValue(&quot;jointFriction&quot;,-0.01f)" methodname="Configure_RejectsInvalidStabilityValue" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="718704810" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000213" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="ParameterizedMethod" id="1107" name="IsFinitePositive_RejectsInvalidPhysicsValues" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.IsFinitePositive_RejectsInvalidPhysicsValues" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001798" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1102" name="IsFinitePositive_RejectsInvalidPhysicsValues(1.0f,True)" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.IsFinitePositive_RejectsInvalidPhysicsValues(1.0f,True)" methodname="IsFinitePositive_RejectsInvalidPhysicsValues" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="834355464" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000404" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1103" name="IsFinitePositive_RejectsInvalidPhysicsValues(0.0f,False)" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.IsFinitePositive_RejectsInvalidPhysicsValues(0.0f,False)" methodname="IsFinitePositive_RejectsInvalidPhysicsValues" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="1936189146" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000253" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1104" name="IsFinitePositive_RejectsInvalidPhysicsValues(-1.0f,False)" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.IsFinitePositive_RejectsInvalidPhysicsValues(-1.0f,False)" methodname="IsFinitePositive_RejectsInvalidPhysicsValues" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="604884760" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000209" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1105" name="IsFinitePositive_RejectsInvalidPhysicsValues(float.NaN,False)" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.IsFinitePositive_RejectsInvalidPhysicsValues(float.NaN,False)" methodname="IsFinitePositive_RejectsInvalidPhysicsValues" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="1940524759" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000194" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1106" name="IsFinitePositive_RejectsInvalidPhysicsValues(float.PositiveInfinity,False)" fullname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests.IsFinitePositive_RejectsInvalidPhysicsValues(float.PositiveInfinity,False)" methodname="IsFinitePositive_RejectsInvalidPhysicsValues" classname="ExcavatorControls.Tests.Zx200FixedBasePhysicsTests" runstate="Runnable" seed="486970777" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000197" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+          </test-suite>
+          <test-suite type="TestFixture" id="1113" name="Zx200KeyboardControllerTests" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.005484" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1114" name="CalculateMotion_UsesLocalForwardAndWorldYaw" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.CalculateMotion_UsesLocalForwardAndWorldYaw" methodname="CalculateMotion_UsesLocalForwardAndWorldYaw" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="895411453" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000355" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1127" name="CalculateTrackMotion_EqualTracksMoveStraight" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.CalculateTrackMotion_EqualTracksMoveStraight" methodname="CalculateTrackMotion_EqualTracksMoveStraight" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1613338622" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000153" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1128" name="CalculateTrackMotion_OneTrackCreatesTurn" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.CalculateTrackMotion_OneTrackCreatesTurn" methodname="CalculateTrackMotion_OneTrackCreatesTurn" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="62412618" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000093" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1129" name="CalculateTrackMotion_OppositeTracksTurnInPlace" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.CalculateTrackMotion_OppositeTracksTurnInPlace" methodname="CalculateTrackMotion_OppositeTracksTurnInPlace" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1623415171" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000085" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1126" name="HasControlTopic_KeepsReceivedFrameAvailable" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.HasControlTopic_KeepsReceivedFrameAvailable" methodname="HasControlTopic_KeepsReceivedFrameAvailable" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="865810796" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000375" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1116" name="MoveArticulationRoot_FixedBaseDoesNotMoveArticulationRoot" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.MoveArticulationRoot_FixedBaseDoesNotMoveArticulationRoot" methodname="MoveArticulationRoot_FixedBaseDoesNotMoveArticulationRoot" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="64768667" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000764" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1115" name="MoveArticulationRoot_QueuesInputWithoutTeleporting" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.MoveArticulationRoot_QueuesInputWithoutTeleporting" methodname="MoveArticulationRoot_QueuesInputWithoutTeleporting" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1360991101" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000526" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1125" name="NormalizeAction_CentersAzUnsignedValue" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" testcasecount="8" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.001031" total="8" passed="8" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1117" name="NormalizeAction_CentersAzUnsignedValue(127.0f,0.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue(127.0f,0.0f)" methodname="NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1775642906" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000180" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1118" name="NormalizeAction_CentersAzUnsignedValue(128.0f,0.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue(128.0f,0.0f)" methodname="NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1243184840" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000044" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1119" name="NormalizeAction_CentersAzUnsignedValue(126.0f,0.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue(126.0f,0.0f)" methodname="NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1832253609" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000029" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1120" name="NormalizeAction_CentersAzUnsignedValue(129.0f,0.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue(129.0f,0.0f)" methodname="NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1618581317" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000025" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1121" name="NormalizeAction_CentersAzUnsignedValue(125.0f,-0.019608f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue(125.0f,-0.019608f)" methodname="NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1868619111" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000024" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1122" name="NormalizeAction_CentersAzUnsignedValue(130.0f,0.019763f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue(130.0f,0.019763f)" methodname="NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1472042658" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000024" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1123" name="NormalizeAction_CentersAzUnsignedValue(254.0f,1.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue(254.0f,1.0f)" methodname="NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="245367685" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000025" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1124" name="NormalizeAction_CentersAzUnsignedValue(0.0f,-1.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.NormalizeAction_CentersAzUnsignedValue(0.0f,-1.0f)" methodname="NormalizeAction_CentersAzUnsignedValue" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="793429627" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000025" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="ParameterizedMethod" id="1135" name="ResolveAxisInput_KeyboardOverridesTopicWhileHeld" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.ResolveAxisInput_KeyboardOverridesTopicWhileHeld" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000918" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1130" name="ResolveAxisInput_KeyboardOverridesTopicWhileHeld(True,False,True,0.75f,-1.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.ResolveAxisInput_KeyboardOverridesTopicWhileHeld(True,False,True,0.75f,-1.0f)" methodname="ResolveAxisInput_KeyboardOverridesTopicWhileHeld" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="720449277" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000344" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1131" name="ResolveAxisInput_KeyboardOverridesTopicWhileHeld(False,True,True,-0.75f,1.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.ResolveAxisInput_KeyboardOverridesTopicWhileHeld(False,True,True,-0.75f,1.0f)" methodname="ResolveAxisInput_KeyboardOverridesTopicWhileHeld" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1191356702" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000051" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1132" name="ResolveAxisInput_KeyboardOverridesTopicWhileHeld(True,True,True,0.75f,0.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.ResolveAxisInput_KeyboardOverridesTopicWhileHeld(True,True,True,0.75f,0.0f)" methodname="ResolveAxisInput_KeyboardOverridesTopicWhileHeld" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="1453234091" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000035" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1133" name="ResolveAxisInput_KeyboardOverridesTopicWhileHeld(False,False,True,0.75f,0.75f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.ResolveAxisInput_KeyboardOverridesTopicWhileHeld(False,False,True,0.75f,0.75f)" methodname="ResolveAxisInput_KeyboardOverridesTopicWhileHeld" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="883600022" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000034" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1134" name="ResolveAxisInput_KeyboardOverridesTopicWhileHeld(False,False,False,0.75f,0.0f)" fullname="ExcavatorControls.Tests.Zx200KeyboardControllerTests.ResolveAxisInput_KeyboardOverridesTopicWhileHeld(False,False,False,0.75f,0.0f)" methodname="ResolveAxisInput_KeyboardOverridesTopicWhileHeld" classname="ExcavatorControls.Tests.Zx200KeyboardControllerTests" runstate="Runnable" seed="954947887" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000031" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+          </test-suite>
+          <test-suite type="TestFixture" id="1136" name="Zx200SavedPoseTests" fullname="ExcavatorControls.Tests.Zx200SavedPoseTests" classname="ExcavatorControls.Tests.Zx200SavedPoseTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.025838" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1137" name="SavedPrefabAlreadyDisplaysWorkReadyPose" fullname="ExcavatorControls.Tests.Zx200SavedPoseTests.SavedPrefabAlreadyDisplaysWorkReadyPose" methodname="SavedPrefabAlreadyDisplaysWorkReadyPose" classname="ExcavatorControls.Tests.Zx200SavedPoseTests" runstate="Runnable" seed="2067074999" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.000932" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1138" name="SavedSoilDemoDisplaysItsOwnWorkReadyPose" fullname="ExcavatorControls.Tests.Zx200SavedPoseTests.SavedSoilDemoDisplaysItsOwnWorkReadyPose" methodname="SavedSoilDemoDisplaysItsOwnWorkReadyPose" classname="ExcavatorControls.Tests.Zx200SavedPoseTests" runstate="Runnable" seed="1612329206" result="Passed" start-time="2026-09-17 07:32:44Z" end-time="2026-09-17 07:32:44Z" duration="0.024407" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

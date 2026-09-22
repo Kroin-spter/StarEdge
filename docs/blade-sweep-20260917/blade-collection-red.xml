@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="3" result="Failed(Child)" total="3" passed="1" failed="2" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 10:23:29Z" end-time="2026-09-17 10:23:30Z" duration="0.050277">
+  <test-suite type="TestSuite" id="1000" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="160" result="Failed" site="Child" start-time="2026-09-17 10:23:29Z" end-time="2026-09-17 10:23:30Z" duration="0.050277" total="3" passed="1" failed="2" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="1163" name="ExcavatorControls.Editor.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/ExcavatorControls.Editor.Tests.dll" runstate="Runnable" testcasecount="131" result="Failed" site="Child" start-time="2026-09-17 10:23:29Z" end-time="2026-09-17 10:23:30Z" duration="0.044743" total="3" passed="1" failed="2" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="560340" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="1164" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="131" result="Failed" site="Child" start-time="2026-09-17 10:23:29Z" end-time="2026-09-17 10:23:30Z" duration="0.044024" total="3" passed="1" failed="2" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="1165" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="131" result="Failed" site="Child" start-time="2026-09-17 10:23:29Z" end-time="2026-09-17 10:23:30Z" duration="0.043442" total="3" passed="1" failed="2" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="1002" name="BladeCollectionTests" fullname="ExcavatorControls.Tests.BladeCollectionTests" classname="ExcavatorControls.Tests.BladeCollectionTests" runstate="Runnable" testcasecount="3" result="Failed" site="Child" start-time="2026-09-17 10:23:30Z" end-time="2026-09-17 10:23:30Z" duration="0.041422" total="3" passed="1" failed="2" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1004" name="CuttingDoesNotReachHalfAMetreAheadOfActualTeeth" fullname="ExcavatorControls.Tests.BladeCollectionTests.CuttingDoesNotReachHalfAMetreAheadOfActualTeeth" methodname="CuttingDoesNotReachHalfAMetreAheadOfActualTeeth" classname="ExcavatorControls.Tests.BladeCollectionTests" runstate="Runnable" seed="51456805" result="Failed" start-time="2026-09-17 10:23:30Z" end-time="2026-09-17 10:23:30Z" duration="0.026878" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  z=1.5 lies ahead of the current z=1.25 teeth; old radial cutting must not reach it
+  Expected: 1 +/- 0.0001d
+  But was:  0.700115979f
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.BladeCollectionTests.CuttingDoesNotReachHalfAMetreAheadOfActualTeeth () [0x00081] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeCollectionTests.cs:63
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1005" name="StationaryBladeInsideSoilDoesNotKeepExcavating" fullname="ExcavatorControls.Tests.BladeCollectionTests.StationaryBladeInsideSoilDoesNotKeepExcavating" methodname="StationaryBladeInsideSoilDoesNotKeepExcavating" classname="ExcavatorControls.Tests.BladeCollectionTests" runstate="Runnable" seed="1092906207" result="Passed" start-time="2026-09-17 10:23:30Z" end-time="2026-09-17 10:23:30Z" duration="0.003336" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1003" name="VerticalTeethCutWithoutPretendingAllRemovedSoilEnteredSidewaysMouth" fullname="ExcavatorControls.Tests.BladeCollectionTests.VerticalTeethCutWithoutPretendingAllRemovedSoilEnteredSidewaysMouth" methodname="VerticalTeethCutWithoutPretendingAllRemovedSoilEnteredSidewaysMouth" classname="ExcavatorControls.Tests.BladeCollectionTests" runstate="Runnable" seed="1126258389" result="Failed" start-time="2026-09-17 10:23:30Z" end-time="2026-09-17 10:23:30Z" duration="0.001990" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Actual tooth penetration must cut even without horizontal movement
+  Expected: greater than 0
+  But was:  0.0d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.BladeCollectionTests.VerticalTeethCutWithoutPretendingAllRemovedSoilEnteredSidewaysMouth () [0x0009a] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeCollectionTests.cs:47
+]]></stack-trace>
+              </failure>
+              <output><![CDATA[Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

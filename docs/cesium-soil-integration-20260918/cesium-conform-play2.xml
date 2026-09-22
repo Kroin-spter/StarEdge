@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="1" result="Passed" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-18 03:01:53Z" end-time="2026-09-18 03:02:01Z" duration="8.2041549">
+  <test-suite type="TestSuite" id="1234" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="180" result="Passed" start-time="2026-09-18 03:01:53Z" end-time="2026-09-18 03:02:01Z" duration="8.204155" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <test-suite type="Assembly" id="1231" name="Zx200KeyboardPhysics.PlayMode.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/Zx200KeyboardPhysics.PlayMode.Tests.dll" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-09-18 03:01:53Z" end-time="2026-09-18 03:02:01Z" duration="8.195305" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="1208039" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestSuite" id="1232" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-09-18 03:01:53Z" end-time="2026-09-18 03:02:01Z" duration="8.194643" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1233" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-09-18 03:01:53Z" end-time="2026-09-18 03:02:01Z" duration="8.194210" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1193" name="BladeMainSceneTests" fullname="ExcavatorControls.Tests.BladeMainSceneTests" classname="ExcavatorControls.Tests.BladeMainSceneTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-18 03:01:53Z" end-time="2026-09-18 03:02:01Z" duration="8.192584" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1194" name="MainSceneDownwardEntryCutsAtTeethAndAccountsForDisplacement" fullname="ExcavatorControls.Tests.BladeMainSceneTests.MainSceneDownwardEntryCutsAtTeethAndAccountsForDisplacement" methodname="MainSceneDownwardEntryCutsAtTeethAndAccountsForDisplacement" classname="ExcavatorControls.Tests.BladeMainSceneTests" runstate="Runnable" seed="282219890" result="Passed" start-time="2026-09-18 03:01:53Z" end-time="2026-09-18 03:02:01Z" duration="8.182541" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). The partial hull will be used. Consider simplifying your mesh. Source mesh name: body
+ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Cesium surface copied into excavatable Terrain: 263169/263169 samples
+GPUResidentDrawer The current platform does not support UnityEngine.Rendering.BatchBufferTarget
+VERTICAL MAIN cut=0.008332, collected=0.007416, displaced=0.000916, bucket=0.007416, tip=(330.10, 8.28, 406.15), status=刃口切削：进斗 90 % / 其余侧落
+Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

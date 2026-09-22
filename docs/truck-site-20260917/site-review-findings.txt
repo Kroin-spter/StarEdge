@@ -1,0 +1,7 @@
+P2 — Streamed tile eviction does not release cloned clipping meshes.
+File: Assets/WebDelivery/Runtime/ConstructionSiteMapClip.cs:69-83, 90-105
+Each intersecting streamed tile allocates a native Mesh clone and appends a Replacement. Replacement entries and cloned meshes are released only when the entire clip component is disabled. When Cesium evicts/destroys an individual tile during normal streaming or LOD changes, its clone is not explicitly destroyed and its Replacement remains in the list. Repeated streaming therefore accumulates native mesh allocations and makes the replacements.Exists scan increasingly expensive. Prune entries whose MeshFilter was destroyed and destroy their cloned meshes during normal operation, or attach per-tile cleanup ownership. A regression can destroy a clipped synthetic tile while leaving the clip component enabled and verify the clone is released.
+
+No additional substantive issues found in the resistance/controller integration or main-scene construction setup within the stated simplified compliant-guard scope. Upward withdrawal is explicitly allowed; resistance force is bounded; constrained joint target errors are canceled. This review does not claim zero penetration.
+
+Read existing /tmp/site-play.xml: 2 total, 2 passed, 0 failed. No Unity execution or project-file edits performed. Only this requested findings file was written.

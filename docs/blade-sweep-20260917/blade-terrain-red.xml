@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="6" result="Failed(Child)" total="6" passed="0" failed="6" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.0414989">
+  <test-suite type="TestSuite" id="1000" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="160" result="Failed" site="Child" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.041499" total="6" passed="0" failed="6" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="1163" name="ExcavatorControls.Editor.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/ExcavatorControls.Editor.Tests.dll" runstate="Runnable" testcasecount="131" result="Failed" site="Child" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.036029" total="6" passed="0" failed="6" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="562164" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="1164" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="131" result="Failed" site="Child" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.035339" total="6" passed="0" failed="6" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="1165" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="131" result="Failed" site="Child" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.034748" total="6" passed="0" failed="6" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="1006" name="BladeSweepTests" fullname="ExcavatorControls.Tests.BladeSweepTests" classname="ExcavatorControls.Tests.BladeSweepTests" runstate="Runnable" testcasecount="6" result="Failed" site="Child" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.032884" total="6" passed="0" failed="6" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1011" name="CapacityAndReturnedVolumeMatchAuthoritativeTerrainReadback" fullname="ExcavatorControls.Tests.BladeSweepTests.CapacityAndReturnedVolumeMatchAuthoritativeTerrainReadback" methodname="CapacityAndReturnedVolumeMatchAuthoritativeTerrainReadback" classname="ExcavatorControls.Tests.BladeSweepTests" runstate="Runnable" seed="1455565872" result="Failed" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.017459" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Terrain cutting needs the eight-corner geometric sweep API.
+  Expected: not null
+  But was:  null
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.BladeSweepTests.Cut (UnityEngine.Vector3[] previous, UnityEngine.Vector3[] current, System.Single capacity) [0x00005] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:121
+at ExcavatorControls.Tests.BladeSweepTests.CapacityAndReturnedVolumeMatchAuthoritativeTerrainReadback () [0x00033] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:93
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1010" name="EndpointRotationAddsTheRotatedBoxFootprint" fullname="ExcavatorControls.Tests.BladeSweepTests.EndpointRotationAddsTheRotatedBoxFootprint" methodname="EndpointRotationAddsTheRotatedBoxFootprint" classname="ExcavatorControls.Tests.BladeSweepTests" runstate="Runnable" seed="1135104202" result="Failed" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.001347" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Terrain cutting needs the eight-corner geometric sweep API.
+  Expected: not null
+  But was:  null
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.BladeSweepTests.Cut (UnityEngine.Vector3[] previous, UnityEngine.Vector3[] current, System.Single capacity) [0x00005] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:121
+at ExcavatorControls.Tests.BladeSweepTests.EndpointRotationAddsTheRotatedBoxFootprint () [0x00052] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:82
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1007" name="ExposesBladeSweepContract" fullname="ExcavatorControls.Tests.BladeSweepTests.ExposesBladeSweepContract" methodname="ExposesBladeSweepContract" classname="ExcavatorControls.Tests.BladeSweepTests" runstate="Runnable" seed="1592459155" result="Failed" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.000939" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Terrain cutting needs the eight-corner geometric sweep API.
+  Expected: not null
+  But was:  null
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.BladeSweepTests.ExposesBladeSweepContract () [0x00000] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:41
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1008" name="HorizontalSweepCutsOnlyInsideSweptBoxWithoutForwardHalo" fullname="ExcavatorControls.Tests.BladeSweepTests.HorizontalSweepCutsOnlyInsideSweptBoxWithoutForwardHalo" methodname="HorizontalSweepCutsOnlyInsideSweptBoxWithoutForwardHalo" classname="ExcavatorControls.Tests.BladeSweepTests" runstate="Runnable" seed="1469137335" result="Failed" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.001201" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Terrain cutting needs the eight-corner geometric sweep API.
+  Expected: not null
+  But was:  null
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.BladeSweepTests.Cut (UnityEngine.Vector3[] previous, UnityEngine.Vector3[] current, System.Single capacity) [0x00005] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:121
+at ExcavatorControls.Tests.BladeSweepTests.HorizontalSweepCutsOnlyInsideSweptBoxWithoutForwardHalo () [0x00066] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:52
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1009" name="PureVerticalSweepCutsInsideFiniteBoxFootprint" fullname="ExcavatorControls.Tests.BladeSweepTests.PureVerticalSweepCutsInsideFiniteBoxFootprint" methodname="PureVerticalSweepCutsInsideFiniteBoxFootprint" classname="ExcavatorControls.Tests.BladeSweepTests" runstate="Runnable" seed="1244651257" result="Failed" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.001299" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Terrain cutting needs the eight-corner geometric sweep API.
+  Expected: not null
+  But was:  null
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.BladeSweepTests.Cut (UnityEngine.Vector3[] previous, UnityEngine.Vector3[] current, System.Single capacity) [0x00005] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:121
+at ExcavatorControls.Tests.BladeSweepTests.PureVerticalSweepCutsInsideFiniteBoxFootprint () [0x00084] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:68
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1012" name="RepeatedAndInvalidSweepsReturnZeroWithoutExtraTerrainChange" fullname="ExcavatorControls.Tests.BladeSweepTests.RepeatedAndInvalidSweepsReturnZeroWithoutExtraTerrainChange" methodname="RepeatedAndInvalidSweepsReturnZeroWithoutExtraTerrainChange" classname="ExcavatorControls.Tests.BladeSweepTests" runstate="Runnable" seed="1014987957" result="Failed" start-time="2026-09-17 10:25:09Z" end-time="2026-09-17 10:25:09Z" duration="0.001085" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Terrain cutting needs the eight-corner geometric sweep API.
+  Expected: not null
+  But was:  null
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.BladeSweepTests.Cut (UnityEngine.Vector3[] previous, UnityEngine.Vector3[] current, System.Single capacity) [0x00005] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:121
+at ExcavatorControls.Tests.BladeSweepTests.RepeatedAndInvalidSweepsReturnZeroWithoutExtraTerrainChange () [0x00033] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/BladeSweepTests.cs:105
+]]></stack-trace>
+              </failure>
+              <output><![CDATA[Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

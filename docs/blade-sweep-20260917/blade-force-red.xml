@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="1" result="Failed(Child)" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 10:28:05Z" end-time="2026-09-17 10:28:05Z" duration="0.0308892">
+  <test-suite type="TestSuite" id="1000" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="161" result="Failed" site="Child" start-time="2026-09-17 10:28:05Z" end-time="2026-09-17 10:28:05Z" duration="0.030889" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="1164" name="ExcavatorControls.Editor.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/ExcavatorControls.Editor.Tests.dll" runstate="Runnable" testcasecount="132" result="Failed" site="Child" start-time="2026-09-17 10:28:05Z" end-time="2026-09-17 10:28:05Z" duration="0.024920" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="564612" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="1165" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="132" result="Failed" site="Child" start-time="2026-09-17 10:28:05Z" end-time="2026-09-17 10:28:05Z" duration="0.023840" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="1166" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="132" result="Failed" site="Child" start-time="2026-09-17 10:28:05Z" end-time="2026-09-17 10:28:05Z" duration="0.022891" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="1066" name="SoilResistanceTests" fullname="ExcavatorControls.Tests.SoilResistanceTests" classname="ExcavatorControls.Tests.SoilResistanceTests" runstate="Runnable" testcasecount="3" result="Failed" site="Child" start-time="2026-09-17 10:28:05Z" end-time="2026-09-17 10:28:05Z" duration="0.020837" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1068" name="EarthPressureResistanceIsContinuousWithDepthAndBounded" fullname="ExcavatorControls.Tests.SoilResistanceTests.EarthPressureResistanceIsContinuousWithDepthAndBounded" methodname="EarthPressureResistanceIsContinuousWithDepthAndBounded" classname="ExcavatorControls.Tests.SoilResistanceTests" runstate="Runnable" seed="199781488" result="Failed" start-time="2026-09-17 10:28:05Z" end-time="2026-09-17 10:28:05Z" duration="0.012143" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expose the depth/strength model for independent validation
+  Expected: not null
+  But was:  null
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilResistanceTests.EarthPressureResistanceIsContinuousWithDepthAndBounded () [0x0003a] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilResistanceTests.cs:62
+]]></stack-trace>
+              </failure>
+              <output><![CDATA[Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

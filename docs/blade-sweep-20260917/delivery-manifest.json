@@ -1,0 +1,90 @@
+{
+  "files": [
+    {
+      "file": "Assets/Scripts/Excavation/BucketSoilCutter.cs",
+      "sha256": "06aef19658f6b76605c940106e24d852f9edc0ab456007323ae65717a1df2685"
+    },
+    {
+      "file": "Assets/Scripts/Excavation/BucketSoilResistance.cs",
+      "sha256": "9201e9e9cd028d65654dcb918408caabe79e399cdc7d1b6169be97010f89a0af"
+    },
+    {
+      "file": "Assets/Scripts/Excavation/DeformableSoilTerrain.cs",
+      "sha256": "171afd9b7e534558f90351ce38ed24652c0493afc87ed6c95a1136ba3fb74da0"
+    },
+    {
+      "file": "Assets/Scripts/Excavation/SoilFlightTransport.cs",
+      "sha256": "5509557c8787d67e56d4302f688e4f1e7bd6b5646235f56d8104363fae598d6e"
+    },
+    {
+      "file": "Assets/Tests/EditMode/BladeCollectionTests.cs",
+      "sha256": "ddfc5ab3fcbbb97a0dfd96392d519632c363c50761ca2764c10b8007aeed6089"
+    },
+    {
+      "file": "Assets/Tests/EditMode/BladeCollectionTests.cs.meta",
+      "sha256": "03b9658bb06b581dfda43f6d5a2485c7a37d600daa67f65f58881e1518529517"
+    },
+    {
+      "file": "Assets/Tests/EditMode/BladeSweepTests.cs",
+      "sha256": "19aaf429a12cd579e8a05742ca06cab8767e19b89299d6fa6f6952f64e9d3a23"
+    },
+    {
+      "file": "Assets/Tests/EditMode/BladeSweepTests.cs.meta",
+      "sha256": "4e3c156026c89f86b83d70968bcacbb9ae1b8635c2ffaa99d135a242e5637388"
+    },
+    {
+      "file": "Assets/Tests/EditMode/SoilCuttingTests.cs",
+      "sha256": "806e603a503cbe69c6e6be181ed34c3312ca018b448d681f3eaeb560732e98f3"
+    },
+    {
+      "file": "Assets/Tests/EditMode/SoilMouthFlowTests.cs",
+      "sha256": "9ed67092bb345cee7533f3a3ec682d2aa0ce0170208f314980665fa0348c8ec7"
+    },
+    {
+      "file": "Assets/Tests/EditMode/SoilResistanceTests.cs",
+      "sha256": "a472e8a8e87835040c8f14960f586376f040c0bbfafe62c567f6a8948ecab1e1"
+    },
+    {
+      "file": "Assets/Tests/PlayMode/BladeMainSceneTests.cs",
+      "sha256": "0b58a1acf77a260411a05a2a3b002436a4146f220dc916d7c14cfb183a224207"
+    },
+    {
+      "file": "Assets/Tests/PlayMode/BladeMainSceneTests.cs.meta",
+      "sha256": "5d613a314414d547209cd1e119e9560e93a67d9fb23a160afb40cc28106be14d"
+    },
+    {
+      "file": "Assets/Tests/PlayMode/ManualSoilTestMotion.cs",
+      "sha256": "4e19eb7bb64cd647567b6fdde5b3303b0520200e1f28758dbb7fea4818d0bd81"
+    },
+    {
+      "file": "Assets/Tests/PlayMode/Zx200SoilDemoTests.cs",
+      "sha256": "d6ecb4803f14e94bb6a3844bc1e888e1d9465f3a64c3cd7a4840eb0062b792c8"
+    },
+    {
+      "file": "Assets/Tests/PlayMode/Zx200SoilPhysicsTests.cs",
+      "sha256": "66740ae5943772915813f5f3ca0984b73c4839835fd5c3e9bcd93f83907afd32"
+    },
+    {
+      "file": "Assets/Tests/PlayMode/Zx200SoilResistanceTests.cs",
+      "sha256": "2c79376c0ae6456df347b4d682b28228ad663279d2060badc797656ef088af0b"
+    },
+    {
+      "file": "Assets/Tests/PlayMode/Zx200UnloadingDemoTests.cs",
+      "sha256": "5bc9676b8e6ed442f4b21cdfe8d0db636e95160f2b4f62773b2cad743dbee420"
+    },
+    {
+      "file": "Assets/Robotics/zx200_description/Editor/Zx200ConstructionSiteSetup.cs",
+      "sha256": "c09f53fb5f692da19bbe1ff3f99365690a5edeb9931bf9d7fff8fc55c2da80fc"
+    },
+    {
+      "file": "Assets/Robotics/zx200_description/Editor/Zx200SoilDemoSetup.cs",
+      "sha256": "b523e91462dc32e417984a9bab61f5afa06fafda0b2a221528d7172efb74766b"
+    },
+    {
+      "file": "Assets/ConstructionSite/SoilTerrain.asset",
+      "sha256": "3109e107b9fe3fbc2a4b16f9767089e2af13873c27a0d5ab0c4d6e10d36cf363"
+    }
+  ],
+  "scene_unchanged_sha256": "f578a3b97cf71eb5eac40677949c2b731202e2d5401e67979e7cf151334d9ebe",
+  "backup": "/home/sk/Unity/blade-sweep-backup-20260917-181705"
+}

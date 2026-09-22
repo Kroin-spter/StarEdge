@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="1" result="Failed(Child)" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 09:28:05Z" end-time="2026-09-17 09:28:05Z" duration="0.0428281">
+  <test-suite type="TestSuite" id="1000" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="148" result="Failed" site="Child" start-time="2026-09-17 09:28:05Z" end-time="2026-09-17 09:28:05Z" duration="0.042828" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="1148" name="ExcavatorControls.Editor.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/ExcavatorControls.Editor.Tests.dll" runstate="Runnable" testcasecount="119" result="Failed" site="Child" start-time="2026-09-17 09:28:05Z" end-time="2026-09-17 09:28:05Z" duration="0.037007" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="512491" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="1149" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="119" result="Failed" site="Child" start-time="2026-09-17 09:28:05Z" end-time="2026-09-17 09:28:05Z" duration="0.036043" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="1150" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="119" result="Failed" site="Child" start-time="2026-09-17 09:28:05Z" end-time="2026-09-17 09:28:05Z" duration="0.035221" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="1026" name="SoilCuttingTests" fullname="ExcavatorControls.Tests.SoilCuttingTests" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" testcasecount="14" result="Failed" site="Child" start-time="2026-09-17 09:28:05Z" end-time="2026-09-17 09:28:05Z" duration="0.033008" total="1" passed="0" failed="1" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1040" name="SmallJointOscillationDoesNotEraseSlowNetScoopingTravel" fullname="ExcavatorControls.Tests.SoilCuttingTests.SmallJointOscillationDoesNotEraseSlowNetScoopingTravel" methodname="SmallJointOscillationDoesNotEraseSlowNetScoopingTravel" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1461621560" result="Failed" start-time="2026-09-17 09:28:05Z" end-time="2026-09-17 09:28:05Z" duration="0.023498" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Sub-millimetre reversal must not erase all accumulated cutting travel
+  Expected: greater than 0
+  But was:  0.0d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilCuttingTests.SmallJointOscillationDoesNotEraseSlowNetScoopingTravel () [0x000dd] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilCuttingTests.cs:289
+]]></stack-trace>
+              </failure>
+              <output><![CDATA[Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

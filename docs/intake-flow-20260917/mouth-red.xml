@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="4" result="Failed(Child)" total="4" passed="0" failed="4" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.0582829">
+  <test-suite type="TestSuite" id="1000" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="147" result="Failed" site="Child" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.058283" total="4" passed="0" failed="4" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="1147" name="ExcavatorControls.Editor.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/ExcavatorControls.Editor.Tests.dll" runstate="Runnable" testcasecount="118" result="Failed" site="Child" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.052420" total="4" passed="0" failed="4" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="502712" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="1148" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="118" result="Failed" site="Child" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.051515" total="4" passed="0" failed="4" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="1149" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="118" result="Failed" site="Child" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.050786" total="4" passed="0" failed="4" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="1045" name="SoilMouthFlowTests" fullname="ExcavatorControls.Tests.SoilMouthFlowTests" classname="ExcavatorControls.Tests.SoilMouthFlowTests" runstate="Runnable" testcasecount="4" result="Failed" site="Child" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.049030" total="4" passed="0" failed="4" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1046" name="LoadedBucketEmitsSeveralParcelsAcrossWorldScaledMouth" fullname="ExcavatorControls.Tests.SoilMouthFlowTests.LoadedBucketEmitsSeveralParcelsAcrossWorldScaledMouth" methodname="LoadedBucketEmitsSeveralParcelsAcrossWorldScaledMouth" classname="ExcavatorControls.Tests.SoilMouthFlowTests" runstate="Runnable" seed="1752231317" result="Failed" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.032707" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  A bounded set of outlets must represent the mouth flow.
+  Expected: in range (3,7)
+  But was:  1
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilMouthFlowTests.LoadedBucketEmitsSeveralParcelsAcrossWorldScaledMouth () [0x00063] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilMouthFlowTests.cs:63
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1049" name="NearlyEmptyBucketUsesFewerOutletsAcrossNarrowerBand" fullname="ExcavatorControls.Tests.SoilMouthFlowTests.NearlyEmptyBucketUsesFewerOutletsAcrossNarrowerBand" methodname="NearlyEmptyBucketUsesFewerOutletsAcrossNarrowerBand" classname="ExcavatorControls.Tests.SoilMouthFlowTests" runstate="Runnable" seed="189616980" result="Failed" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.002400" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: greater than 0
+  But was:  0.0d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilMouthFlowTests.LoadBucket () [0x0006b] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilMouthFlowTests.cs:155
+at ExcavatorControls.Tests.SoilMouthFlowTests.NearlyEmptyBucketUsesFewerOutletsAcrossNarrowerBand () [0x00059] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilMouthFlowTests.cs:134
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1047" name="RolledBucketAllocatesMoreFlowToGravityLowSide" fullname="ExcavatorControls.Tests.SoilMouthFlowTests.RolledBucketAllocatesMoreFlowToGravityLowSide" methodname="RolledBucketAllocatesMoreFlowToGravityLowSide" classname="ExcavatorControls.Tests.SoilMouthFlowTests" runstate="Runnable" seed="1391204539" result="Failed" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.001722" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Negative local X is lower when the bucket is rolled +30 degrees around forward.
+  Expected: less than -0.029999999999999999d
+  But was:  0.0d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilMouthFlowTests.RolledBucketAllocatesMoreFlowToGravityLowSide () [0x000b5] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilMouthFlowTests.cs:83
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1048" name="SideObstructionBlocksOnlyCoveredOutletBeforeInventoryDebit" fullname="ExcavatorControls.Tests.SoilMouthFlowTests.SideObstructionBlocksOnlyCoveredOutletBeforeInventoryDebit" methodname="SideObstructionBlocksOnlyCoveredOutletBeforeInventoryDebit" classname="ExcavatorControls.Tests.SoilMouthFlowTests" runstate="Runnable" seed="67451039" result="Failed" start-time="2026-09-17 09:18:30Z" end-time="2026-09-17 09:18:30Z" duration="0.002663" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  A covered side must reduce this step's debit without suppressing free outlets.
+  Expected: greater than 0 and less than 0.0065540268341511007d
+  But was:  0.0065540369318138596d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilMouthFlowTests.SideObstructionBlocksOnlyCoveredOutletBeforeInventoryDebit () [0x000e5] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilMouthFlowTests.cs:108
+]]></stack-trace>
+              </failure>
+              <output><![CDATA[Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

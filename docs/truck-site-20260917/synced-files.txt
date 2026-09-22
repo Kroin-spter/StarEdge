@@ -1,0 +1,50 @@
+Assets/Scripts/Excavation/BucketSoilResistance.cs
+Assets/Scripts/Excavation/BucketSoilCutter.cs
+Assets/Scripts/Zx200DigController.cs
+Assets/Robotics/zx200_description/Editor/Zx200ConstructionSiteSetup.cs
+Assets/WebDelivery/Runtime/ConstructionSiteMapClip.cs
+Assets/WebDelivery/Runtime/WebDelivery.Runtime.asmdef
+Assets/WebDelivery/Editor/CesiumWebBuild.cs
+Assets/Tests/EditMode/SoilResistanceTests.cs
+Assets/Tests/EditMode/ConstructionSiteSetupTests.cs
+Assets/Tests/EditMode/ConstructionSiteClipTests.cs
+Assets/Tests/PlayMode/Zx200SoilResistanceTests.cs
+Assets/Tests/PlayMode/Zx200UnloadingDemoTests.cs
+Assets/Scenes/sence_test.unity
+Assets/Scripts/Excavation/BucketSoilResistance.cs.meta
+Assets/Scripts/Excavation/BucketSoilCutter.cs.meta
+Assets/Scripts/Zx200DigController.cs.meta
+Assets/Robotics/zx200_description/Editor/Zx200ConstructionSiteSetup.cs.meta
+Assets/WebDelivery/Runtime/ConstructionSiteMapClip.cs.meta
+Assets/WebDelivery/Runtime/WebDelivery.Runtime.asmdef.meta
+Assets/WebDelivery/Editor/CesiumWebBuild.cs.meta
+Assets/Tests/EditMode/SoilResistanceTests.cs.meta
+Assets/Tests/EditMode/ConstructionSiteSetupTests.cs.meta
+Assets/Tests/EditMode/ConstructionSiteClipTests.cs.meta
+Assets/Tests/PlayMode/Zx200SoilResistanceTests.cs.meta
+Assets/Tests/PlayMode/Zx200UnloadingDemoTests.cs.meta
+Assets/ConstructionSite/SoilTerrain.asset
+Assets/ConstructionSite/Truck chassis.mat.meta
+Assets/ConstructionSite/Terrain.mat
+Assets/ConstructionSite/BottomPlate.mat
+Assets/ConstructionSite/Soil.terrainlayer.meta
+Assets/ConstructionSite/Truck windows.mat
+Assets/ConstructionSite/sence_test.before-site.unity
+Assets/ConstructionSite/Truck orange.mat
+Assets/ConstructionSite/BottomPlate.mat.meta
+Assets/ConstructionSite/Soil.terrainlayer
+Assets/ConstructionSite/SoilColor.asset.meta
+Assets/ConstructionSite/BucketSoil.mat
+Assets/ConstructionSite/Truck chassis.mat
+Assets/ConstructionSite/ParkedDumpTruck.prefab.meta
+Assets/ConstructionSite/Terrain.mat.meta
+Assets/ConstructionSite/Work pad.mat.meta
+Assets/ConstructionSite/Work pad.mat
+Assets/ConstructionSite/Truck windows.mat.meta
+Assets/ConstructionSite/Truck orange.mat.meta
+Assets/ConstructionSite/SoilColor.asset
+Assets/ConstructionSite/SoilTerrain.asset.meta
+Assets/ConstructionSite/BucketSoil.mat.meta
+Assets/ConstructionSite/ParkedDumpTruck.prefab
+Assets/ConstructionSite/sence_test.before-site.unity.meta
+Assets/ConstructionSite.meta

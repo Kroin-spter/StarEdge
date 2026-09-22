@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="11" result="Passed" total="11" passed="11" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 09:53:58Z" end-time="2026-09-17 09:57:47Z" duration="229.0127694">
+  <test-suite type="TestSuite" id="1230" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="178" result="Passed" start-time="2026-09-17 09:53:58Z" end-time="2026-09-17 09:57:47Z" duration="229.012769" total="11" passed="11" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <test-suite type="Assembly" id="1227" name="Zx200KeyboardPhysics.PlayMode.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/Zx200KeyboardPhysics.PlayMode.Tests.dll" runstate="Runnable" testcasecount="25" result="Passed" start-time="2026-09-17 09:53:58Z" end-time="2026-09-17 09:57:47Z" duration="229.002121" total="11" passed="11" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="539471" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestSuite" id="1228" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="25" result="Passed" start-time="2026-09-17 09:53:58Z" end-time="2026-09-17 09:57:47Z" duration="229.001424" total="11" passed="11" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1229" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="25" result="Passed" start-time="2026-09-17 09:53:58Z" end-time="2026-09-17 09:57:47Z" duration="229.000879" total="11" passed="11" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1193" name="Zx200BucketPhysicsTests" fullname="ExcavatorControls.Tests.Zx200BucketPhysicsTests" classname="ExcavatorControls.Tests.Zx200BucketPhysicsTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-17 09:53:58Z" end-time="2026-09-17 09:54:17Z" duration="19.107216" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1195" name="BucketAcceptsCarriesAndReleasesDynamicSphere" fullname="ExcavatorControls.Tests.Zx200BucketPhysicsTests.BucketAcceptsCarriesAndReleasesDynamicSphere" methodname="BucketAcceptsCarriesAndReleasesDynamicSphere" classname="ExcavatorControls.Tests.Zx200BucketPhysicsTests" runstate="Runnable" seed="237197366" result="Passed" start-time="2026-09-17 09:53:58Z" end-time="2026-09-17 09:54:17Z" duration="19.089766" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). The partial hull will be used. Consider simplifying your mesh. Source mesh name: body
+ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Ball position in bucket: (-0.23, 0.87, 0.19)
+Ball position in bucket: (-0.24, 0.87, 0.19)
+Ball position in bucket: (-0.24, 0.87, 0.19)
+]]></output>
+            </test-case>
+            <test-case id="1194" name="SphereFitsInsideBucketCavity" fullname="ExcavatorControls.Tests.Zx200BucketPhysicsTests.SphereFitsInsideBucketCavity" methodname="SphereFitsInsideBucketCavity" classname="ExcavatorControls.Tests.Zx200BucketPhysicsTests" runstate="Runnable" seed="1709057478" result="Passed" start-time="2026-09-17 09:54:17Z" end-time="2026-09-17 09:54:17Z" duration="0.007745" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1200" name="Zx200SoilDemoTests" fullname="ExcavatorControls.Tests.Zx200SoilDemoTests" classname="ExcavatorControls.Tests.Zx200SoilDemoTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-17 09:54:17Z" end-time="2026-09-17 09:54:44Z" duration="26.361726" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1202" name="BoundedFillSceneCutsAndCarriesSoil" fullname="ExcavatorControls.Tests.Zx200SoilDemoTests.BoundedFillSceneCutsAndCarriesSoil" methodname="BoundedFillSceneCutsAndCarriesSoil" classname="ExcavatorControls.Tests.Zx200SoilDemoTests" runstate="Runnable" seed="785232750" result="Passed" start-time="2026-09-17 09:54:17Z" end-time="2026-09-17 09:54:31Z" duration="13.185429" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+交付场景初态：斗尖=(0.09, 0.92, 7.95)，斗量=0.00000
+交付场景试切：斗尖=(-1.78, 1.36, 6.39)，斗量=0.23407
+]]></output>
+            </test-case>
+            <test-case id="1201" name="DeliveredSceneStartsEmptyAndCutsWithManualBoom" fullname="ExcavatorControls.Tests.Zx200SoilDemoTests.DeliveredSceneStartsEmptyAndCutsWithManualBoom" methodname="DeliveredSceneStartsEmptyAndCutsWithManualBoom" classname="ExcavatorControls.Tests.Zx200SoilDemoTests" runstate="Runnable" seed="1247579147" result="Passed" start-time="2026-09-17 09:54:31Z" end-time="2026-09-17 09:54:44Z" duration="13.175205" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+交付场景初态：斗尖=(0.09, 0.92, 7.95)，斗量=0.00000
+交付场景试切：斗尖=(-1.78, 1.36, 6.39)，斗量=0.26396
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1203" name="Zx200SoilPhysicsTests" fullname="ExcavatorControls.Tests.Zx200SoilPhysicsTests" classname="ExcavatorControls.Tests.Zx200SoilPhysicsTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-17 09:54:44Z" end-time="2026-09-17 09:54:59Z" duration="15.819936" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1204" name="RealBucketCutsConservesVolumeAndLiftsWithoutCutting" fullname="ExcavatorControls.Tests.Zx200SoilPhysicsTests.RealBucketCutsConservesVolumeAndLiftsWithoutCutting" methodname="RealBucketCutsConservesVolumeAndLiftsWithoutCutting" classname="ExcavatorControls.Tests.Zx200SoilPhysicsTests" runstate="Runnable" seed="1209658175" result="Passed" start-time="2026-09-17 09:54:44Z" end-time="2026-09-17 09:54:59Z" duration="15.818830" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+实际铲斗切削：斗尖=(0.09, 0.27, 6.44)，斗量=0.28886m³
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1205" name="Zx200SoilResistanceTests" fullname="ExcavatorControls.Tests.Zx200SoilResistanceTests" classname="ExcavatorControls.Tests.Zx200SoilResistanceTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-17 09:54:59Z" end-time="2026-09-17 09:55:26Z" duration="26.934136" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1206" name="ActualJointsRespectFullBucketGuardAndCanWithdraw" fullname="ExcavatorControls.Tests.Zx200SoilResistanceTests.ActualJointsRespectFullBucketGuardAndCanWithdraw" methodname="ActualJointsRespectFullBucketGuardAndCanWithdraw" classname="ExcavatorControls.Tests.Zx200SoilResistanceTests" runstate="Runnable" seed="1741368785" result="Passed" start-time="2026-09-17 09:54:59Z" end-time="2026-09-17 09:55:26Z" duration="26.933409" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Guard cutting: volume=0.04187, tip=(0.09, 0.54, 6.64), force=4732.0, reason=切削接触
+Before full actual boom=-21.158, drive=-22.126, arm=71.055, bucket=66.991
+Full 0 actual boom=-21.157, drive=-22.126, arm=71.108, bucket=66.992, depth=0.007, contact=True
+Full 30 actual boom=-21.131, drive=-22.126, arm=71.247, bucket=66.999, depth=0.009, contact=True
+Full 60 actual boom=-21.134, drive=-22.126, arm=71.248, bucket=66.999, depth=0.008, contact=True
+Full 90 actual boom=-21.136, drive=-22.126, arm=71.247, bucket=66.999, depth=0.008, contact=True
+Full 120 actual boom=-21.137, drive=-22.126, arm=71.247, bucket=66.999, depth=0.008, contact=True
+Guard full: start=0.538, minimum=0.531, penetration=0.008, reason=满斗：禁止继续切入
+Uncuttable depth=0.074, reason=反向穿入受限
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1221" name="Zx200UnloadingDemoTests" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-09-17 09:55:26Z" end-time="2026-09-17 09:57:47Z" duration="140.775480" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1226" name="GravityDemoDumpsBackOntoTerrainWithoutReceiver" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.GravityDemoDumpsBackOntoTerrainWithoutReceiver" methodname="GravityDemoDumpsBackOntoTerrainWithoutReceiver" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="1082311937" result="Passed" start-time="2026-09-17 09:55:26Z" end-time="2026-09-17 09:55:52Z" duration="26.033072" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Before dump: tip=(0.09, 1.84, 6.34), angle=130.4018, volume=0.150587815624764
+GPUResidentDrawer The current platform does not support UnityEngine.Rendering.BatchBufferTarget
+After dump: tip=(0.09, 2.82, 8.67), angle=18.12503, volume=0, received=0, status=空斗
+]]></output>
+            </test-case>
+            <test-case id="1225" name="GravityDemoLoadsPlatform" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.GravityDemoLoadsPlatform" methodname="GravityDemoLoadsPlatform" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="717980940" result="Passed" start-time="2026-09-17 09:55:52Z" end-time="2026-09-17 09:56:21Z" duration="28.914318" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Before dump: tip=(4.07, 2.11, 4.85), angle=127.8167, volume=0.146040902774676
+After dump: tip=(6.12, 2.78, 6.11), angle=19.92659, volume=0, received=0.123385232757951, status=空斗
+]]></output>
+            </test-case>
+            <test-case id="1223" name="MainCesiumSceneLoadsTruck" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.MainCesiumSceneLoadsTruck" methodname="MainCesiumSceneLoadsTruck" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="1454489012" result="Passed" start-time="2026-09-17 09:56:21Z" end-time="2026-09-17 09:56:51Z" duration="29.995137" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Before dump: tip=(333.98, 10.65, 403.00), angle=121.9062, volume=0.0801933542245155
+After dump: tip=(335.83, 11.12, 404.08), angle=32.3142, volume=0, received=0.0801933542245155, status=空斗
+SITE ACCOUNTING cut=0.080193, bucket=0.000000, flight=0.000000, pending=0.000000, returned=0.000000, truck=0.080193, ground=0.000000, netTerrain=0.080193
+]]></output>
+            </test-case>
+            <test-case id="1224" name="MainCesiumSceneReturnsSoilToTerrain" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.MainCesiumSceneReturnsSoilToTerrain" methodname="MainCesiumSceneReturnsSoilToTerrain" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="1389081737" result="Passed" start-time="2026-09-17 09:56:51Z" end-time="2026-09-17 09:57:18Z" duration="26.935591" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+[2026-09-17 17:56:51.921] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-17 17:56:51.967] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-17 17:56:51.978] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-17 17:56:51.978] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-17 17:56:51.978] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-17 17:56:51.978] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+[2026-09-17 17:56:51.978] [error] [TilesetContentManager.cpp:1320] An unexpected error occurred when loading tile: The object of type 'UnityEngine.Mesh' has been destroyed but you are still trying to access it.
+Your script should either check if it is null or you should not destroy the object.
+
+Before dump: tip=(330.10, 10.40, 404.48), angle=124.4948, volume=0.0801933542245155
+After dump: tip=(330.10, 11.12, 406.50), angle=32.31429, volume=0, received=0, status=空斗
+SITE ACCOUNTING cut=0.080193, bucket=0.000000, flight=0.000000, pending=0.000000, returned=0.076305, truck=0.000000, ground=0.003888, netTerrain=0.003888
+]]></output>
+            </test-case>
+            <test-case id="1222" name="RealBucketDigsAndUnloadsIntoDeliveredPlatform" fullname="ExcavatorControls.Tests.Zx200UnloadingDemoTests.RealBucketDigsAndUnloadsIntoDeliveredPlatform" methodname="RealBucketDigsAndUnloadsIntoDeliveredPlatform" classname="ExcavatorControls.Tests.Zx200UnloadingDemoTests" runstate="Runnable" seed="1380999611" result="Passed" start-time="2026-09-17 09:57:18Z" end-time="2026-09-17 09:57:47Z" duration="28.895983" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[ZX200 digging controller ready. Focus the Game view and press Space to dig.
+Before dump: tip=(4.07, 2.11, 4.85), angle=127.8167, volume=0.146040902774676
+After dump: tip=(6.12, 2.78, 6.11), angle=19.92659, volume=0, received=0.123385232757951, status=空斗
+Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

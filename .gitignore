@@ -1,0 +1,41 @@
+# Unity generated data
+[Ll]ibrary/
+[Tt]emp/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+obj/
+
+# IDE and generated project files
+.vs/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.user
+*.userprefs
+*.pidb
+*.booproj
+
+# Local build output
+/AZ_demo*/
+
+# Burst-generated native output
+/Data/Plugins/lib_burst_generated.cpp
+/Data/Plugins/lib_burst_generated.wasm
+
+# Local recovery and temporary content
+/Assets/ConstructionSite/sence_test.before-site.unity
+/Assets/ConstructionSite/sence_test.before-site.unity.meta
+/Assets/_Recovery/
+/Assets/_Recovery.meta
+
+# Large sample-only content not referenced by the excavator scene
+/Assets/TerrainDemoScene_URP/
+/Assets/TerrainDemoScene_URP.meta
+/Assets/Animated Trees Package/
+/Assets/Animated Trees Package.meta
+/Assets/Robotics/HR35/
+/Assets/Robotics/HR35.meta
+
+# Optional external Cesium map if copied into the repository root
+/tilesets/

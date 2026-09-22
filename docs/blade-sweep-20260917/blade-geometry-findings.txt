@@ -1,0 +1,57 @@
+ZX200 bucket geometric calibration (read-only), 2026-09-17
+
+Sources
+- Assets/Robotics/zx200_description/meshes/zx200-bucket.dae
+- Assets/Robotics/zx200_description/urdf/zx200.urdf
+- Assets/Robotics/zx200_description/Prefabs/zx200.prefab
+- Assets/Scripts/Excavation/BucketSoilFill.cs
+- Assets/Scripts/Excavation/BucketSoilCutter.cs
+
+Coordinate frame and evidence
+- DAE declares metres and Z_UP; its scene node matrix is identity.
+- Unity bucket-local conversion is DAE (X,Y,Z) -> Unity (-Y,Z,X). This is independently confirmed by the URDF bucket_end_joint xyz="1.25 0 0.82" becoming prefab localPosition (0,0.8200003,1.2500001).
+- Complete mesh bounds in bucket-local Unity coordinates:
+  X [-0.55728,+0.56877], Y [-0.09970,+1.16583], Z [-0.40068,+1.25733].
+- Connected-component parsing finds the shell (258 vertices), two linkage/side components (114 each), and five separate tooth solids (26 vertices each).
+- Combined five-tooth bounds:
+  X [-0.48627,+0.49724], Y [0.78763,0.97574], Z [0.81855,1.25733].
+- The 20 vertices at Z >= 1.2334 (the front tip wedges) span:
+  X [-0.48627,+0.48923], Y [0.80342,0.83608], Z [1.23341,1.25733].
+- The most-forward edge per tooth averages approximately (X,Y,Z)=(+0.0015,0.825,1.2525). Across bucket width it is slightly skewed: Y falls about 0.0208 m and Z rises about 0.0096 m from X=-0.486 to +0.489.
+
+Marker finding
+- bucket_end_link / tipMarker is at (0,0.82,1.25), and fallback tipLocalPosition is identical.
+- This marker is correct: relative to the mean front tooth edge it differs by only about (-1.5,-5,+2.5) mm in X/Y/Z.
+- Therefore do not move the marker forward. The observed soil-ahead behavior is explained by cutRadius=0.5: a round cutter centered at the correct lip necessarily reaches about 0.5 m beyond the steel.
+
+Recommended compact cutting box
+- Use an oriented box spanning the five tooth tips, centered just behind the leading face.
+- Bucket-local center: (0.000, 0.845, 1.234) m.
+- Local box size before rotation: (1.000, 0.030, 0.060) m (width, edge thickness, fore-aft depth).
+- Orientation: rotation +56.7 degrees about bucket-local X. Its axes in bucket coordinates are:
+  width X=(1,0,0), thickness Y=(0,0.548,0.836), outward/cut Z=(0,-0.836,0.548).
+  The outward axis deliberately equals normalized current cutDirectionLocal (0,-1.25,0.82).
+- This puts the outward box face through the actual tip edge and leaves the box mostly behind the steel edge.
+- Eight bucket-local corners (rounded; conservative 1.0 m width):
+  (-0.5000, 0.8620, 1.2046)
+  (-0.5000, 0.8118, 1.2375)
+  (-0.5000, 0.8784, 1.2297)
+  (-0.5000, 0.8282, 1.2626)
+  (+0.5000, 0.8620, 1.2046)
+  (+0.5000, 0.8118, 1.2375)
+  (+0.5000, 0.8784, 1.2297)
+  (+0.5000, 0.8282, 1.2626)
+- For strict containment inside the actual outermost front vertices, use width 0.975 m instead of 1.000 m. The 1.000 m recommendation covers the full physical tooth bodies while remaining inside their total +/-0.497 m width.
+
+Cavity alignment
+- Current fill half-width 0.38 m is credible: it is inset 0.117 m from the tooth-body outer width and about 0.177 m from the shell outer width on each side.
+- Current profile bounds are Y [0.30,0.98], Z [-0.13,0.84]. Its exact polygon area is 0.39985 m2; at width 0.76 m its capacity is 0.303886 m3, matching the serialized scene value.
+- The fill is not ahead of the cutting teeth: its maximum Z=0.84 is about 0.41 m behind the tooth tips at Z~1.25.
+- The forward profile point (Y,Z)=(0.79,0.84) is only 13-21 mm ahead of the tooth rear/root Z range 0.819-0.827. This is a minor visual intersection risk. If exposed soil is visible through/beyond the lip, clamp that point to Z=0.81 (and the neighboring (0.73,0.80) can remain). Otherwise retain the profile; it is consistent with a deliberately inset convex cavity rather than the steel surface itself.
+- Do not translate the whole cavity rearward to address soil appearing ahead of the bucket. That symptom is geometrically attributable to the spherical sweep radius.
+
+Recommended implementation consequence
+- Keep tipMarker and tipLocalPosition essentially unchanged (optionally use center X=0.0015,Y=0.825,Z=1.2525 if millimetre precision matters).
+- Replace the 0.5 m radial footprint with the calibrated short oriented cutting box / swept blade segment above. A radius may remain only as a small numerical/contact padding, on the order of 0.015-0.03 m, rather than the geometric cutting extent.
+
+No Unity process was launched and no project files were modified.

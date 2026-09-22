@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="13" result="Failed(Child)" total="13" passed="10" failed="3" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.0799907">
+  <test-suite type="TestSuite" id="1000" name="HMI_Unity6" fullname="HMI_Unity6" runstate="Runnable" testcasecount="143" result="Failed" site="Child" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.079991" total="13" passed="10" failed="3" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="1142" name="ExcavatorControls.Editor.Tests.dll" fullname="/home/sk/Unity/soil-validation-20260916/Library/ScriptAssemblies/ExcavatorControls.Editor.Tests.dll" runstate="Runnable" testcasecount="114" result="Failed" site="Child" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.074223" total="13" passed="10" failed="3" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="496384" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="1143" name="ExcavatorControls" fullname="ExcavatorControls" runstate="Runnable" testcasecount="114" result="Failed" site="Child" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.073360" total="13" passed="10" failed="3" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="1144" name="Tests" fullname="ExcavatorControls.Tests" runstate="Runnable" testcasecount="114" result="Failed" site="Child" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.072643" total="13" passed="10" failed="3" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="1026" name="SoilCuttingTests" fullname="ExcavatorControls.Tests.SoilCuttingTests" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" testcasecount="13" result="Failed" site="Child" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.070631" total="13" passed="10" failed="3" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1034" name="ActualBucketPose_DigsForward_ButLiftAndJitterDoNotDig" fullname="ExcavatorControls.Tests.SoilCuttingTests.ActualBucketPose_DigsForward_ButLiftAndJitterDoNotDig" methodname="ActualBucketPose_DigsForward_ButLiftAndJitterDoNotDig" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1677922079" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.026958" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1032" name="BoundaryAndFloor_RejectOutsideSweep_AndNeverCutBelowFloor" fullname="ExcavatorControls.Tests.SoilCuttingTests.BoundaryAndFloor_RejectOutsideSweep_AndNeverCutBelowFloor" methodname="BoundaryAndFloor_RejectOutsideSweep_AndNeverCutBelowFloor" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="244268967" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001947" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1029" name="BucketMouthClipsSideSoilBeforeVolumeIsCounted" fullname="ExcavatorControls.Tests.SoilCuttingTests.BucketMouthClipsSideSoilBeforeVolumeIsCounted" methodname="BucketMouthClipsSideSoilBeforeVolumeIsCounted" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="124808737" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001433" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1031" name="Capacity_PreventsOverfill_AndRepeatedSweepDoesNotCreateSoil" fullname="ExcavatorControls.Tests.SoilCuttingTests.Capacity_PreventsOverfill_AndRepeatedSweepDoesNotCreateSoil" methodname="Capacity_PreventsOverfill_AndRepeatedSweepDoesNotCreateSoil" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1296477735" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001925" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1027" name="CollectedSoilFollowsBucketWithoutLossAndResetClearsBothRepresentations" fullname="ExcavatorControls.Tests.SoilCuttingTests.CollectedSoilFollowsBucketWithoutLossAndResetClearsBothRepresentations" methodname="CollectedSoilFollowsBucketWithoutLossAndResetClearsBothRepresentations" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="361917297" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.014385" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1036" name="CollisionException_IsLimitedToSoil_AndRestoredWhenCutterIsDestroyed" fullname="ExcavatorControls.Tests.SoilCuttingTests.CollisionException_IsLimitedToSoil_AndRestoredWhenCutterIsDestroyed" methodname="CollisionException_IsLimitedToSoil_AndRestoredWhenCutterIsDestroyed" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="564271396" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001913" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1035" name="ContinuousSlowBucketTravel_AccumulatesUntilCutThreshold" fullname="ExcavatorControls.Tests.SoilCuttingTests.ContinuousSlowBucketTravel_AccumulatesUntilCutThreshold" methodname="ContinuousSlowBucketTravel_AccumulatesUntilCutThreshold" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1857085191" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001332" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1030" name="Cut_LowersRealTerrain_AndConservesMeasuredVolume" fullname="ExcavatorControls.Tests.SoilCuttingTests.Cut_LowersRealTerrain_AndConservesMeasuredVolume" methodname="Cut_LowersRealTerrain_AndConservesMeasuredVolume" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="1718267883" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001075" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1038" name="DownwardOpenBucketCannotCollectWhileSlidingForward" fullname="ExcavatorControls.Tests.SoilCuttingTests.DownwardOpenBucketCannotCollectWhileSlidingForward" methodname="DownwardOpenBucketCannotCollectWhileSlidingForward" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="491875799" result="Failed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.003934" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: 0
+  But was:  0.40617563761770725d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilCuttingTests.DownwardOpenBucketCannotCollectWhileSlidingForward () [0x000b3] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilCuttingTests.cs:247
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1039" name="GrazingMouthDoesNotCollectButSubsequentAlignedScoopDoes" fullname="ExcavatorControls.Tests.SoilCuttingTests.GrazingMouthDoesNotCollectButSubsequentAlignedScoopDoes" methodname="GrazingMouthDoesNotCollectButSubsequentAlignedScoopDoes" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="639429311" result="Failed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001482" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  A weak positive dot alone does not mean soil crosses the mouth
+  Expected: 0
+  But was:  0.37493135780096054d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilCuttingTests.GrazingMouthDoesNotCollectButSubsequentAlignedScoopDoes () [0x000b6] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilCuttingTests.cs:263
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1028" name="MostlySidewaysBucketTravelDoesNotRemoveOrCollectSoil" fullname="ExcavatorControls.Tests.SoilCuttingTests.MostlySidewaysBucketTravelDoesNotRemoveOrCollectSoil" methodname="MostlySidewaysBucketTravelDoesNotRemoveOrCollectSoil" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="691284144" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001119" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1033" name="Reset_RestoresTerrain_WithoutMutatingSourceAsset" fullname="ExcavatorControls.Tests.SoilCuttingTests.Reset_RestoresTerrain_WithoutMutatingSourceAsset" methodname="Reset_RestoresTerrain_WithoutMutatingSourceAsset" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="119773537" result="Passed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001319" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1037" name="VerticalPressDoesNotVacuumSoilIntoBucket" fullname="ExcavatorControls.Tests.SoilCuttingTests.VerticalPressDoesNotVacuumSoilIntoBucket" methodname="VerticalPressDoesNotVacuumSoilIntoBucket" classname="ExcavatorControls.Tests.SoilCuttingTests" runstate="Runnable" seed="286854060" result="Failed" start-time="2026-09-17 09:14:31Z" end-time="2026-09-17 09:14:31Z" duration="0.001135" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Pressing a blade straight down must not vacuum soil into its cavity
+  Expected: 0
+  But was:  0.073379212990403175d
+]]></message>
+                <stack-trace><![CDATA[at ExcavatorControls.Tests.SoilCuttingTests.VerticalPressDoesNotVacuumSoilIntoBucket () [0x0009e] in /home/sk/Unity/soil-validation-20260916/Assets/Tests/EditMode/SoilCuttingTests.cs:229
+]]></stack-trace>
+              </failure>
+              <output><![CDATA[Saving results to: /home/nvidia/.config/unity3d/DefaultCompany/HMI_Unity6/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>
