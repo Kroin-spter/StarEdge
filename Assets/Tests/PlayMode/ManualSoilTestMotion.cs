@@ -20,7 +20,7 @@ namespace ExcavatorControls.Tests
             Assert.That((bool)ready.GetValue(site), Is.True, "Original map support and mound must be ready before physical controls are released");
         }
 
-        internal static void AssertBalance(BucketSoilCutter cutter)
+        internal static void AssertBalance(BucketSoilCutter cutter, double terrainTolerance = 1e-5)
         {
             var flight = cutter.GetComponent<SoilFlightTransport>();
             double inFlight = flight != null ? flight.AirborneVolumeM3 + flight.SurfacePendingVolumeM3 : 0;
@@ -30,7 +30,7 @@ namespace ExcavatorControls.Tests
             Assert.That(cutter.ExcavatedVolumeM3,
                 Is.EqualTo(cutter.VolumeM3 + inFlight + cutter.DeliveredVolumeM3).Within(1e-5));
             Assert.That(cutter.soil.RecalculateRemovedVolumeM3(),
-                Is.EqualTo(cutter.ExcavatedVolumeM3 - returned).Within(1e-5));
+                Is.EqualTo(cutter.ExcavatedVolumeM3 - returned).Within(terrainTolerance));
             Assert.That(cutter.CollectedVolumeM3 + cutter.DisplacedVolumeM3,
                 Is.EqualTo(cutter.ExcavatedVolumeM3).Within(1e-8));
         }
