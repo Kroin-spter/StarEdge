@@ -158,6 +158,10 @@ PrefabInstance:
       propertyPath: workReadyPose.boom
       value: -29
       objectReference: {fileID: 0}
+    - target: {fileID: 1605801095713466271, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+      propertyPath: dumpPose.arm
+      value: 78
+      objectReference: {fileID: 0}
     - target: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0.02355957
@@ -473,7 +477,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 335.01
+      value: 332.01
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y

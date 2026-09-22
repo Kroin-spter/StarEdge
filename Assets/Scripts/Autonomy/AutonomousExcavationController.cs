@@ -47,6 +47,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     [Min(.1f)] public float cutTimeoutSeconds = 8f;
     [Min(.1f)] public float dumpTimeoutSeconds = 12f;
     [Min(.001f)] public float soilFloorMargin = .04f;
+    [Min(.1f)] public float bucketCloseDeltaDegrees = 35f;
+    [Min(.1f)] public float boomEntryStepDegrees = 7f;
+    [Min(.1f)] public float armScoopStepDegrees = 10f;
+    [Min(1)] public int maximumEntrySteps = 24;
+    [Min(1)] public int maximumScoopSteps = 24;
 
     /// <summary>获取当前自动任务阶段。</summary>
     public AutonomousExcavationState State { get; private set; } = AutonomousExcavationState.Idle;
@@ -73,6 +78,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private double taskTargetVolumeM3;
     private double taskReceiverStartVolumeM3;
     private double cycleReceiverStartVolumeM3;
+    private float dumpSwingTarget;
     private bool stageSucceeded;
 
     /// <summary>判断实际交付量是否达到正的任务目标。</summary>
@@ -204,7 +210,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             if (!stageSucceeded) yield break;
 
             SetState(AutonomousExcavationState.LowerAndEnter, "动臂下放并进入土层");
-            yield return MoveToPose(machine.approachPose, "下放姿态超时");
+            yield return PrepareForCut();
             if (!IsRunning || !stageSucceeded) yield break;
 
             SetState(AutonomousExcavationState.FillBucket, "收斗切削并等待有效进斗量");
@@ -214,16 +220,31 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             SetState(AutonomousExcavationState.Lift, "抬升满斗");
             yield return MoveToPose(machine.liftPose, "抬升姿态超时");
             if (!IsRunning || !stageSucceeded) yield break;
+            yield return RaiseForTruckClearance();
+            if (!IsRunning || !stageSucceeded) yield break;
 
             SetState(AutonomousExcavationState.SwingToTruck, "回转至车厢并准备卸料");
-            yield return MoveToPose(machine.swingToDumpPose, "回转姿态超时");
+            yield return AlignDumpSwing();
             if (!IsRunning || !stageSucceeded) yield break;
-            yield return MoveToPose(machine.dumpPreparePose, "卸料准备姿态超时");
+            Zx200JointPose actualAtDump = machine.ReadActualPose();
+            dumpSwingTarget = actualAtDump.swing;
+            Zx200JointPose dumpPrepare = machine.dumpPreparePose;
+            dumpPrepare.swing = dumpSwingTarget;
+            dumpPrepare.boom = actualAtDump.boom;
+            dumpPrepare.arm = actualAtDump.arm;
+            yield return MoveToPose(dumpPrepare, "卸料准备姿态超时");
+            if (!IsRunning || !stageSucceeded) yield break;
+            yield return AlignCurrentSwing();
             if (!IsRunning || !stageSucceeded) yield break;
 
             SetState(AutonomousExcavationState.Dump, "打开铲斗并等待土流落入车厢");
             cycleReceiverStartVolumeM3 = receiver.VolumeM3;
-            yield return MoveToPose(machine.dumpPose, "卸料姿态超时");
+            Zx200JointPose dump = machine.dumpPose;
+            Zx200JointPose actualBeforeDump = machine.ReadActualPose();
+            dump.swing = actualBeforeDump.swing;
+            dump.boom = actualBeforeDump.boom;
+            dump.arm = actualBeforeDump.arm;
+            yield return MoveToPose(dump, "卸料姿态超时");
             if (!IsRunning || !stageSucceeded) yield break;
             yield return WaitForDump();
             if (!IsRunning || !stageSucceeded) yield break;
@@ -239,23 +260,19 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
             CompletedCycles++;
             SetState(AutonomousExcavationState.ReturnToDig, "返回挖掘方向");
-            yield return MoveToPose(machine.returnSwingPose, "返回姿态超时");
+            yield return ReturnToDigPoint();
             if (!IsRunning || !stageSucceeded) yield break;
 
             UpdateDeliveredVolume();
             if (HasReachedTarget(DeliveredVolumeM3, taskTargetVolumeM3))
             {
-                yield return MoveToPose(machine.workReadyPose, "完成任务时待机姿态超时");
-                if (!IsRunning || !stageSucceeded) yield break;
-                Finish(AutonomousExcavationState.Completed, "达到目标量，单斗/多斗自主装车完成");
+                Finish(AutonomousExcavationState.Completed, "达到目标量，已返回挖掘方向，单斗/多斗自主装车完成");
                 yield break;
             }
 
             if (IsReceiverFull(receiver.AvailableM3, minimumTransferVolumeM3))
             {
-                yield return MoveToPose(machine.workReadyPose, "车满时待机姿态超时");
-                if (!IsRunning || !stageSucceeded) yield break;
-                Finish(AutonomousExcavationState.TruckFull, "车厢已满，自动流程正常停止");
+                Finish(AutonomousExcavationState.TruckFull, "车厢已满，已返回挖掘方向，自动流程正常停止");
                 yield break;
             }
         }
@@ -301,7 +318,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             EnterFault("可挖土区未启用");
             yield break;
         }
-        if (!machine.IsPoseWithinTolerance(machine.workReadyPose, machine.jointToleranceDegrees))
+        if (CompletedCycles == 0 && !machine.IsPoseWithinTolerance(machine.workReadyPose, machine.jointToleranceDegrees))
         {
             yield return MoveToPose(machine.workReadyPose, "进入挖点时待机姿态超时");
             if (!IsRunning || !stageSucceeded) yield break;
@@ -318,14 +335,25 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         stageSucceeded = false;
         double before = cutter.VolumeM3;
-        yield return MoveToPose(machine.curlPose, "收斗切削姿态超时");
-        if (!IsRunning || !stageSucceeded) yield break;
-
+        Zx200JointPose actual = machine.ReadActualPose();
+        Zx200JointPose target = new Zx200JointPose(
+            actual.swing, actual.boom, actual.arm + armScoopStepDegrees * maximumScoopSteps,
+            actual.bucket, Mathf.Max(1f, cutTimeoutSeconds * .75f));
+        if (!machine.StartAutomaticPose(target))
+        {
+            EnterFault("无法启动收斗切削姿态");
+            yield break;
+        }
         float deadline = Time.realtimeSinceStartup + cutTimeoutSeconds;
-        while (IsRunning && Time.realtimeSinceStartup < deadline &&
-               cutter.VolumeM3 - before < minimumLoadVolumeM3)
+        while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
         {
             HandleManualInput();
+            if (cutter.VolumeM3 - before >= minimumLoadVolumeM3)
+            {
+                machine.StopAutomaticMotion();
+                stageSucceeded = true;
+                yield break;
+            }
             yield return new WaitForFixedUpdate();
         }
         if (!IsRunning) yield break;
@@ -339,6 +367,48 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             cutter.soil.GetFloorWorldY(cutter.TipWorldPosition) + soilFloorMargin;
         Finish(atFloor ? AutonomousExcavationState.SoilExhausted : AutonomousExcavationState.EmptyCut,
             atFloor ? "刃口已到土层底部，当前挖点挖尽" : "切削超时，未形成有效进斗量");
+    }
+
+    private IEnumerator PrepareForCut()
+    {
+        stageSucceeded = false;
+        Zx200JointPose actual = machine.ReadActualPose();
+        yield return MoveToPose(new Zx200JointPose(
+            actual.swing, actual.boom, actual.arm,
+            actual.bucket + bucketCloseDeltaDegrees, .8f), "闭斗姿态超时", 3f);
+        if (!IsRunning || !stageSucceeded) yield break;
+
+        actual = machine.ReadActualPose();
+        Zx200JointPose target = new Zx200JointPose(
+            actual.swing, machine.workReadyPose.boom + boomEntryStepDegrees * maximumEntrySteps,
+            actual.arm, actual.bucket, Mathf.Max(1f, stageTimeoutSeconds * .5f));
+        if (!machine.StartAutomaticPose(target))
+        {
+            EnterFault("无法启动进入土层姿态");
+            yield break;
+        }
+        float deadline = Time.realtimeSinceStartup + stageTimeoutSeconds;
+        while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
+        {
+            HandleManualInput();
+            Vector3 tip = cutter.TipWorldPosition;
+            float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+            if (tip.y <= surface + .025f)
+            {
+                machine.StopAutomaticMotion();
+                stageSucceeded = true;
+                yield break;
+            }
+            yield return new WaitForFixedUpdate();
+        }
+
+        if (!IsRunning) yield break;
+        machine.StopAutomaticMotion();
+        Zx200JointPose failedPose = machine.ReadActualPose();
+        float failedSurface = cutter.soil.Terrain.SampleHeight(cutter.TipWorldPosition) + cutter.soil.transform.position.y;
+        Finish(AutonomousExcavationState.EmptyCut,
+            $"下放达到时间上限但刃口未进入土层；姿态=({failedPose.swing:F1},{failedPose.boom:F1}," +
+            $"{failedPose.arm:F1},{failedPose.bucket:F1})，斗尖={cutter.TipWorldPosition}，土面={failedSurface:F2}");
     }
 
     private IEnumerator WaitForDump()
@@ -360,10 +430,167 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             }
             yield return new WaitForFixedUpdate();
         }
-        if (IsRunning) EnterFault("卸料超时，未确认土方落入车厢");
+        if (IsRunning)
+        {
+            EnterFault($"卸料超时，未确认土方落入车厢；斗量={cutter.VolumeM3:F4}，" +
+                $"空中={unloader.AirborneVolumeM3:F4}，待沉积={unloader.SurfacePendingVolumeM3:F4}，" +
+                $"车厢增量={receiver.VolumeM3 - cycleReceiverStartVolumeM3:F4}，" +
+                $"斗口状态={unloader.Status}，斗尖={cutter.TipWorldPosition}，车厢={receiver.transform.position}");
+        }
     }
 
-    private IEnumerator MoveToPose(Zx200JointPose pose, string timeoutReason)
+    private IEnumerator AlignDumpSwing()
+    {
+        stageSucceeded = false;
+        for (int attempt = 0; IsRunning && attempt < 4; attempt++)
+        {
+            dumpSwingTarget = ComputeDumpSwingTarget();
+            Zx200JointPose swingToDump = machine.swingToDumpPose;
+            swingToDump.swing = dumpSwingTarget;
+            if (!machine.StartAutomaticPose(swingToDump))
+            {
+                EnterFault("无法启动回转至车厢姿态");
+                yield break;
+            }
+
+            float deadline = Time.realtimeSinceStartup + stageTimeoutSeconds + swingToDump.duration;
+            while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
+            {
+                HandleManualInput();
+                if (IsBucketOverReceiver())
+                {
+                    machine.StopAutomaticMotion();
+                    stageSucceeded = true;
+                    yield break;
+                }
+                yield return null;
+            }
+            if (!IsRunning) yield break;
+            machine.StopAutomaticMotion();
+            if (IsBucketOverReceiver())
+            {
+                stageSucceeded = true;
+                yield break;
+            }
+        }
+
+        if (IsRunning)
+        {
+            Zx200JointPose actual = machine.ReadActualPose();
+            EnterFault($"回转未能将斗尖送至车厢接收区；实际回转={actual.swing:F1}°，" +
+                $"斗尖={cutter.TipWorldPosition}，车厢={receiver.transform.position}");
+        }
+    }
+
+    private IEnumerator AlignCurrentSwing()
+    {
+        stageSucceeded = false;
+        for (int attempt = 0; IsRunning && attempt < 4; attempt++)
+        {
+            dumpSwingTarget = ComputeDumpSwingTarget();
+            Zx200JointPose actual = machine.ReadActualPose();
+            Zx200JointPose target = new Zx200JointPose(
+                dumpSwingTarget, actual.boom, actual.arm, actual.bucket, .7f);
+            if (!machine.StartAutomaticPose(target))
+            {
+                EnterFault("无法微调卸料回转姿态");
+                yield break;
+            }
+
+            float deadline = Time.realtimeSinceStartup + stageTimeoutSeconds + target.duration;
+            while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
+            {
+                HandleManualInput();
+                if (IsBucketOverReceiver())
+                {
+                    machine.StopAutomaticMotion();
+                    stageSucceeded = true;
+                    yield break;
+                }
+                yield return null;
+            }
+            if (!IsRunning) yield break;
+            machine.StopAutomaticMotion();
+            if (IsBucketOverReceiver())
+            {
+                stageSucceeded = true;
+                yield break;
+            }
+        }
+
+        if (IsRunning)
+        {
+            Zx200JointPose actual = machine.ReadActualPose();
+            EnterFault($"卸料姿态变化后无法重新对准车厢接收区；实际回转={actual.swing:F1}°，" +
+                $"斗尖={cutter.TipWorldPosition}，车厢增量={receiver.VolumeM3 - cycleReceiverStartVolumeM3:F4}");
+        }
+    }
+
+    private IEnumerator RaiseForTruckClearance()
+    {
+        stageSucceeded = false;
+        float clearanceY = GetTruckClearanceY() + .12f;
+        if (cutter.TipWorldPosition.y >= clearanceY)
+        {
+            stageSucceeded = true;
+            yield break;
+        }
+
+        Zx200JointPose actual = machine.ReadActualPose();
+        Zx200JointPose target = new Zx200JointPose(
+            actual.swing, actual.boom - boomEntryStepDegrees * maximumEntrySteps,
+            actual.arm, actual.bucket, 1f);
+        yield return MoveToPose(target, "越过车厢壁的抬升姿态超时");
+        if (!IsRunning || !stageSucceeded) yield break;
+        if (cutter.TipWorldPosition.y < clearanceY)
+        {
+            EnterFault($"斗尖未越过车厢壁；斗尖高度={cutter.TipWorldPosition.y:F2}，" +
+                $"所需高度={clearanceY:F2}");
+            yield break;
+        }
+        stageSucceeded = true;
+    }
+
+    private IEnumerator ReturnToDigPoint()
+    {
+        stageSucceeded = false;
+        Zx200JointPose actual = machine.ReadActualPose();
+        Zx200JointPose clearTruck = machine.returnSwingPose;
+        clearTruck.boom = actual.boom;
+        clearTruck.arm = actual.arm;
+        clearTruck.bucket = actual.bucket;
+        BucketSoilResistance resistance = machine.bucketJoint != null
+            ? machine.bucketJoint.GetComponent<BucketSoilResistance>() : null;
+        bool cutterWasEnabled = cutter != null && cutter.enabled;
+        bool resistanceWasEnabled = resistance != null && resistance.enabled;
+        if (cutterWasEnabled) cutter.enabled = false;
+        if (resistanceWasEnabled) resistance.enabled = false;
+        try
+        {
+            yield return MoveToPose(clearTruck, "离开车厢回转姿态超时", 3f);
+        }
+        finally
+        {
+            if (resistanceWasEnabled && resistance != null) resistance.enabled = true;
+            if (cutterWasEnabled && cutter != null) cutter.enabled = true;
+        }
+    }
+
+    private float GetTruckClearanceY()
+    {
+        float highest = receiver.transform.position.y;
+        Transform truck = receiver.transform.parent != null ? receiver.transform.parent : receiver.transform;
+        foreach (Collider collider in truck.GetComponentsInChildren<Collider>(true))
+        {
+            Vector3 local = receiver.transform.InverseTransformPoint(collider.bounds.center);
+            if (Mathf.Abs(local.x) <= receiver.size.x * .5f + .75f &&
+                Mathf.Abs(local.z) <= receiver.size.y * .5f + .75f)
+                highest = Mathf.Max(highest, collider.bounds.max.y);
+        }
+        return highest;
+    }
+
+    private IEnumerator MoveToPose(Zx200JointPose pose, string timeoutReason, float completionToleranceDegrees = -1f)
     {
         stageSucceeded = false;
         if (!machine.StartAutomaticPose(pose))
@@ -379,9 +606,18 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             yield return null;
         }
         if (!IsRunning) yield break;
-        if (machine.IsBusy || !machine.LastAutomaticMotionSucceeded)
+        bool reachedWithRequestedTolerance = completionToleranceDegrees >= 0f &&
+            machine.IsPoseWithinTolerance(pose, completionToleranceDegrees);
+        if (machine.IsBusy || (!machine.LastAutomaticMotionSucceeded && !reachedWithRequestedTolerance))
         {
-            EnterFault(timeoutReason);
+            string detail = timeoutReason;
+            if (timeoutReason.Contains("回转"))
+            {
+                Zx200JointPose actual = machine.ReadActualPose();
+                detail += $"；实际回转={actual.swing:F1}°，斗尖={cutter.TipWorldPosition}，" +
+                    $"车厢={receiver.transform.position}";
+            }
+            EnterFault(detail);
             yield break;
         }
         stageSucceeded = true;
@@ -389,15 +625,29 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
     private IEnumerator ResetRoutine()
     {
-        if (machine != null && machine.enabled && machine.StartAutomaticPose(machine.workReadyPose))
+        BucketSoilResistance resistance = machine != null && machine.bucketJoint != null
+            ? machine.bucketJoint.GetComponent<BucketSoilResistance>() : null;
+        bool cutterWasEnabled = cutter != null && cutter.enabled;
+        bool resistanceWasEnabled = resistance != null && resistance.enabled;
+        if (cutterWasEnabled) cutter.enabled = false;
+        if (resistanceWasEnabled) resistance.enabled = false;
+        try
         {
-            float deadline = Time.realtimeSinceStartup + stageTimeoutSeconds + machine.workReadyPose.duration;
-            while (machine.IsBusy && Time.realtimeSinceStartup < deadline) yield return null;
+            if (machine != null && machine.enabled && machine.StartAutomaticPose(machine.workReadyPose))
+            {
+                float deadline = Time.realtimeSinceStartup + stageTimeoutSeconds + machine.workReadyPose.duration;
+                while (machine.IsBusy && Time.realtimeSinceStartup < deadline) yield return null;
+            }
         }
-        if (machine != null && machine.IsBusy) machine.StopAutomaticMotion();
-        if (keyboard != null) keyboard.SetAutomaticControl(false);
-        resetRoutine = null;
-        SetState(AutonomousExcavationState.Idle, "已复位，等待启动");
+        finally
+        {
+            if (machine != null && machine.IsBusy) machine.StopAutomaticMotion();
+            if (resistanceWasEnabled && resistance != null) resistance.enabled = true;
+            if (cutterWasEnabled && cutter != null) cutter.enabled = true;
+            if (keyboard != null) keyboard.SetAutomaticControl(false);
+            resetRoutine = null;
+            SetState(AutonomousExcavationState.Idle, "已复位，等待启动");
+        }
     }
 
     private bool ResolveReferences()
@@ -427,7 +677,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             IsFinite(stageTimeoutSeconds) && stageTimeoutSeconds > 0 &&
             IsFinite(cutTimeoutSeconds) && cutTimeoutSeconds > 0 &&
             IsFinite(dumpTimeoutSeconds) && dumpTimeoutSeconds > 0 &&
-            IsFinite(soilFloorMargin) && soilFloorMargin >= 0;
+            IsFinite(soilFloorMargin) && soilFloorMargin >= 0 &&
+            IsFinite(bucketCloseDeltaDegrees) && bucketCloseDeltaDegrees > 0 &&
+            IsFinite(boomEntryStepDegrees) && boomEntryStepDegrees > 0 &&
+            IsFinite(armScoopStepDegrees) && armScoopStepDegrees > 0 &&
+            maximumEntrySteps > 0 && maximumScoopSteps > 0;
     }
 
     private bool IsSiteReady()
@@ -450,6 +704,29 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private void UpdateDeliveredVolume()
     {
         DeliveredVolumeM3 = Math.Max(0, receiver.VolumeM3 - taskReceiverStartVolumeM3);
+    }
+
+    private float ComputeDumpSwingTarget()
+    {
+        Zx200JointPose actual = machine.ReadActualPose();
+        ArticulationBody joint = machine.swingJoint;
+        if (joint == null || receiver == null) return machine.swingToDumpPose.swing;
+
+        Vector3 axis = joint.transform.TransformDirection(joint.anchorRotation * Vector3.right).normalized;
+        Vector3 pivot = joint.transform.TransformPoint(joint.anchorPosition);
+        Vector3 currentRadial = Vector3.ProjectOnPlane(cutter.TipWorldPosition - pivot, axis);
+        Vector3 targetRadial = Vector3.ProjectOnPlane(receiver.transform.position - pivot, axis);
+        if (currentRadial.sqrMagnitude < .0001f || targetRadial.sqrMagnitude < .0001f)
+            return machine.swingToDumpPose.swing;
+
+        float correction = Vector3.SignedAngle(currentRadial, targetRadial, axis);
+        return actual.swing + correction;
+    }
+
+    private bool IsBucketOverReceiver()
+    {
+        return receiver != null && cutter != null &&
+            receiver.TryGetLanding(cutter.TipWorldPosition, 5f, out _);
     }
 
     private void HandleManualInput()

@@ -73,7 +73,7 @@ public class Zx200DigController : MonoBehaviour
     public Zx200JointPose liftPose = new Zx200JointPose(0f, -25f, 100f, 110f, 1.3f);
     public Zx200JointPose swingToDumpPose = new Zx200JointPose(60f, -25f, 100f, 110f, 1.4f);
     public Zx200JointPose dumpPreparePose = new Zx200JointPose(60f, -32f, 78f, 80f, 0.6f);
-    public Zx200JointPose dumpPose = new Zx200JointPose(60f, -32f, 68f, -25f, 0.9f);
+    public Zx200JointPose dumpPose = new Zx200JointPose(60f, -32f, 78f, -25f, 0.9f);
     [Min(0f)] public float dumpHoldDuration = 0.35f;
     public Zx200JointPose returnSwingPose = new Zx200JointPose(0f, -35f, 72f, -20f, 1.4f);
 
