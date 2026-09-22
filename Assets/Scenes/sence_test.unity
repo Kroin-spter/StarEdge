@@ -972,6 +972,7 @@ GameObject:
   m_Component:
   - component: {fileID: 471781300}
   - component: {fileID: 471781301}
+  - component: {fileID: 471781302}
   m_Layer: 0
   m_Name: ZX200 construction site
   m_TagString: Untagged
@@ -1016,6 +1017,31 @@ MonoBehaviour:
   mapName: osgb_small_005_004
   moundHeight: 0.9
   loadingTimeout: 30
+--- !u!114 &471781302
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 471781299}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54a06855b1127a10fa8ad701cd62afc2, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: ExcavatorControls::AutonomousExcavationController
+  machine: {fileID: 10072338}
+  cutter: {fileID: 40524788}
+  unloader: {fileID: 40524786}
+  receiver: {fileID: 91113229}
+  siteReadinessSource: {fileID: 471781301}
+  targetVolumeM3: 1
+  minimumLoadVolumeM3: 0.005
+  minimumTransferVolumeM3: 0.005
+  siteReadyTimeoutSeconds: 40
+  stageTimeoutSeconds: 12
+  cutTimeoutSeconds: 8
+  dumpTimeoutSeconds: 12
+  soilFloorMargin: 0.04
 --- !u!1 &832138054
 GameObject:
   m_ObjectHideFlags: 0

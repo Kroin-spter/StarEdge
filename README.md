@@ -45,6 +45,20 @@ export CESIUM_TILESET_DIR=/absolute/path/to/osgb_small_005_004
 
 当前主场景使用 `CesiumMoundSite`：在原 Cesium 地图地面上生成局部可切削土 mound，并保留原地图碰撞；不是旧的施工区域裁剪方案。主场景包含挖掘机、铲斗土量、车厢接收和卸料相关运行组件。
 
+## 自主挖掘装车
+
+主场景的 `ZX200 construction site` 已挂载 `AutonomousExcavationController`。当前交付范围是从一个已验证可达挖点开始，自动完成切入、收斗、抬升、回转、卸料、确认车厢接收并返回；目标量未达到且车厢有容量时会自动进入下一斗。
+
+运行时快捷键：
+
+- `A`：启动自主任务，使用 Inspector 中的 `targetVolumeM3`。
+- `Esc`：人工接管，停止自动姿态和履带请求，但保留现场已产生的土量。
+- `Backspace`：停止并复位运行时土区、铲斗、空中土流、车厢记录和设备姿态。
+
+HMI 集成使用 `AutonomousExcavationController.StartAutonomousJob()`、`RequestManualTakeover()` 和 `ResetAutonomousJob()`；通过 `State`、`Status`、`FaultReason`、`DeliveredVolumeM3` 和 `CompletedCycles` 读取反馈。完成判定以 `SoilReceivingZone.VolumeM3` 的实际增加量为准，不以铲斗释放量代替。
+
+当前版本暂不包含底盘自动路径规划和多个挖点换点；主场景地图未就绪、车满、空挖/挖尽、姿态或卸料超时都会安全停止并保留原因。
+
 ## Git 提交边界
 
 源码提交包含 `Assets/`、`Packages/`、`ProjectSettings/`、工具脚本和文档。Unity 缓存、用户配置、自动生成的解决方案文件、WebGL 构建目录以及未被主场景引用的大型示例资源由 `.gitignore` 排除；这些目录不会被移动或删除，只是不进入源码仓库。
