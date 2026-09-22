@@ -3,6 +3,7 @@
   "rootNamespace": "ExcavatorControls.Tests",
   "references": [
     "ExcavatorControls",
+    "WebDelivery.Runtime",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner"
   ],
