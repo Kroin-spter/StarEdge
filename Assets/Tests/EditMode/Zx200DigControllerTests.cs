@@ -175,6 +175,33 @@ namespace ExcavatorControls.Tests
             Assert.That(controller.PrepareForPhysics(), Is.False);
         }
 
+        [Test]
+        public void StartAutomaticPose_RejectsRequestsOutsidePlayMode()
+        {
+            controller.ResolveJoints();
+            Assert.That(controller.StartAutomaticPose(controller.workReadyPose), Is.False);
+            Assert.That(controller.IsBusy, Is.False);
+        }
+
+        [Test]
+        public void StartAutomaticPose_RejectsInvalidTarget()
+        {
+            controller.ResolveJoints();
+            Zx200JointPose invalid = new Zx200JointPose(float.NaN, -48f, 68f, 25f, 1f);
+
+            Assert.That(controller.StartAutomaticPose(invalid), Is.False);
+            Assert.That(controller.LastAutomaticMotionSucceeded, Is.False);
+        }
+
+        [Test]
+        public void StopAutomaticMotion_IsSafeWhenIdle()
+        {
+            controller.StopAutomaticMotion();
+
+            Assert.That(controller.IsBusy, Is.False);
+            Assert.That(controller.LastAutomaticMotionSucceeded, Is.False);
+        }
+
         [TestCase(float.NaN)]
         [TestCase(float.PositiveInfinity)]
         [TestCase(-0.1f)]

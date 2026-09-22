@@ -60,6 +60,8 @@ public class Zx200DigController : MonoBehaviour
     private Vector4 targetVelocities;
     private bool driveTargetsInitialized;
     private BucketSoilResistance soilResistance;
+    private Coroutine automaticPoseRoutine;
+    private bool automaticMotionCancellationRequested;
 
     [Header("Work-ready Pose")]
     public Zx200JointPose workReadyPose = new Zx200JointPose(0f, -48f, 68f, 25f, 1f);
@@ -77,6 +79,9 @@ public class Zx200DigController : MonoBehaviour
 
     /// <summary>获取当前是否正在执行启动定位或挖掘动作循环。</summary>
     public bool IsBusy { get; private set; }
+
+    /// <summary>获取最近一次自动单姿态动作是否实际稳定到位。</summary>
+    public bool LastAutomaticMotionSucceeded { get; private set; }
 
     private void Awake()
     {
@@ -201,9 +206,43 @@ public class Zx200DigController : MonoBehaviour
             return false;
         }
 
+        LastAutomaticMotionSucceeded = false;
+        automaticMotionCancellationRequested = false;
         StartCoroutine(DigCycle());
         Debug.Log("ZX200 digging cycle started.", this);
         return true;
+    }
+
+    /// <summary>
+    /// 启动一个可等待、可取消的自动姿态阶段。
+    /// </summary>
+    /// <param name="target">完整四关节目标姿态。</param>
+    /// <returns>运行时成功启动阶段时返回 true；已有动作、配置无效或不在播放模式时返回 false。</returns>
+    public bool StartAutomaticPose(Zx200JointPose target)
+    {
+        if (!Application.isPlaying || !enabled || IsBusy || !ResolveJoints()) return false;
+        if (!ValidatePose(target, "automaticPose", out _)) return false;
+
+        LastAutomaticMotionSucceeded = false;
+        automaticMotionCancellationRequested = false;
+        IsBusy = true;
+        automaticPoseRoutine = StartCoroutine(AutomaticPose(target));
+        return automaticPoseRoutine != null;
+    }
+
+    /// <summary>
+    /// 取消当前自动姿态阶段，保留当前物理解算姿态和土量，不回滚现场状态。
+    /// </summary>
+    public void StopAutomaticMotion()
+    {
+        if (automaticPoseRoutine != null)
+        {
+            StopCoroutine(automaticPoseRoutine);
+            automaticPoseRoutine = null;
+        }
+        automaticMotionCancellationRequested = true;
+        LastAutomaticMotionSucceeded = false;
+        IsBusy = false;
     }
 
     /// <summary>
@@ -338,6 +377,17 @@ public class Zx200DigController : MonoBehaviour
         IsBusy = false;
     }
 
+    private IEnumerator AutomaticPose(Zx200JointPose target)
+    {
+        target = ClampPoseToDriveLimits(target);
+        yield return AnimateTo(target);
+        LastAutomaticMotionSucceeded = !automaticMotionCancellationRequested &&
+            IsPoseWithinTolerance(target, jointToleranceDegrees);
+        IsBusy = false;
+        automaticMotionCancellationRequested = false;
+        automaticPoseRoutine = null;
+    }
+
     private IEnumerator AnimateTo(Zx200JointPose target)
     {
         target = ClampPoseToDriveLimits(target);
@@ -347,6 +397,7 @@ public class Zx200DigController : MonoBehaviour
             float elapsed = 0f;
             while (elapsed < target.duration)
             {
+                if (automaticMotionCancellationRequested) yield break;
                 float progress = SmoothProgress(elapsed / target.duration);
                 ApplyPose(new Zx200JointPose(
                     Mathf.Lerp(start.swing, target.swing, progress),
@@ -358,17 +409,18 @@ public class Zx200DigController : MonoBehaviour
                 yield return null;
             }
         }
+        if (automaticMotionCancellationRequested) yield break;
         ApplyPose(target);
 
         float settleElapsed = 0f;
-        while (!IsPoseWithinTolerance(target, jointToleranceDegrees) &&
+        while (!automaticMotionCancellationRequested && !IsPoseWithinTolerance(target, jointToleranceDegrees) &&
                settleElapsed < settleTimeoutSeconds)
         {
             settleElapsed += Time.fixedDeltaTime;
             yield return new WaitForFixedUpdate();
         }
 
-        if (!IsPoseWithinTolerance(target, jointToleranceDegrees))
+        if (!automaticMotionCancellationRequested && !IsPoseWithinTolerance(target, jointToleranceDegrees))
         {
             Zx200JointPose actual = ReadActualPose();
             Debug.LogWarning(
