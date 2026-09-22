@@ -65,6 +65,13 @@ HMI 集成使用 `AutonomousExcavationController.StartAutonomousJob()`、`Reques
 
 源码提交包含 `Assets/`、`Packages/`、`ProjectSettings/`、工具脚本和文档。Unity 缓存、用户配置、自动生成的解决方案文件、WebGL 构建目录以及未被主场景引用的大型示例资源由 `.gitignore` 排除；这些目录不会被移动或删除，只是不进入源码仓库。
 
+### Git 提交规范
+
+- 提交者名称统一使用 `shenkai`。
+- 提交说明的类型前缀可以保留英文，例如 `feat:`、`fix:`、`docs:`、`test:` 和 `chore:`。
+- 类型前缀后面的具体说明必须使用中文。
+- 示例：`feat: 完善自主挖掘流程`。
+
 ## WebGL 构建
 
 Cesium WebGL 构建入口为 Unity 菜单：
