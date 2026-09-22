@@ -165,5 +165,17 @@ namespace ExcavatorControls.Tests
 
             Assert.That(actual, Is.EqualTo(expected));
         }
+
+        [TestCase(0f, 0f, 0f, 0f, 0f, 0f, false)]
+        [TestCase(1f, 0f, 0f, 0f, 0f, 0f, true)]
+        [TestCase(0f, 0f, 0f, 0f, .25f, 0f, true)]
+        [TestCase(.01f, -.01f, .01f, -.01f, .01f, -.01f, false)]
+        public void HasNonNeutralInput_UsesConfiguredDeadzone(
+            float vertical, float horizontal, float swing, float boom,
+            float arm, float bucket, bool expected)
+        {
+            Assert.That(Zx200KeyboardController.HasNonNeutralInput(
+                vertical, horizontal, swing, boom, arm, bucket, .1f), Is.EqualTo(expected));
+        }
     }
 }

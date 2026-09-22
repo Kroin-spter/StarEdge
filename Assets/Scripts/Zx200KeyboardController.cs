@@ -38,6 +38,12 @@ public class Zx200KeyboardController : MonoBehaviour
     [Header("Topic Input")]
     [Min(0f)] public float neutralDeadzone = 1.5f;
 
+    /// <summary>获取当前是否由自主控制器占用设备输入。</summary>
+    public bool AutomaticControlActive { get; private set; }
+
+    /// <summary>获取当前帧是否检测到非中位键盘或 AZ 控制输入。</summary>
+    public bool ManualInputActive { get; private set; }
+
     private Zx200TrackDrive trackDrive;
     private float lastTopicTime = float.NegativeInfinity;
     private const float DriveTopicTimeout = 0.5f;
@@ -57,6 +63,34 @@ public class Zx200KeyboardController : MonoBehaviour
         float vertical = Input.GetAxisRaw("Vertical");
         float horizontal = Input.GetAxisRaw("Horizontal");
         bool hasControlTopic = HasControlTopic();
+        bool topicActive = hasControlTopic && Time.time - lastTopicTime <= DriveTopicTimeout;
+        float topicSwing = hasControlTopic
+            ? -NormalizeAction(topicFrame.action3, neutralDeadzone) : 0f;
+        float topicArm = hasControlTopic
+            ? NormalizeAction(topicFrame.action4, neutralDeadzone) : 0f;
+        float topicBucket = hasControlTopic
+            ? -NormalizeAction(topicFrame.action5, neutralDeadzone) : 0f;
+        float topicBoom = hasControlTopic
+            ? -NormalizeAction(topicFrame.action6, neutralDeadzone) : 0f;
+        float keyboardSwing = (Input.GetKey(KeyCode.E) ? 1f : 0f) -
+            (Input.GetKey(KeyCode.Q) ? 1f : 0f);
+        float keyboardBoom = (Input.GetKey(KeyCode.F) ? 1f : 0f) -
+            (Input.GetKey(KeyCode.R) ? 1f : 0f);
+        float keyboardArm = (Input.GetKey(KeyCode.T) ? 1f : 0f) -
+            (Input.GetKey(KeyCode.G) ? 1f : 0f);
+        float keyboardBucket = (Input.GetKey(KeyCode.Y) ? 1f : 0f) -
+            (Input.GetKey(KeyCode.H) ? 1f : 0f);
+        float normalizedDeadzone = Mathf.Clamp01(neutralDeadzone / 127.5f);
+        ManualInputActive = HasNonNeutralInput(
+            vertical, horizontal, keyboardSwing, keyboardBoom, keyboardArm, keyboardBucket, .1f) ||
+            (topicActive && HasNonNeutralInput(
+                0f, 0f, topicSwing, topicBoom, topicArm, topicBucket, normalizedDeadzone));
+        if (AutomaticControlActive)
+        {
+            if (trackDrive != null) trackDrive.Stop();
+            return;
+        }
+
         if (hasControlTopic && Time.time - lastTopicTime <= DriveTopicTimeout &&
             Mathf.Approximately(vertical, 0f) && Mathf.Approximately(horizontal, 0f))
         {
@@ -82,14 +116,6 @@ public class Zx200KeyboardController : MonoBehaviour
 
         // AZ 映射：action3=回旋、action4=斗杆、action5=铲斗、action6=动臂。
         // 对应键按下时键盘优先；该轴没有键盘输入时才使用 topic。
-        float topicSwing = hasControlTopic
-            ? -NormalizeAction(topicFrame.action3, neutralDeadzone) : 0f;
-        float topicArm = hasControlTopic
-            ? NormalizeAction(topicFrame.action4, neutralDeadzone) : 0f;
-        float topicBucket = hasControlTopic
-            ? -NormalizeAction(topicFrame.action5, neutralDeadzone) : 0f;
-        float topicBoom = hasControlTopic
-            ? -NormalizeAction(topicFrame.action6, neutralDeadzone) : 0f;
         // 导入模型的回转正方向与设备向左回转的方向相反。
         float swing = ResolveAxisInput(
             Input.GetKey(KeyCode.E), Input.GetKey(KeyCode.Q), hasControlTopic, topicSwing) *
@@ -151,6 +177,40 @@ public class Zx200KeyboardController : MonoBehaviour
     public bool HasControlTopic()
     {
         return topicFrame != null;
+    }
+
+    /// <summary>
+    /// 设置自动控制输入所有权；启用时停止履带请求并屏蔽本组件的手动驱动写入。
+    /// </summary>
+    /// <param name="active">是否启用自动控制占用。</param>
+    public void SetAutomaticControl(bool active)
+    {
+        AutomaticControlActive = active;
+        if (active && trackDrive != null) trackDrive.Stop();
+    }
+
+    /// <summary>判断六个归一化输入中是否存在超过死区的人工动作。</summary>
+    /// <param name="vertical">前后输入。</param>
+    /// <param name="horizontal">转向输入。</param>
+    /// <param name="swing">回旋输入。</param>
+    /// <param name="boom">动臂输入。</param>
+    /// <param name="arm">斗杆输入。</param>
+    /// <param name="bucket">铲斗输入。</param>
+    /// <param name="deadzone">统一输入死区。</param>
+    /// <returns>任一输入超过死区时返回 true。</returns>
+    public static bool HasNonNeutralInput(
+        float vertical,
+        float horizontal,
+        float swing,
+        float boom,
+        float arm,
+        float bucket,
+        float deadzone)
+    {
+        float threshold = Mathf.Max(0f, deadzone);
+        return Mathf.Abs(vertical) > threshold || Mathf.Abs(horizontal) > threshold ||
+            Mathf.Abs(swing) > threshold || Mathf.Abs(boom) > threshold ||
+            Mathf.Abs(arm) > threshold || Mathf.Abs(bucket) > threshold;
     }
 
     /// <summary>将左右履带指令转换为前进和转向输入。</summary>
