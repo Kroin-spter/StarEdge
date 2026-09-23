@@ -53,6 +53,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     [Min(1)] public int maximumEntrySteps = 24;
     [Min(1)] public int maximumScoopSteps = 24;
 
+    [Header("Keyboard Shortcuts")]
+    [SerializeField] private KeyCode autonomousStartKey = KeyCode.P;
+
+    /// <summary>获取启动自主挖掘装车任务的独立键盘按键。</summary>
+    public KeyCode AutonomousStartKey => autonomousStartKey;
+
     /// <summary>获取当前自动任务阶段。</summary>
     public AutonomousExcavationState State { get; private set; } = AutonomousExcavationState.Idle;
 
@@ -190,7 +196,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.A)) StartAutonomousJob();
+        if (Input.GetKeyDown(autonomousStartKey)) StartAutonomousJob();
         if (Input.GetKeyDown(KeyCode.Escape)) RequestManualTakeover();
         if (Input.GetKeyDown(KeyCode.Backspace)) ResetAutonomousJob();
         if (IsRunning && keyboard != null && keyboard.ManualInputActive)

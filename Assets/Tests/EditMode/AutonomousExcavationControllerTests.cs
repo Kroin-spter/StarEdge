@@ -23,6 +23,25 @@ namespace ExcavatorControls.Tests
             }
         }
 
+        /// <summary>The autonomous start key must not share the excavator's A/D track steering keys.</summary>
+        [Test]
+        public void NewController_UsesDedicatedStartKey()
+        {
+            GameObject root = new GameObject("autonomous");
+            try
+            {
+                var controller = root.AddComponent<AutonomousExcavationController>();
+
+                Assert.That(controller.AutonomousStartKey, Is.EqualTo(KeyCode.P));
+                Assert.That(controller.AutonomousStartKey, Is.Not.EqualTo(KeyCode.A));
+                Assert.That(controller.AutonomousStartKey, Is.Not.EqualTo(KeyCode.D));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
         [Test]
         public void StartAutonomousJob_RejectsMissingDependencies()
         {

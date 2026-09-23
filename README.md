@@ -53,7 +53,7 @@ export CESIUM_TILESET_DIR=/absolute/path/to/osgb_small_005_004
 
 运行时快捷键：
 
-- `A`：启动自主任务，使用 Inspector 中的 `targetVolumeM3`。
+- `P`：启动自主任务，使用 Inspector 中的 `targetVolumeM3`；该按键独立于 `A/D` 底盘转向。
 - `Esc`：人工接管，停止自动姿态和履带请求，但保留现场已产生的土量。
 - `Backspace`：停止并复位运行时土区、铲斗、空中土流、车厢记录和设备姿态。
 
