@@ -477,7 +477,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 332.01
+      value: 337.01
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y
@@ -485,7 +485,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 403.27
+      value: 402.27
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.w
@@ -1047,6 +1047,7 @@ MonoBehaviour:
   cutTimeoutSeconds: 8
   dumpTimeoutSeconds: 12
   soilFloorMargin: 0.04
+  dumpClearanceMarginMeters: 0.25
 --- !u!114 &2098765431
 MonoBehaviour:
   m_ObjectHideFlags: 0

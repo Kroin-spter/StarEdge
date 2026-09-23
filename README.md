@@ -47,9 +47,9 @@ export CESIUM_TILESET_DIR=/absolute/path/to/osgb_small_005_004
 
 ## 自主挖掘装车
 
-主场景的 `ZX200 construction site` 已挂载 `AutonomousExcavationController`。当前交付范围是从一个已验证可达挖点开始，自动完成切入、收斗、抬升、回转、卸料、确认车厢接收并返回；目标量和车厢容量判断接口已接入，连续多斗作为后续阶段验证。
+主场景的 `ZX200 construction site` 已挂载 `AutonomousExcavationController`。当前流程从一个已验证可达挖点开始，自动完成切入、收斗、抬升、保持高位回转、卸料、确认车厢接收、返回并继续下一斗；目标量和车厢容量判断按真实接收量执行。
 
-本次验收已锁定为一个可达挖点的一斗自主流程：一次启动能够完成真实切削、保土、回转、落入车厢和返回挖掘方向。多斗连续循环的状态机接口已保留，但尚未作为本次交付验收项；自动换挖点、底盘路径和多挖点调度仍属于后续阶段。
+当前验收目标为同一可达挖点的连续多斗自主装车：默认目标量 `1m³`，按当前约 `0.3m³/斗` 应连续完成约 4 斗，并在每斗卸料前检查车厢接收区和铲斗高位净空。自动换挖点、底盘路径和多挖点调度仍属于后续阶段。
 
 运行时快捷键：
 
@@ -59,7 +59,7 @@ export CESIUM_TILESET_DIR=/absolute/path/to/osgb_small_005_004
 
 HMI 集成使用 `AutonomousExcavationController.StartAutonomousJob()`、`RequestManualTakeover()` 和 `ResetAutonomousJob()`；通过 `State`、`Status`、`FaultReason`、`DeliveredVolumeM3` 和 `CompletedCycles` 读取反馈。完成判定以 `SoilReceivingZone.VolumeM3` 的实际增加量为准，不以铲斗释放量代替。
 
-当前版本暂不包含底盘自动路径规划和多个挖点换点；主场景地图未就绪、车满、空挖/挖尽、姿态或卸料超时都会安全停止并保留原因。多斗连续作业需要在下一阶段完成真实动力学回归后再开放。
+当前版本暂不包含底盘自动路径规划和多个挖点换点；主场景地图未就绪、车满、空挖/挖尽、姿态或卸料超时，以及卸料净空不足都会安全停止并保留原因。施工场编辑器将车辆放在土区右前方独立装车位，并校验土区扩大边界与车辆实体碰撞盒至少保留约 2m 水平净距。
 
 ## Git 提交边界
 

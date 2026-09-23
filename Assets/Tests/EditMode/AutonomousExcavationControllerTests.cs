@@ -43,6 +43,31 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void NewController_UsesPositiveDumpClearanceMargin()
+        {
+            GameObject root = new GameObject("autonomous");
+            try
+            {
+                var controller = root.AddComponent<AutonomousExcavationController>();
+
+                Assert.That(controller.DumpClearanceMarginMeters, Is.EqualTo(.25f).Within(.0001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void OneCubicMetreTargetRequiresFourBucketsAtCurrentCapacity()
+        {
+            const double target = 1.0;
+            const double bucket = 0.303886;
+
+            Assert.That(System.Math.Ceiling(target / bucket), Is.EqualTo(4));
+        }
+
+        [Test]
         public void StartAutonomousJob_RejectsMissingDependencies()
         {
             GameObject root = new GameObject("autonomous");

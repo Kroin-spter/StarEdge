@@ -13,6 +13,10 @@ namespace Zx200.Editor
     {
         private const string ScenePath = "Assets/Scenes/sence_test.unity";
         private const string Directory = "Assets/ConstructionSite";
+        private const float TruckSoilClearanceMeters = 2f;
+
+        /// <summary>车辆相对于挖掘机底盘的右前方停车偏移，单位为米。</summary>
+        public static readonly Vector3 TruckParkingOffsetLocal = new Vector3(7f, 0f, 4f);
 
         /// <summary>Create a parked truck with a 3×4 metre receiving bed; returns its root without saving assets.</summary>
         /// <param name="groundPosition">World position beneath the bed centre at ground level.</param>
@@ -97,8 +101,9 @@ namespace Zx200.Editor
             var prefab = PrefabUtility.SaveAsPrefabAsset(truck,Directory + "/ParkedDumpTruck.prefab");
             UnityEngine.Object.DestroyImmediate(truck);
             truck = (GameObject)PrefabUtility.InstantiatePrefab(prefab,scene);
-            truck.transform.position = robot.transform.position + new Vector3(5,0,5);
+            truck.transform.position = robot.transform.TransformPoint(TruckParkingOffsetLocal);
             truck.transform.SetParent(site.transform,true);
+            ValidateTruckParkingPosition(soil.gameObject, truck);
             var receiver = truck.GetComponentInChildren<SoilReceivingZone>();
             receiver.GetComponent<Renderer>().sharedMaterial = cutter.fillVisual.GetComponent<Renderer>().sharedMaterial;
             var unloader = cutter.gameObject.AddComponent<BucketSoilUnloader>();
@@ -118,6 +123,26 @@ namespace Zx200.Editor
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
             Debug.Log("Construction site saved in " + ScenePath + "; truck bed at " + receiver.transform.position);
+        }
+
+        private static void ValidateTruckParkingPosition(GameObject soil, GameObject truck)
+        {
+            Physics.SyncTransforms();
+            Bounds soilBounds = GetCombinedColliderBounds(soil);
+            Bounds truckBounds = GetCombinedColliderBounds(truck);
+            if (!ExcavationSiteLayoutSafety.HasRequiredClearance(soilBounds, truckBounds, TruckSoilClearanceMeters))
+                throw new InvalidOperationException("车辆停车位与土区净距不足，无法生成安全施工场。");
+        }
+
+        private static Bounds GetCombinedColliderBounds(GameObject root)
+        {
+            Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
+            if (colliders.Length == 0)
+                throw new InvalidOperationException("施工场对象缺少实体碰撞体：" + root.name);
+
+            Bounds combined = colliders[0].bounds;
+            for (int i = 1; i < colliders.Length; i++) combined.Encapsulate(colliders[i].bounds);
+            return combined;
         }
 
         private static void ConfigureMap(Scene scene, Vector3 center)

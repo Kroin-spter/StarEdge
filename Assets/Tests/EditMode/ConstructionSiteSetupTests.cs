@@ -8,6 +8,32 @@ namespace ExcavatorControls.Tests
 {
     public class ConstructionSiteSetupTests
     {
+        [Test]
+        public void LayoutSafety_RejectsTruckOverlappingExpandedSoilBounds()
+        {
+            Bounds soil = new Bounds(new Vector3(330, 8, 405), new Vector3(6, 1, 6));
+            Bounds overlappingTruck = new Bounds(new Vector3(332, 8, 403), new Vector3(3.24f, 3, 6.3f));
+            Bounds separatedTruck = new Bounds(new Vector3(337, 8, 402), new Vector3(3.24f, 3, 6.3f));
+
+            Assert.That(ExcavationSiteLayoutSafety.HasRequiredClearance(soil, overlappingTruck, 2f), Is.False);
+            Assert.That(ExcavationSiteLayoutSafety.HasRequiredClearance(soil, separatedTruck, 2f), Is.True);
+        }
+
+        [Test]
+        public void ConstructionSite_UsesRightFrontTruckParkingOffset()
+        {
+            Type builder = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType("Zx200.Editor.Zx200ConstructionSiteSetup"))
+                .FirstOrDefault(type => type != null);
+            Assert.That(builder, Is.Not.Null);
+            FieldInfo offsetField = builder.GetField("TruckParkingOffsetLocal", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(offsetField, Is.Not.Null);
+            Vector3 offset = (Vector3)offsetField.GetValue(null);
+
+            Assert.That(offset.x, Is.EqualTo(7f).Within(.001f));
+            Assert.That(offset.z, Is.EqualTo(4f).Within(.001f));
+        }
+
         /// <summary>Verify receiving dimensions and real containment geometry, rather than a decorative truck.</summary>
         [Test]
         public void TruckHasSolidFloorFourWallsAndReceiverInsideBed()

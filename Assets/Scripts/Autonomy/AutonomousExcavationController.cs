@@ -47,6 +47,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     [Min(.1f)] public float cutTimeoutSeconds = 8f;
     [Min(.1f)] public float dumpTimeoutSeconds = 12f;
     [Min(.001f)] public float soilFloorMargin = .04f;
+    [Min(0f)] public float dumpClearanceMarginMeters = .25f;
     [Min(.1f)] public float bucketCloseDeltaDegrees = 35f;
     [Min(.1f)] public float boomEntryStepDegrees = 7f;
     [Min(.1f)] public float armScoopStepDegrees = 10f;
@@ -76,6 +77,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
     /// <summary>获取当前任务已完成的斗数。</summary>
     public int CompletedCycles { get; private set; }
+
+    /// <summary>获取卸料时斗尖相对车厢最高实体保留的最小安全高度。</summary>
+    public float DumpClearanceMarginMeters => dumpClearanceMarginMeters;
 
     private Zx200KeyboardController keyboard;
     private Coroutine jobRoutine;
@@ -226,7 +230,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             SetState(AutonomousExcavationState.Lift, "抬升满斗");
             yield return MoveToPose(machine.liftPose, "抬升姿态超时");
             if (!IsRunning || !stageSucceeded) yield break;
-            yield return RaiseForTruckClearance();
+            yield return RaiseToDumpClearance();
             if (!IsRunning || !stageSucceeded) yield break;
 
             SetState(AutonomousExcavationState.SwingToTruck, "回转至车厢并准备卸料");
@@ -242,6 +246,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             if (!IsRunning || !stageSucceeded) yield break;
             yield return AlignCurrentSwing();
             if (!IsRunning || !stageSucceeded) yield break;
+            if (!IsDumpApproachSafe())
+            {
+                EnterFault("卸料准备姿态未位于车厢上方安全区域，已停止避免打开铲斗后碰撞车体");
+                yield break;
+            }
 
             SetState(AutonomousExcavationState.Dump, "打开铲斗并等待土流落入车厢");
             cycleReceiverStartVolumeM3 = receiver.VolumeM3;
@@ -252,6 +261,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             dump.arm = actualBeforeDump.arm;
             yield return MoveToPose(dump, "卸料姿态超时");
             if (!IsRunning || !stageSucceeded) yield break;
+            if (!IsDumpApproachSafe())
+            {
+                EnterFault("卸料姿态未保持车厢上方安全净空，已停止避免铲斗碰撞车体");
+                yield break;
+            }
             yield return WaitForDump();
             if (!IsRunning || !stageSucceeded) yield break;
 
@@ -451,8 +465,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         for (int attempt = 0; IsRunning && attempt < 4; attempt++)
         {
             dumpSwingTarget = ComputeDumpSwingTarget();
-            Zx200JointPose swingToDump = machine.swingToDumpPose;
-            swingToDump.swing = dumpSwingTarget;
+            Zx200JointPose actual = machine.ReadActualPose();
+            Zx200JointPose swingToDump = new Zx200JointPose(
+                dumpSwingTarget, actual.boom, actual.arm, actual.bucket, .9f);
             if (!machine.StartAutomaticPose(swingToDump))
             {
                 EnterFault("无法启动回转至车厢姿态");
@@ -532,26 +547,20 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         }
     }
 
-    private IEnumerator RaiseForTruckClearance()
+    private IEnumerator RaiseToDumpClearance()
     {
         stageSucceeded = false;
-        float clearanceY = GetTruckClearanceY() + .12f;
-        if (cutter.TipWorldPosition.y >= clearanceY)
-        {
-            stageSucceeded = true;
-            yield break;
-        }
-
         Zx200JointPose actual = machine.ReadActualPose();
-        Zx200JointPose target = new Zx200JointPose(
-            actual.swing, actual.boom - boomEntryStepDegrees * maximumEntrySteps,
-            actual.arm, actual.bucket, 1f);
-        yield return MoveToPose(target, "越过车厢壁的抬升姿态超时");
+        Zx200JointPose target = machine.swingToDumpPose;
+        target.swing = actual.swing;
+        target.bucket = actual.bucket;
+        target.duration = Mathf.Max(1f, target.duration);
+        yield return MoveToPose(target, "越过车厢壁的高位准备姿态超时");
         if (!IsRunning || !stageSucceeded) yield break;
-        if (cutter.TipWorldPosition.y < clearanceY)
+        if (cutter.TipWorldPosition.y < GetTruckClearanceY() + dumpClearanceMarginMeters)
         {
             EnterFault($"斗尖未越过车厢壁；斗尖高度={cutter.TipWorldPosition.y:F2}，" +
-                $"所需高度={clearanceY:F2}");
+                $"所需高度={GetTruckClearanceY() + dumpClearanceMarginMeters:F2}");
             yield break;
         }
         stageSucceeded = true;
@@ -574,6 +583,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         try
         {
             yield return MoveToPose(clearTruck, "离开车厢回转姿态超时", 3f);
+            if (IsRunning && stageSucceeded)
+                yield return MoveToPose(machine.workReadyPose, "多斗循环返回挖点准备姿态超时");
         }
         finally
         {
@@ -594,6 +605,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 highest = Mathf.Max(highest, collider.bounds.max.y);
         }
         return highest;
+    }
+
+    private bool IsDumpApproachSafe()
+    {
+        return IsBucketOverReceiver() &&
+            cutter.TipWorldPosition.y >= GetTruckClearanceY() + dumpClearanceMarginMeters;
     }
 
     private IEnumerator MoveToPose(Zx200JointPose pose, string timeoutReason, float completionToleranceDegrees = -1f)
@@ -684,6 +701,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             IsFinite(cutTimeoutSeconds) && cutTimeoutSeconds > 0 &&
             IsFinite(dumpTimeoutSeconds) && dumpTimeoutSeconds > 0 &&
             IsFinite(soilFloorMargin) && soilFloorMargin >= 0 &&
+            IsFinite(dumpClearanceMarginMeters) && dumpClearanceMarginMeters >= 0 &&
             IsFinite(bucketCloseDeltaDegrees) && bucketCloseDeltaDegrees > 0 &&
             IsFinite(boomEntryStepDegrees) && boomEntryStepDegrees > 0 &&
             IsFinite(armScoopStepDegrees) && armScoopStepDegrees > 0 &&
