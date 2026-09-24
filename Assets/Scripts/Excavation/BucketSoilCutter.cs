@@ -64,6 +64,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
     private Vector3 lastObserved;
     private TerrainCollider ignoredTerrain;
     private BucketSoilFill fill;
+    private bool cuttingSuppressed;
     private readonly List<Collider> ignored = new List<Collider>();
     private readonly List<bool> originalIgnore = new List<bool>();
 
@@ -90,6 +91,14 @@ public sealed class BucketSoilCutter : MonoBehaviour
         if (soil == null) { RestoreCollisionPairs(); hasPrevious = false; return 0; }
         soil.Initialize(soil.GetComponent<Terrain>());
         ConfigureCollisionPairs();
+        if (cuttingSuppressed)
+        {
+            hasPrevious = false;
+            previousBlade = null;
+            Status = "切削暂停，保留土面碰撞过滤";
+            UpdateFill();
+            return 0;
+        }
         // 初次定位会经过土区，只有设备实际到达待机姿态后才允许计量作业。
         // 已在待机位置添加的采样器可立即启用，复位土区也不要求重做机械初始化。
         if (!startupReady)
@@ -334,6 +343,19 @@ public sealed class BucketSoilCutter : MonoBehaviour
             originalIgnore.Add(Physics.GetIgnoreCollision(collider, target));
             Physics.IgnoreCollision(collider, target, true);
         }
+    }
+
+    /// <summary>Whether automatic soil removal is suppressed while bucket/map collision filtering stays active.</summary>
+    public bool IsCuttingSuppressed => cuttingSuppressed;
+
+    /// <summary>Pause or resume soil accounting without disabling the bucket's non-penetrating TerrainCollider pairs.</summary>
+    /// <param name="suppressed">True during transfer motions; false when normal measured cutting may resume.</param>
+    public void SetCuttingSuppressed(bool suppressed)
+    {
+        cuttingSuppressed = suppressed;
+        hasPrevious = false;
+        previousBlade = null;
+        if (suppressed) Status = "切削暂停，保留土面碰撞过滤";
     }
 
     private void RestoreCollisionPairs()

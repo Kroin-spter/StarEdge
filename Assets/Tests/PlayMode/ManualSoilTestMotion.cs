@@ -35,6 +35,37 @@ namespace ExcavatorControls.Tests
                 Is.EqualTo(cutter.ExcavatedVolumeM3).Within(1e-8));
         }
 
+        internal static double GroundPileVolumeFor(BucketSoilCutter cutter)
+        {
+            double volume = 0;
+            foreach (SoilReceivingZone pile in Object.FindObjectsByType<SoilReceivingZone>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (pile != null && pile.isGroundPile && pile.gameObject.scene == cutter.gameObject.scene)
+                    volume += pile.VolumeM3;
+            return volume;
+        }
+
+        internal static void AssertBalanceIncludingPiles(
+            BucketSoilCutter cutter, double initialPileVolume, double terrainTolerance = 1e-5)
+        {
+            var flight = cutter.GetComponent<SoilFlightTransport>();
+            double inFlight = flight != null ? flight.AirborneVolumeM3 + flight.SurfacePendingVolumeM3 : 0;
+            double returnedToGround = 0;
+            foreach (var receipt in cutter.Landings)
+                if (receipt.Destination == cutter.soil ||
+                    receipt.Destination is SoilReceivingZone pile && pile.isGroundPile)
+                    returnedToGround += receipt.VolumeM3;
+            double netGroundRemoval = cutter.soil.RecalculateRemovedVolumeM3() +
+                initialPileVolume - GroundPileVolumeFor(cutter);
+
+            Assert.That(cutter.ExcavatedVolumeM3,
+                Is.EqualTo(cutter.VolumeM3 + inFlight + cutter.DeliveredVolumeM3).Within(1e-5));
+            Assert.That(netGroundRemoval,
+                Is.EqualTo(cutter.ExcavatedVolumeM3 - returnedToGround).Within(terrainTolerance));
+            Assert.That(cutter.CollectedVolumeM3 + cutter.DisplacedVolumeM3,
+                Is.EqualTo(cutter.ExcavatedVolumeM3).Within(1e-8));
+        }
+
         internal static IEnumerator Scoop(Zx200DigController dig, BucketSoilCutter cutter,
             double targetVolume = .08, System.Action observe = null)
         {

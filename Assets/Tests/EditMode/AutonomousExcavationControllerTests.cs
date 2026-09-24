@@ -103,5 +103,89 @@ namespace ExcavatorControls.Tests
             Assert.That(AutonomousExcavationController.IsReceiverFull(available, minimumTransfer),
                 Is.EqualTo(expected));
         }
+
+        [TestCase(.05, .005, .08, false)]
+        [TestCase(.079, .005, .08, false)]
+        [TestCase(.08, .005, .08, true)]
+        [TestCase(.081, .005, .08, true)]
+        public void HasCapacityForNextLoad_ReservesTheWholeBucket(
+            double available, double minimumTransfer, double loadCapacity, bool expected)
+        {
+            Assert.That(AutonomousExcavationController.HasCapacityForNextLoad(
+                available, minimumTransfer, loadCapacity), Is.EqualTo(expected));
+        }
+
+        [TestCase(AutonomousMotionAxis.Bucket, 15f, 10f, 20f, 30f, 15f)]
+        [TestCase(AutonomousMotionAxis.Boom, 10f, 25f, 20f, 30f, 25f)]
+        [TestCase(AutonomousMotionAxis.Arm, 10f, 15f, 35f, 30f, 35f)]
+        [TestCase(AutonomousMotionAxis.Swing, 10f, 15f, 20f, 45f, 45f)]
+        public void CreateSingleAxisWaypoint_HoldsOtherMeasuredJoints(
+            AutonomousMotionAxis axis,
+            float swing,
+            float boom,
+            float arm,
+            float bucket,
+            float target)
+        {
+            var actual = new Zx200JointPose(swing, boom, arm, bucket, .25f);
+
+            Zx200JointPose waypoint = AutonomousExcavationController.CreateSingleAxisWaypoint(
+                actual, axis, target, 1.25f);
+
+            Assert.That(waypoint.swing, Is.EqualTo(axis == AutonomousMotionAxis.Swing ? target : swing));
+            Assert.That(waypoint.boom, Is.EqualTo(axis == AutonomousMotionAxis.Boom ? target : boom));
+            Assert.That(waypoint.arm, Is.EqualTo(axis == AutonomousMotionAxis.Arm ? target : arm));
+            Assert.That(waypoint.bucket, Is.EqualTo(axis == AutonomousMotionAxis.Bucket ? target : bucket));
+            Assert.That(waypoint.duration, Is.EqualTo(1.25f));
+        }
+
+        [Test]
+        public void CreateSingleAxisWaypoint_RejectsNoAxisMotion()
+        {
+            Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+                AutonomousExcavationController.CreateSingleAxisWaypoint(
+                    new Zx200JointPose(0f, 0f, 0f, 0f, 1f),
+                    AutonomousMotionAxis.None,
+                    0f,
+                    1f));
+        }
+
+        [Test]
+        public void CreatePreSwingApproachPose_PreservesLiftedBoomInsteadOfConfiguredDumpBoom()
+        {
+            var lifted = new Zx200JointPose(-1f, -27.6f, 98.8f, 104.4f, 1f);
+            var configuredDump = new Zx200JointPose(60f, -40f, 50f, -25f, 1.2f);
+
+            Zx200JointPose approach = AutonomousExcavationController.CreatePreSwingApproachPose(
+                lifted, configuredDump, 108.6f);
+
+            Assert.That(approach.swing, Is.EqualTo(lifted.swing));
+            Assert.That(approach.boom, Is.EqualTo(lifted.boom),
+                "The approach must not lower the boom to a dump-only configured angle.");
+            Assert.That(approach.arm, Is.EqualTo(configuredDump.arm));
+            Assert.That(approach.bucket, Is.EqualTo(108.6f));
+            Assert.That(approach.duration, Is.EqualTo(configuredDump.duration));
+        }
+
+        [TestCase(1f, -1f)]
+        [TestCase(-1f, 1f)]
+        public void HeightCorrectionSign_ChoosesBoomRotationThatRaisesTip(float leverZ, float expectedSign)
+        {
+            float sign = AutonomousExcavationController.GetHeightImprovingRotationSign(
+                Vector3.right,
+                new Vector3(0f, 0f, leverZ));
+
+            Assert.That(sign, Is.EqualTo(expectedSign));
+        }
+
+        [Test]
+        public void HeightCorrectionSign_ReturnsZeroWhenBoomCannotChangeTipHeight()
+        {
+            float sign = AutonomousExcavationController.GetHeightImprovingRotationSign(
+                Vector3.up,
+                Vector3.right);
+
+            Assert.That(sign, Is.Zero);
+        }
     }
 }

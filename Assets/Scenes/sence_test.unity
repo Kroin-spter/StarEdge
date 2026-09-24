@@ -159,8 +159,16 @@ PrefabInstance:
       value: -29
       objectReference: {fileID: 0}
     - target: {fileID: 1605801095713466271, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+      propertyPath: curlPose.bucket
+      value: 105
+      objectReference: {fileID: 0}
+    - target: {fileID: 1605801095713466271, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: dumpPose.arm
-      value: 78
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 1605801095713466271, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+      propertyPath: dumpPose.boom
+      value: -40
       objectReference: {fileID: 0}
     - target: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
@@ -340,7 +348,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: fixedBase
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: swingSpeed
@@ -477,7 +485,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 337.01
+      value: 335.70
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y
@@ -485,11 +493,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 402.27
+      value: 400.38
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 1
+      value: 0.5224986
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.x
@@ -497,7 +505,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.y
-      value: -0
+      value: 0.8526402
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.z
@@ -509,7 +517,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
+      value: 117
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
@@ -1020,7 +1028,16 @@ MonoBehaviour:
   machine: {fileID: 10072338}
   truck: {fileID: 91113228}
   mapName: osgb_small_005_004
-  moundHeight: 0.9
+  replacementAreaSize: {x: 28, y: 28}
+  pitDepth: 1.8
+  benchRiseStartLocalZ: 8.4
+  benchRiseEndLocalZ: 9.4
+  soilStripHalfWidth: 6.5
+  soilStripCenterLocalZ: 6.7
+  soilStripHalfDepth: 0.9
+  soilStripHeight: 0.65
+  truckParkingOffsetLocal: {x: 8.5, y: 0, z: -1.2}
+  truckParkingYawDegrees: 90
   loadingTimeout: 30
 --- !u!114 &471781302
 MonoBehaviour:
@@ -1041,12 +1058,14 @@ MonoBehaviour:
   siteReadinessSource: {fileID: 471781301}
   targetVolumeM3: 1
   minimumLoadVolumeM3: 0.005
+  targetBucketFillFraction: 0.65
   minimumTransferVolumeM3: 0.005
   siteReadyTimeoutSeconds: 40
   stageTimeoutSeconds: 12
   cutTimeoutSeconds: 8
   dumpTimeoutSeconds: 12
   soilFloorMargin: 0.04
+  cutEntryDepthMeters: 0.12
   dumpClearanceMarginMeters: 0.25
 --- !u!114 &2098765431
 MonoBehaviour:

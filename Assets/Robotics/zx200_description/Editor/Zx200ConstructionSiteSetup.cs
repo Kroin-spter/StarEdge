@@ -14,11 +14,14 @@ namespace Zx200.Editor
         private const string ScenePath = "Assets/Scenes/sence_test.unity";
         private const string Directory = "Assets/ConstructionSite";
         private const float TruckSoilClearanceMeters = 2f;
+        private const float TruckParkingYawDegrees = 90f;
+        public static readonly Vector3 SoilStripCenterLocal = new Vector3(0f, 0f, 6.7f);
+        public static readonly Vector3 SoilStripSizeLocal = new Vector3(13f, .8f, 1.8f);
 
-        /// <summary>车辆相对于挖掘机底盘的右前方停车偏移，单位为米。</summary>
-        public static readonly Vector3 TruckParkingOffsetLocal = new Vector3(7f, 0f, 4f);
+        /// <summary>车辆相对于挖掘机底盘停在低位右侧偏后方，单位为米。</summary>
+        public static readonly Vector3 TruckParkingOffsetLocal = new Vector3(8.5f, 0f, -1.2f);
 
-        /// <summary>Create a parked truck with a 3×4 metre receiving bed; returns its root without saving assets.</summary>
+        /// <summary>Create a parked truck with a 3.6×4.5 metre receiving bed; returns its root without saving assets.</summary>
         /// <param name="groundPosition">World position beneath the bed centre at ground level.</param>
         /// <param name="bodyMaterial">Cab and bed material, or null for Unity's default.</param>
         /// <param name="darkMaterial">Chassis and tyre material, or null for default.</param>
@@ -29,11 +32,11 @@ namespace Zx200.Editor
             var truck = new GameObject("Parked dump truck");
             truck.transform.position = groundPosition;
             Part(truck.transform, "Chassis", new Vector3(0,.65f,.65f), new Vector3(2.6f,.3f,6.3f), darkMaterial);
-            Part(truck.transform, "Bed floor", new Vector3(0,.9f,0), new Vector3(3.24f,.2f,4.24f), bodyMaterial);
-            Part(truck.transform, "Left bed wall", new Vector3(-1.56f,1.45f,0), new Vector3(.12f,.9f,4.24f), bodyMaterial);
-            Part(truck.transform, "Right bed wall", new Vector3(1.56f,1.45f,0), new Vector3(.12f,.9f,4.24f), bodyMaterial);
-            Part(truck.transform, "Front bed wall", new Vector3(0,1.45f,2.06f), new Vector3(3.12f,.9f,.12f), bodyMaterial);
-            Part(truck.transform, "Tailgate", new Vector3(0,1.45f,-2.06f), new Vector3(3.12f,.9f,.12f), bodyMaterial);
+            Part(truck.transform, "Bed floor", new Vector3(0,.9148f,0), new Vector3(4.24f,.2f,4.84f), bodyMaterial);
+            Part(truck.transform, "Left bed wall", new Vector3(-2.06f,1.4668f,0), new Vector3(.12f,.9f,4.84f), bodyMaterial);
+            Part(truck.transform, "Right bed wall", new Vector3(2.06f,1.4668f,0), new Vector3(.12f,.9f,4.84f), bodyMaterial);
+            Part(truck.transform, "Front bed wall", new Vector3(0,1.4668f,2.36f), new Vector3(4.12f,.9f,.12f), bodyMaterial);
+            Part(truck.transform, "Tailgate", new Vector3(0,1.4668f,-2.36f), new Vector3(4.12f,.9f,.12f), bodyMaterial);
             Part(truck.transform, "Cab", new Vector3(0,1.45f,3.18f), new Vector3(2.6f,1.8f,1.85f), bodyMaterial);
             Part(truck.transform, "Windshield", new Vector3(0,1.9f,4.12f), new Vector3(2.3f,.65f,.04f), glassMaterial);
             foreach (int side in new[] { -1, 1 })
@@ -53,8 +56,8 @@ namespace Zx200.Editor
             Part(truck.transform, "Front bumper", new Vector3(0,.6f,4.18f), new Vector3(2.8f,.2f,.2f), darkMaterial);
             var receiver = new GameObject("Truck bed soil receiver").AddComponent<SoilReceivingZone>();
             receiver.transform.SetParent(truck.transform, false);
-            receiver.transform.localPosition = Vector3.up;
-            receiver.size = new Vector2(3,4);
+            receiver.transform.localPosition = new Vector3(0, 1.0168f, 0);
+            receiver.size = new Vector2(3.6f,4.5f);
             receiver.maximumFillHeight = .8f;
             receiver.capacityM3 = 9.6f;
             return truck;
@@ -78,9 +81,13 @@ namespace Zx200.Editor
             var robot = dig.gameObject;
             robot.transform.position = new Vector3(330.01f,7.8f,398.27f);
             var keyboard = robot.GetComponent<Zx200KeyboardController>();
-            keyboard.fixedBase = false;
+            // This scene demonstrates stationary bench digging and upper-structure swing;
+            // keep the general ZX200 prefab's mobile-track mode unchanged.
+            keyboard.fixedBase = true;
             keyboard.boomSpeed = 10; keyboard.armSpeed = 10; keyboard.bucketSpeed = 15; keyboard.swingSpeed = 15;
             dig.workReadyPose = new Zx200JointPose(0,-26,68,25,1);
+            dig.dumpPose.boom = -40;
+            dig.dumpPose.arm = 50;
             Zx200PrefabSetup.ApplyEditorWorkReadyPose(dig);
             foreach (var terrain in scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Terrain>(true)))
                 terrain.gameObject.SetActive(false);
@@ -102,8 +109,10 @@ namespace Zx200.Editor
             UnityEngine.Object.DestroyImmediate(truck);
             truck = (GameObject)PrefabUtility.InstantiatePrefab(prefab,scene);
             truck.transform.position = robot.transform.TransformPoint(TruckParkingOffsetLocal);
+            truck.transform.rotation = robot.transform.rotation * Quaternion.Euler(0f, TruckParkingYawDegrees, 0f);
             truck.transform.SetParent(site.transform,true);
-            ValidateTruckParkingPosition(soil.gameObject, truck);
+            ValidateTruckParkingPosition(robot.transform,
+                new Bounds(SoilStripCenterLocal, SoilStripSizeLocal), truck);
             var receiver = truck.GetComponentInChildren<SoilReceivingZone>();
             receiver.GetComponent<Renderer>().sharedMaterial = cutter.fillVisual.GetComponent<Renderer>().sharedMaterial;
             var unloader = cutter.gameObject.AddComponent<BucketSoilUnloader>();
@@ -125,23 +134,48 @@ namespace Zx200.Editor
             Debug.Log("Construction site saved in " + ScenePath + "; truck bed at " + receiver.transform.position);
         }
 
-        private static void ValidateTruckParkingPosition(GameObject soil, GameObject truck)
+        private static void ValidateTruckParkingPosition(Transform machineFrame, Bounds soilStripBounds, GameObject truck)
         {
             Physics.SyncTransforms();
-            Bounds soilBounds = GetCombinedColliderBounds(soil);
-            Bounds truckBounds = GetCombinedColliderBounds(truck);
-            if (!ExcavationSiteLayoutSafety.HasRequiredClearance(soilBounds, truckBounds, TruckSoilClearanceMeters))
+            Bounds truckBounds = GetCombinedColliderBoundsInFrame(truck, machineFrame);
+            if (!ExcavationSiteLayoutSafety.HasRequiredClearance(soilStripBounds, truckBounds, TruckSoilClearanceMeters))
                 throw new InvalidOperationException("车辆停车位与土区净距不足，无法生成安全施工场。");
         }
 
-        private static Bounds GetCombinedColliderBounds(GameObject root)
+        private static Bounds GetCombinedColliderBoundsInFrame(GameObject root, Transform frame)
         {
             Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
             if (colliders.Length == 0)
                 throw new InvalidOperationException("施工场对象缺少实体碰撞体：" + root.name);
-
-            Bounds combined = colliders[0].bounds;
-            for (int i = 1; i < colliders.Length; i++) combined.Encapsulate(colliders[i].bounds);
+            bool hasBounds = false;
+            Bounds combined = default;
+            foreach (Collider collider in colliders)
+            {
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 point;
+                    if (collider is BoxCollider box)
+                    {
+                        Vector3 half = box.size * .5f;
+                        Vector3 localPoint = box.center + new Vector3(
+                            (corner & 1) == 0 ? -half.x : half.x,
+                            (corner & 2) == 0 ? -half.y : half.y,
+                            (corner & 4) == 0 ? -half.z : half.z);
+                        point = box.transform.TransformPoint(localPoint);
+                    }
+                    else
+                    {
+                        Bounds world = collider.bounds;
+                        point = new Vector3(
+                            (corner & 1) == 0 ? world.min.x : world.max.x,
+                            (corner & 2) == 0 ? world.min.y : world.max.y,
+                            (corner & 4) == 0 ? world.min.z : world.max.z);
+                    }
+                    Vector3 local = frame.InverseTransformPoint(point);
+                    if (!hasBounds) { combined = new Bounds(local, Vector3.zero); hasBounds = true; }
+                    else combined.Encapsulate(local);
+                }
+            }
             return combined;
         }
 
@@ -157,9 +191,6 @@ namespace Zx200.Editor
                     if (string.IsNullOrEmpty(url) || !url.Contains("osgb_small_005_004")) { tileset.gameObject.SetActive(false); continue; }
                     string local = Path.GetFullPath(Path.Combine(Application.dataPath,"../../tilesets/osgb_small_005_004/tileset.json"));
                     if (File.Exists(local)) tilesetType.GetProperty("url").SetValue(tileset,new Uri(local).AbsoluteUri);
-                    foreach (Component component in tileset.GetComponents<Component>())
-                        if (component != null && component.GetType().Name == "ConstructionSiteMapClip")
-                            UnityEngine.Object.DestroyImmediate(component);
                     var components = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToArray();
                     foreach (var item in components)
                         if (item.name == "Solid work pad" || item.name == "Soil bottom plate (always solid)") item.gameObject.SetActive(false);
@@ -181,6 +212,16 @@ namespace Zx200.Editor
                     moundType.GetField("soil").SetValue(mound, soil);
                     moundType.GetField("machine").SetValue(mound, machine);
                     moundType.GetField("truck").SetValue(mound, truck);
+                    moundType.GetField("replacementAreaSize").SetValue(mound, new Vector2(28f, 28f));
+                    moundType.GetField("pitDepth").SetValue(mound, 1.8f);
+                    moundType.GetField("benchRiseStartLocalZ").SetValue(mound, 8.4f);
+                    moundType.GetField("benchRiseEndLocalZ").SetValue(mound, 9.4f);
+                    moundType.GetField("soilStripHalfWidth").SetValue(mound, 6.5f);
+                    moundType.GetField("soilStripCenterLocalZ").SetValue(mound, 6.7f);
+                    moundType.GetField("soilStripHalfDepth").SetValue(mound, .9f);
+                    moundType.GetField("soilStripHeight").SetValue(mound, .65f);
+                    moundType.GetField("truckParkingOffsetLocal").SetValue(mound, TruckParkingOffsetLocal);
+                    moundType.GetField("truckParkingYawDegrees").SetValue(mound, TruckParkingYawDegrees);
                 }
         }
 

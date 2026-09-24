@@ -29,11 +29,12 @@ namespace ExcavatorControls.Tests
                 }
                 var receiver = truck.GetComponentInChildren<SoilReceivingZone>();
                 Assert.That(receiver.transform.lossyScale, Is.EqualTo(Vector3.one));
-                Assert.That(receiver.size.x, Is.InRange(1.9f, 2.2f));
-                Assert.That(receiver.size.y, Is.InRange(4.5f, 5f));
+                Assert.That(receiver.size.x, Is.InRange(3.5f, 3.7f));
+                Assert.That(receiver.size.y, Is.InRange(4.4f, 4.6f));
                 Physics.SyncTransforms();
                 var floor = truck.transform.Find("Bed floor").GetComponent<BoxCollider>();
-                Assert.That(floor.bounds.max.y, Is.EqualTo(receiver.transform.position.y - .002f).Within(.0005f));
+                Assert.That(floor.bounds.max.y, Is.EqualTo(receiver.transform.position.y - .002f).Within(.0005f),
+                    "The virtual receiving surface must align with the visible bed while staying clear of the floor.");
                 foreach (string name in new[] { "Left bed wall", "Right bed wall", "Front bed wall", "Tailgate" })
                     Assert.That(truck.transform.Find(name).GetComponent<BoxCollider>().isTrigger, Is.False);
                 Assert.That(receiver.TryGetLanding(receiver.transform.position + Vector3.up * 2, 3, out _), Is.True);

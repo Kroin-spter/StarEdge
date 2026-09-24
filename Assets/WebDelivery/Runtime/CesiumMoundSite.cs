@@ -4,7 +4,7 @@ using System.Linq;
 using CesiumForUnity;
 using UnityEngine;
 
-/// <summary>Place a local diggable mound above intact streamed map ground, without a work pad or map clipping.</summary>
+/// <summary>Replace one local Cesium footprint with a cuttable lower pit, raised bench and narrow soil strip.</summary>
 [DefaultExecutionOrder(-13000)]
 public sealed class CesiumMoundSite : MonoBehaviour
 {
@@ -14,10 +14,32 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public Transform truck;
     [Tooltip("Cesium local tileset directory name. The directory is resolved through CESIUM_TILESET_DIR or the project sibling tilesets folder.")]
     public string mapName = "osgb_small_005_004";
-    [Min(.1f)] public float moundHeight = .9f;
+    [Header("Pit and bench layout")]
+    public Vector2 replacementAreaSize = new Vector2(28f, 28f);
+    [Min(.1f)] public float pitDepth = 1.8f;
+    [Min(.1f)] public float benchRiseStartLocalZ = 8.4f;
+    [Min(.1f)] public float benchRiseEndLocalZ = 9.4f;
+    [Min(.1f)] public float soilStripHalfWidth = 6.5f;
+    [Min(.1f)] public float soilStripCenterLocalZ = 6.7f;
+    [Min(.1f)] public float soilStripHalfDepth = .9f;
+    [Min(.05f)] public float soilStripHeight = .65f;
+    [Header("Truck parking on the lower floor")]
+    public Vector3 truckParkingOffsetLocal = new Vector3(8.5f, 0f, -1.2f);
+    public float truckParkingYawDegrees = 90f;
     [Min(1f)] public float loadingTimeout = 30f;
     public bool IsReady { get; private set; }
+    public bool MapSurfacePrepared { get; private set; }
     public string Status { get; private set; } = "Waiting for map ground";
+    /// <summary>World-space footprint where the authored terrain replaces Cesium rendering and collision.</summary>
+    public Bounds WorkAreaBounds
+    {
+        get
+        {
+            if (soil == null || soil.Terrain == null || soil.Terrain.terrainData == null) return default;
+            Vector3 size = soil.Terrain.terrainData.size;
+            return new Bounds(soil.transform.position + size * .5f, size);
+        }
+    }
     private Zx200KeyboardController keyboard;
     private ArticulationBody root;
     private bool originalFixed, originalKeyboard, originalMachine;
@@ -34,6 +56,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
             return;
         }
         ResolveTilesetUrl();
+        Vector3 parking = machine.transform.TransformPoint(truckParkingOffsetLocal);
+        truck.position = new Vector3(parking.x, truck.position.y, parking.z);
+        truck.rotation = machine.transform.rotation * Quaternion.Euler(0f, truckParkingYawDegrees, 0f);
         keyboard = machine.GetComponent<Zx200KeyboardController>();
         keyboard.ResolveArticulationRoot(); root = keyboard.articulationRoot;
         originalFixed = keyboard.fixedBase; originalKeyboard = keyboard.enabled;
@@ -72,11 +97,21 @@ public sealed class CesiumMoundSite : MonoBehaviour
                 previousGround = support;
                 if (stable >= 3 && PrepareMound(map))
                 {
-                    // Settle on actual map collisions, preserving X/Z and articulation pose.
+                    // Replace the source map over one matching footprint before moving either vehicle onto the pit floor.
+                    MapSurfacePrepared = true;
+                    ConstructionSiteMapClip clip = tileset.GetComponent<ConstructionSiteMapClip>();
+                    if (clip == null) clip = tileset.gameObject.AddComponent<ConstructionSiteMapClip>();
+                    clip.workArea = WorkAreaBounds;
+                    clip.RefreshLoadedTiles();
+                    Physics.SyncTransforms();
+
+                    // Settle on the authored lower bench while retaining the excavator's X/Z and articulation pose.
                     float bottom = TrackBounds().min.y;
-                    root.TeleportRoot(root.transform.position + Vector3.up * (support + .025f - bottom), root.transform.rotation);
+                    float machineDrop = PitDepression(machine.transform.InverseTransformPoint(root.transform.position));
+                    root.TeleportRoot(root.transform.position + Vector3.up * (support - machineDrop + .025f - bottom), root.transform.rotation);
                     root.linearVelocity = Vector3.zero; root.angularVelocity = Vector3.zero;
-                    truck.position = new Vector3(truck.position.x, truckGround, truck.position.z);
+                    float truckDrop = PitDepression(machine.transform.InverseTransformPoint(truck.position));
+                    truck.position = new Vector3(truck.position.x, truckGround - truckDrop, truck.position.z);
                     Physics.SyncTransforms();
                     soil.GetComponent<Terrain>().enabled = true; soil.SoilCollider.enabled = true;
                     cutter.enabled = originalCutter;
@@ -84,8 +119,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     keyboard.fixedBase = originalFixed; root.immovable = originalFixed; root.useGravity = !originalFixed;
                     machine.enabled = originalMachine;
                     keyboard.enabled = originalKeyboard;
-                    IsReady = true; Status = "Mound ready on original map ground";
-                    Debug.Log($"MOUND READY ground={support:F3}, truck={truckGround:F3}, soil={soil.transform.position}", this);
+                    IsReady = true; Status = "Lower pit and raised work bench ready";
+                    Debug.Log($"PIT BENCH READY map={support:F3}, pit={support - machineDrop:F3}, " +
+                        $"truck={truckGround - truckDrop:F3}, strip={soilStripHeight:F2}m high x {soilStripHalfWidth * 2f:F1}m wide", this);
                     yield break;
                 }
             }
@@ -128,42 +164,69 @@ public sealed class CesiumMoundSite : MonoBehaviour
         soil.Initialize(soil.GetComponent<Terrain>());
         TerrainData data = soil.Terrain.terrainData;
         int n = data.heightmapResolution;
-        var ground = new float[n, n];
-        Vector3 origin = soil.transform.position, size = data.size;
+        Vector3 size = new Vector3(replacementAreaSize.x, 12f, replacementAreaSize.y);
+        Vector3 machinePosition = machine.transform.position;
+        Vector3 origin = new Vector3(machinePosition.x - size.x * .5f, machinePosition.y, machinePosition.z - size.z * .5f);
+        soil.transform.position = origin;
+        data.size = size;
+        var sourceGround = new float[n, n];
+        var baseGround = new float[n, n];
+        var strip = new float[n, n];
         float minimum = float.PositiveInfinity, maximum = float.NegativeInfinity;
         for (int z = 0; z < n; z++) for (int x = 0; x < n; x++)
         {
             Vector3 point = origin + new Vector3(size.x*x/(n-1f), 0, size.z*z/(n-1f));
             if (!Sample(map, point, out float y)) return false;
-            ground[z,x] = y + .015f;
-            minimum = Mathf.Min(minimum, ground[z,x]); maximum = Mathf.Max(maximum, ground[z,x]);
+            Vector3 local = machine.transform.InverseTransformPoint(point);
+            sourceGround[z,x] = y + .015f;
+            baseGround[z,x] = sourceGround[z,x] - PitDepression(local);
+            strip[z,x] = SoilStripThickness(local);
+            minimum = Mathf.Min(minimum, baseGround[z,x]);
+            maximum = Mathf.Max(maximum, baseGround[z,x] + strip[z,x]);
         }
-        origin.y = minimum - .1f;
+        origin.y = minimum - .35f;
         soil.transform.position = origin;
-        size.y = maximum - origin.y + moundHeight + 2f;
+        size.y = maximum - origin.y + .5f;
         data.size = size;
-        soil.maximumCutDepth = moundHeight + .1f;
+        soil.maximumCutDepth = soilStripHeight + .15f;
         var heights = new float[n,n];
+        var ground = new float[n,n];
         for (int z = 0; z < n; z++) for (int x = 0; x < n; x++)
         {
-            ground[z,x] = (ground[z,x] - origin.y) / size.y;
-            heights[z,x] = ground[z,x] + Thickness(x/(n-1f), z/(n-1f)) / size.y;
+            ground[z,x] = (baseGround[z,x] - origin.y) / size.y;
+            heights[z,x] = (baseGround[z,x] + strip[z,x] - origin.y) / size.y;
         }
         soil.PrepareMoundSurface(heights, ground);
         int h = data.holesResolution;
-        var visible = new bool[h,h];
-        for (int z = 0; z < h; z++) for (int x = 0; x < h; x++)
-            visible[z,x] = Thickness((x+.5f)/h, (z+.5f)/h) > .015f;
-        data.SetHoles(0,0,visible);
+        var solidCells = new bool[h,h];
+        for (int z = 0; z < h; z++) for (int x = 0; x < h; x++) solidCells[z,x] = true;
+        data.SetHoles(0, 0, solidCells);
         return true;
     }
 
-    private float Thickness(float u, float v)
+    private float PitDepression(Vector3 machineLocal)
     {
-        float x = (u-.5f)/.43f, z = (v-.5f)/.46f;
-        float angle = Mathf.Atan2(z,x);
-        float radius = Mathf.Sqrt(x*x+z*z) / (1f + .045f*Mathf.Sin(angle*3) + .025f*Mathf.Cos(angle*5));
-        return moundHeight * Mathf.Pow(Mathf.Max(0, 1-radius*radius), 1.35f);
+        float halfX = replacementAreaSize.x * .5f;
+        float halfZ = replacementAreaSize.y * .5f;
+        float sideMask = Smooth01((halfX - Mathf.Abs(machineLocal.x)) / 2f);
+        float rearMask = Smooth01((machineLocal.z + halfZ) / 2f);
+        float bench = Smooth01((machineLocal.z - benchRiseStartLocalZ) /
+            Mathf.Max(.01f, benchRiseEndLocalZ - benchRiseStartLocalZ));
+        return pitDepth * sideMask * rearMask * (1f - bench);
+    }
+
+    private float SoilStripThickness(Vector3 machineLocal)
+    {
+        float side = 1f - Smooth01((Mathf.Abs(machineLocal.x) - (soilStripHalfWidth - .8f)) / .8f);
+        float distance = Mathf.Abs(machineLocal.z - soilStripCenterLocalZ);
+        float end = 1f - Smooth01((distance - (soilStripHalfDepth - .25f)) / .25f);
+        return soilStripHeight * side * end;
+    }
+
+    private static float Smooth01(float value)
+    {
+        float t = Mathf.Clamp01(value);
+        return t * t * (3f - 2f * t);
     }
 
     private static bool Sample(MeshCollider[] map, Vector3 point, out float y)
