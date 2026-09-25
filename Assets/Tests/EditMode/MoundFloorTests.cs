@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -206,6 +207,80 @@ namespace ExcavatorControls.Tests
             mapGround[1, 1] = .9f;
             Assert.Throws<ArgumentException>(() => soil.PrepareMoundSurface(mound, mapGround));
             Assert.That(Data.GetHeights(0, 0, 33, 33), Is.EqualTo(before));
+        }
+
+        /// <summary>A normal-thickness soil layer must remain equally thick on flat and sloped map faces.</summary>
+        [TestCase(1f, 0f, 0f, .5f)]
+        [TestCase(.7071068f, 0f, .7071068f, .7071068f)]
+        public void NormalThicknessUsesCorrectVerticalHeightOffset(
+            float normalY, float normalX, float normalZ, float expectedVerticalOffset)
+        {
+            MethodInfo method = typeof(CesiumMoundSite).GetMethod(
+                "GetVerticalOffsetForNormalThickness", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(method, Is.Not.Null,
+                "A slope-normal layer needs a shared height-field conversion routine.");
+
+            float verticalOffset = (float)method.Invoke(null, new object[] {
+                .5f, new Vector3(normalX, normalY, normalZ), .2f });
+
+            Assert.That(verticalOffset, Is.EqualTo(expectedVerticalOffset).Within(.0001f));
+            Assert.That(new Vector3(normalX, normalY, normalZ).normalized.y * verticalOffset,
+                Is.EqualTo(.5f).Within(.0001f));
+        }
+
+        /// <summary>Near-vertical faces must be rejected rather than creating an unbounded Terrain ridge.</summary>
+        [TestCase(0f)]
+        [TestCase(.1f)]
+        public void NormalThicknessRejectsFacesOutsideHeightFieldLimit(float normalY)
+        {
+            MethodInfo method = typeof(CesiumMoundSite).GetMethod(
+                "GetVerticalOffsetForNormalThickness", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(method, Is.Not.Null,
+                "A slope-normal layer needs a shared height-field conversion routine.");
+
+            TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() =>
+                method.Invoke(null, new object[] { .5f, new Vector3(0f, normalY, 1f), .2f }));
+
+            Assert.That(exception.InnerException, Is.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        /// <summary>Support-pad blending must never lower the Cesium height used as the cut floor.</summary>
+        [TestCase(2f, 1f, .5f, 2f)]
+        [TestCase(1f, 2f, .5f, 1.5f)]
+        [TestCase(1f, 2f, 1f, 2f)]
+        public void SupportPadBlendNeverLowersSampledCesiumHeight(
+            float sampledHeight, float supportTarget, float blend, float expectedHeight)
+        {
+            MethodInfo method = typeof(CesiumMoundSite).GetMethod(
+                "BlendSupportHeightWithoutLowering", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(method, Is.Not.Null,
+                "Support grading needs a one-way blend that preserves the sampled map as a minimum floor.");
+
+            float result = (float)method.Invoke(null,
+                new object[] { sampledHeight, supportTarget, blend });
+
+            Assert.That(result, Is.EqualTo(expectedHeight).Within(.0001f));
+            Assert.That(result, Is.GreaterThanOrEqualTo(sampledHeight));
+        }
+
+        /// <summary>Incomplete candidate coverage must wait for Cesium tiles, while complete no-face data may stop.</summary>
+        [TestCase(0, 0, 20, 100, true)]
+        [TestCase(2, 0, 80, 100, true)]
+        [TestCase(0, 0, 100, 100, false)]
+        [TestCase(2, 0, 100, 100, false)]
+        [TestCase(2, 3, 80, 100, false)]
+        public void WorkFaceSearchRetriesOnlyWhenMoreMapCoverageCanHelp(
+            int coveredPositions, int validFaces, int validSamples, int totalSamples, bool expectedRetry)
+        {
+            MethodInfo method = typeof(CesiumMoundSite).GetMethod(
+                "ShouldRetryWorkFaceSearch", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(method, Is.Not.Null,
+                "Work-face selection needs to distinguish missing Cesium coverage from an actually unusable slope.");
+
+            bool shouldRetry = (bool)method.Invoke(null,
+                new object[] { coveredPositions, validFaces, validSamples, totalSamples });
+
+            Assert.That(shouldRetry, Is.EqualTo(expectedRetry));
         }
     }
 }

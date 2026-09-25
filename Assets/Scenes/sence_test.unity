@@ -1029,13 +1029,16 @@ MonoBehaviour:
   truck: {fileID: 91113228}
   mapName: osgb_small_005_004
   replacementAreaSize: {x: 28, y: 28}
-  pitDepth: 1.8
-  benchRiseStartLocalZ: 8.4
-  benchRiseEndLocalZ: 9.4
-  soilStripHalfWidth: 6.5
+  useExplicitWorkFaceAnchor: 0
+  workFaceAnchor: {x: 0, y: 0, z: 0}
+  workFaceSearchRadius: 60
+  workFaceSearchSpacing: 2
+  minimumWorkFaceRise: 1.1
+  minimumSurfaceNormalY: 0.42
+  soilStripHalfWidth: 4.8
   soilStripCenterLocalZ: 6.7
   soilStripHalfDepth: 0.9
-  soilStripHeight: 0.65
+  soilStripHeight: 0.55
   truckParkingOffsetLocal: {x: 8.5, y: 0, z: -1.2}
   truckParkingYawDegrees: 90
   loadingTimeout: 30

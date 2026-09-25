@@ -13,7 +13,7 @@ namespace ExcavatorControls.Tests
         /// <summary>Verify the excavator occupies a lower pit, faces a raised work strip, and uses one clipped ground.</summary>
         /// <returns>Scene loading, tile streaming and cleanup.</returns>
         [UnityTest]
-        public IEnumerator OpenPitWorksiteReplacesOneCesiumFootprintWithSteppedSoil()
+        public IEnumerator SelectsStableSlopeWorkFaceWithCuttableBandAndClipsOneCesiumFootprint()
         {
             const string path = "Assets/Scenes/sence_test.unity";
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
@@ -24,6 +24,10 @@ namespace ExcavatorControls.Tests
                 yield return ManualSoilTestMotion.WaitForSiteReady(scene);
                 var all = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<MonoBehaviour>(true)).ToArray();
                 var soil = all.OfType<DeformableSoilTerrain>().Single();
+                var site = all.Single(c => c != null && c.GetType().Name == "CesiumMoundSite");
+                float stripCenterLocalZ = (float)site.GetType().GetField("soilStripCenterLocalZ").GetValue(site);
+                float stripHalfWidth = (float)site.GetType().GetField("soilStripHalfWidth").GetValue(site);
+                float stripHeight = (float)site.GetType().GetField("soilStripHeight").GetValue(site);
                 var dig = all.OfType<Zx200DigController>().Single();
                 var keyboard = dig.GetComponent<Zx200KeyboardController>();
                 Transform trackBase = keyboard.articulationRoot.transform;
@@ -32,31 +36,72 @@ namespace ExcavatorControls.Tests
                 Assert.That(clip, Is.Not.Null, "The site must install a bounded Cesium render/collision clip.");
                 Bounds workArea = (Bounds)clip.GetType().GetField("workArea").GetValue(clip);
                 Assert.That(soil.Terrain.terrainData.size.x, Is.GreaterThanOrEqualTo(20f));
-                Assert.That(workArea.Contains(dig.transform.position), Is.True,
-                    "The low pit floor must be inside the one-for-one Cesium replacement area.");
-                Assert.That(workArea.Contains(truck.position), Is.True,
+                Assert.That(trackBase.position.x, Is.InRange(workArea.min.x, workArea.max.x),
+                    "The excavator must stand inside the one-for-one Cesium replacement area.");
+                Assert.That(trackBase.position.z, Is.InRange(workArea.min.z, workArea.max.z));
+                Assert.That(truck.position.x, Is.InRange(workArea.min.x, workArea.max.x),
                     "The truck must stand on the same replaced lower work floor.");
+                Assert.That(truck.position.z, Is.InRange(workArea.min.z, workArea.max.z));
 
-                float lowerY = soil.Terrain.SampleHeight(trackBase.position) + soil.transform.position.y;
-                Vector3 facePoint = trackBase.position + trackBase.forward * 10f;
-                float upperY = soil.Terrain.SampleHeight(facePoint) + soil.transform.position.y;
-                Assert.That(upperY - lowerY, Is.InRange(1.5f, 2.5f),
-                    "The forward high bench must be visibly above the excavator's pit floor.");
-                Vector3 stripCenter = trackBase.position + trackBase.forward * 6.7f;
-                float stripCenterY = soil.Terrain.SampleHeight(stripCenter) + soil.transform.position.y;
-                float stripLeftY = soil.Terrain.SampleHeight(stripCenter - trackBase.right * 4f) + soil.transform.position.y;
-                float stripRightY = soil.Terrain.SampleHeight(stripCenter + trackBase.right * 4f) + soil.transform.position.y;
-                float besideStripY = soil.Terrain.SampleHeight(stripCenter + trackBase.right * 6.5f) + soil.transform.position.y;
-                Assert.That(stripCenterY - besideStripY, Is.GreaterThan(.2f),
-                    "The cuttable soil must form a distinct narrow band along the bench, not a broad mound.");
-                Assert.That(stripCenterY - besideStripY, Is.InRange(.55f, .75f),
-                    "The protruding strip must remain a modest but distinct cuttable ridge above the pit floor.");
-                Assert.That(stripLeftY - besideStripY, Is.GreaterThan(.1f));
-                Assert.That(stripRightY - besideStripY, Is.GreaterThan(.1f));
-                float truckGroundY = soil.Terrain.SampleHeight(truck.position) + soil.transform.position.y;
-                Assert.That(truckGroundY, Is.EqualTo(lowerY).Within(.4f));
+                float lowerY = float.NegativeInfinity;
+                foreach (float x in new[] { -1.5f, 1.5f })
+                foreach (float z in new[] { -2.2f, 2.2f })
+                    lowerY = Mathf.Max(lowerY, soil.GetFloorWorldY(
+                        trackBase.position + trackBase.right * x + trackBase.forward * z));
+                Vector3 faceFoot = trackBase.position + trackBase.forward * 4.2f;
+                Vector3 faceCrest = trackBase.position + trackBase.forward * 10.5f;
+                float faceRise = soil.GetFloorWorldY(faceCrest) - soil.GetFloorWorldY(faceFoot);
+                Assert.That(faceRise, Is.InRange(.6f, 5f),
+                    "The machine must face a continuous, cuttable natural slope rather than a synthetic flat mound.");
 
-                Assert.That(all.Any(c => c != null && c.GetType().Name == "ConstructionSiteSurfaceAppearance"), Is.False);
+                Vector3 stripCenter = trackBase.position + trackBase.forward * stripCenterLocalZ;
+                float baseCenterY = soil.GetFloorWorldY(stripCenter);
+                float topCenterY = soil.Terrain.SampleHeight(stripCenter) + soil.transform.position.y;
+                float slopeX = (soil.GetFloorWorldY(stripCenter + trackBase.right) -
+                    soil.GetFloorWorldY(stripCenter - trackBase.right)) * .5f;
+                float slopeZ = (soil.GetFloorWorldY(stripCenter + trackBase.forward) -
+                    soil.GetFloorWorldY(stripCenter - trackBase.forward)) * .5f;
+                float normalY = 1f / Mathf.Sqrt(1f + slopeX * slopeX + slopeZ * slopeZ);
+                float normalThickness = (topCenterY - baseCenterY) * normalY;
+                Assert.That(normalThickness, Is.InRange(stripHeight * .75f, stripHeight * 1.25f),
+                    "The soil band must follow the Cesium slope with approximately constant normal thickness.");
+                float besideBandY = soil.Terrain.SampleHeight(
+                    stripCenter + trackBase.right * (stripHalfWidth + .8f)) + soil.transform.position.y;
+                Assert.That(besideBandY - soil.GetFloorWorldY(
+                    stripCenter + trackBase.right * (stripHalfWidth + .8f)), Is.LessThan(.04f),
+                    "The soil mask must fade back to the untouched map outside its narrow width.");
+                float truckGroundY = float.NegativeInfinity;
+                float truckLowestSupportY = float.PositiveInfinity;
+                foreach (float x in new[] { -1.35f, 1.35f })
+                foreach (float z in new[] { -1.35f, 3.25f })
+                {
+                    float groundY = soil.GetFloorWorldY(truck.TransformPoint(new Vector3(x, 0, z)));
+                    truckGroundY = Mathf.Max(truckGroundY, groundY);
+                    truckLowestSupportY = Mathf.Min(truckLowestSupportY, groundY);
+                }
+                Assert.That(truckGroundY - truckLowestSupportY, Is.LessThan(.4f),
+                    "The truck's own four wheel/support points must share a stable parking surface.");
+                Collider[] truckColliders = truck.GetComponentsInChildren<Collider>()
+                    .Where(c => c.enabled && !c.isTrigger).ToArray();
+                Bounds truckBounds = truckColliders[0].bounds;
+                foreach (Collider collider in truckColliders) truckBounds.Encapsulate(collider.bounds);
+                Assert.That(truckBounds.min.y, Is.EqualTo(truckGroundY).Within(.25f),
+                    "The truck chassis must rest on the sampled replacement surface.");
+                Assert.That(Vector3.Distance(new Vector3(truck.position.x, 0, truck.position.z),
+                    new Vector3(stripCenter.x, 0, stripCenter.z)), Is.GreaterThan(7f),
+                    "The side-parked truck must remain clear of the active slope strip.");
+
+                var appearance = all.SingleOrDefault(c => c != null && c.GetType().Name == "ConstructionSiteSurfaceAppearance");
+                Assert.That(appearance, Is.Not.Null,
+                    "The soil replacement must try to project the loaded Cesium imagery before clipping the source map.");
+                if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                {
+                    bool textureApplied = (bool)appearance.GetType().GetProperty("MapTextureApplied").GetValue(appearance);
+                    Assert.That(textureApplied, Is.False,
+                        "Headless runs must keep the established material fallback without fabricating a map capture.");
+                    Assert.That(soil.Terrain.terrainData.terrainLayers.Length, Is.EqualTo(1),
+                        "The graphics-free fallback must leave the source TerrainLayer untouched.");
+                }
                 keyboard.enabled = false;
                 for (int i = 0; i < 250; i++) yield return new WaitForFixedUpdate();
                 var map = all.First(c => c != null && c.GetType().Name == "Cesium3DTileset" && c.gameObject.activeInHierarchy);

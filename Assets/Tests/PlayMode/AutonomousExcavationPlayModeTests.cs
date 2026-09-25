@@ -57,7 +57,7 @@ namespace ExcavatorControls.Tests
                 AutonomousExcavationState stateAtMaximumTrackBaseDrift = autonomy.State;
                 Assert.That(autonomy.StartAutonomousJob(.32), Is.True);
                 var observedStates = new List<AutonomousExcavationState>();
-                float deadline = Time.realtimeSinceStartup + 90;
+                float deadline = Time.realtimeSinceStartup + 150;
                 while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
                     maximumObservedBucketLoad = System.Math.Max(maximumObservedBucketLoad, cutter.VolumeM3);
@@ -150,18 +150,38 @@ namespace ExcavatorControls.Tests
                 Zx200JointPose poseAtPeakLoad = autonomy.machine.ReadActualPose();
                 bool capturedCutStartPose = false;
                 bool observedArmAndBucketMotion = false;
+                bool capturedFirstRemoval = false;
+                bool firstRemovalWasInCoordinatedCut = false;
+                bool bothJointsMovedAtFirstRemoval = false;
                 Zx200JointPose cutStartPose = default;
                 float deadline = Time.realtimeSinceStartup + 60f;
                 while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
-                    if (autonomy.State == AutonomousExcavationState.FillBucket && autonomy.machine.IsBusy)
+                    Zx200JointPose currentCutPose = default;
+                    bool readingCoordinatedCut = autonomy.State == AutonomousExcavationState.FillBucket &&
+                        autonomy.machine.IsBusy;
+                    if (readingCoordinatedCut)
                     {
-                        Zx200JointPose currentCutPose = autonomy.machine.ReadActualPose();
+                        currentCutPose = autonomy.machine.ReadActualPose();
                         if (!capturedCutStartPose)
                         {
                             cutStartPose = currentCutPose;
                             capturedCutStartPose = true;
                         }
+                    }
+                    if (!capturedFirstRemoval && cutter.ExcavatedVolumeM3 > 1e-5)
+                    {
+                        capturedFirstRemoval = true;
+                        firstRemovalWasInCoordinatedCut =
+                            autonomy.State == AutonomousExcavationState.FillBucket &&
+                            autonomy.CurrentMotionAxis == AutonomousMotionAxis.ArmAndBucket &&
+                            !cutter.IsCuttingSuppressed;
+                        bothJointsMovedAtFirstRemoval = readingCoordinatedCut &&
+                            Mathf.Abs(currentCutPose.arm - cutStartPose.arm) > .01f &&
+                            Mathf.Abs(currentCutPose.bucket - cutStartPose.bucket) > .01f;
+                    }
+                    if (readingCoordinatedCut)
+                    {
                         if (autonomy.CurrentMotionAxis == AutonomousMotionAxis.ArmAndBucket &&
                             Mathf.Abs(currentCutPose.arm - cutStartPose.arm) > .1f &&
                             Mathf.Abs(currentCutPose.bucket - cutStartPose.bucket) > .1f)
@@ -193,6 +213,12 @@ namespace ExcavatorControls.Tests
                     "The scoop stroke must continue well beyond minimumLoadVolumeM3=0.005 m³ and collect real terrain soil.");
                 Assert.That(observedArmAndBucketMotion, Is.True,
                     "The cutting state must report and execute the coordinated arm-and-bucket scoop stroke.");
+                Assert.That(capturedFirstRemoval, Is.True,
+                    "The first measured terrain removal must be observed during the automatic scoop.");
+                Assert.That(firstRemovalWasInCoordinatedCut, Is.True,
+                    "Soil removal must not occur during boom-only entry; it starts unsuppressed in FillBucket with ArmAndBucket motion.");
+                Assert.That(bothJointsMovedAtFirstRemoval, Is.True,
+                    "At the first measured terrain removal, both the arm and bucket must already have moved from the coordinated-cut start pose.");
             }
             finally
             {

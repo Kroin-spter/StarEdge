@@ -181,6 +181,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private bool stageSucceeded;
     private bool dumpOwnsUnloaderEnabledState;
     private bool unloaderEnabledBeforeDump;
+    private bool cuttingSuppressionPending;
+    private bool cuttingWasSuppressedBeforeEntry;
 
     /// <summary>判断实际交付量是否达到正的任务目标。</summary>
     /// <param name="deliveredM3">已实际落地的土量。</param>
@@ -264,6 +266,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         if (!IsRunning) return;
         IsRunning = false;
+        RestoreCuttingSuppression();
         if (machine != null) machine.StopAutomaticMotion();
         if (keyboard != null) keyboard.SetAutomaticControl(false);
         CurrentMotionAxis = AutonomousMotionAxis.None;
@@ -281,6 +284,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             jobRoutine = null;
         }
         RestoreUnloaderEnabledState();
+        RestoreCuttingSuppression();
         CurrentMotionAxis = AutonomousMotionAxis.None;
         if (resetRoutine != null) StopCoroutine(resetRoutine);
         IsRunning = false;
@@ -540,7 +544,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private IEnumerator RecoverFromEmptyCut()
     {
         // Lift away from the terrain before changing swing points; do not pivot the bucket while it is buried.
-        yield return MoveToPose(machine.liftPose, "空挖点抬升脱离土层超时");
+        try { yield return MoveToPose(machine.liftPose, "空挖点抬升脱离土层超时"); }
+        finally { RestoreCuttingSuppression(); }
     }
 
     private IEnumerator FillBucket()
@@ -565,6 +570,15 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
             {
                 HandleManualInput();
+                if (!IsRunning) yield break;
+                if (cuttingSuppressionPending)
+                {
+                    Zx200JointPose moving = machine.ReadActualPose();
+                    const float minimumCoordinatedStartAngle = .1f;
+                    bool armStarted = Mathf.Abs(moving.arm - actual.arm) >= minimumCoordinatedStartAngle;
+                    bool bucketStarted = Mathf.Abs(moving.bucket - actual.bucket) >= minimumCoordinatedStartAngle;
+                    if (armStarted && bucketStarted) RestoreCuttingSuppression();
+                }
                 if (cutter.VolumeM3 >= targetLoad)
                 {
                     machine.StopAutomaticMotion();
@@ -595,6 +609,17 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private IEnumerator PrepareForCut()
     {
         stageSucceeded = false;
+        if (cutter == null)
+        {
+            EnterFault("切入准备阶段缺少铲斗土量计量器");
+            yield break;
+        }
+        if (!cuttingSuppressionPending)
+        {
+            cuttingWasSuppressedBeforeEntry = cutter.IsCuttingSuppressed;
+            cutter.SetCuttingSuppressed(true);
+            cuttingSuppressionPending = true;
+        }
         Zx200JointPose actual = machine.ReadActualPose();
         yield return MoveToPose(new Zx200JointPose(
             actual.swing, actual.boom, actual.arm,
@@ -1444,9 +1469,18 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private void Finish(AutonomousExcavationState terminalState, string message)
     {
         IsRunning = false;
+        RestoreCuttingSuppression();
         if (machine != null) machine.StopAutomaticMotion();
         if (keyboard != null) keyboard.SetAutomaticControl(false);
         SetState(terminalState, message);
+    }
+
+    /// <summary>Restore soil cutting after a safe entry, manual takeover, fault, or reset transition.</summary>
+    private void RestoreCuttingSuppression()
+    {
+        if (!cuttingSuppressionPending) return;
+        cuttingSuppressionPending = false;
+        if (cutter != null) cutter.SetCuttingSuppressed(cuttingWasSuppressedBeforeEntry);
     }
 
     private void EnterFault(string reason)
