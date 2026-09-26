@@ -39,6 +39,11 @@ namespace ExcavatorControls.Tests
                 Assert.That(trackBase.position.x, Is.InRange(workArea.min.x, workArea.max.x),
                     "The excavator must stand inside the one-for-one Cesium replacement area.");
                 Assert.That(trackBase.position.z, Is.InRange(workArea.min.z, workArea.max.z));
+                float visibleRootOffset = Vector2.Distance(
+                    new Vector2(trackBase.position.x, trackBase.position.z),
+                    new Vector2(workArea.center.x, workArea.center.z));
+                Assert.That(visibleRootOffset, Is.LessThan(.1f),
+                    "The visible articulation root must move to the selected lower work-face, not leave the machine rendering on the upper platform.");
                 Assert.That(truck.position.x, Is.InRange(workArea.min.x, workArea.max.x),
                     "The truck must stand on the same replaced lower work floor.");
                 Assert.That(truck.position.z, Is.InRange(workArea.min.z, workArea.max.z));
@@ -51,8 +56,17 @@ namespace ExcavatorControls.Tests
                 Vector3 faceFoot = trackBase.position + trackBase.forward * 4.2f;
                 Vector3 faceCrest = trackBase.position + trackBase.forward * 10.5f;
                 float faceRise = soil.GetFloorWorldY(faceCrest) - soil.GetFloorWorldY(faceFoot);
-                Assert.That(faceRise, Is.InRange(.6f, 5f),
-                    "The machine must face a continuous, cuttable natural slope rather than a synthetic flat mound.");
+                Assert.That(faceRise, Is.InRange(2.5f, 8f),
+                    "The machine must stand on the lower bench and face a clearly raised, continuous cuttable slope.");
+                float benchDrop = (float)site.GetType().GetProperty("BenchDropMeters").GetValue(site);
+                Assert.That(benchDrop, Is.GreaterThanOrEqualTo(2f),
+                    "The selected track platform must be at least 2 m below the original upper platform.");
+                float readyTipClearance = (float)site.GetType().GetProperty("ReadyTipClearanceMeters").GetValue(site);
+                Assert.That(readyTipClearance, Is.GreaterThanOrEqualTo(.25f),
+                    "The initial bucket tooth must clear the cuttable slope enough to curl before entering the soil.");
+                int surveyFrameYields = (int)site.GetType().GetProperty("SurveyFrameYieldCount").GetValue(site);
+                Assert.That(surveyFrameYields, Is.GreaterThan(0),
+                    "Cesium terrain surveying must yield across frames instead of blocking Play on one large scan.");
 
                 Vector3 stripCenter = trackBase.position + trackBase.forward * stripCenterLocalZ;
                 float baseCenterY = soil.GetFloorWorldY(stripCenter);

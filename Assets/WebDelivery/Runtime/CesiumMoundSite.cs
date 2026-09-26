@@ -46,7 +46,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public Vector3 workFaceAnchor;
     [Min(8f)] public float workFaceSearchRadius = 60f;
     [Min(.5f)] public float workFaceSearchSpacing = 2f;
-    [Min(.1f)] public float minimumWorkFaceRise = 1.1f;
+    [Min(.1f)] public float minimumWorkFaceRise = 2.5f;
+    [Min(0f)] public float minimumBenchDropMeters = 2f;
     [Range(.2f, .9f)] public float minimumSurfaceNormalY = .42f;
     [Min(.1f)] public float soilStripHalfWidth = 4.8f;
     [Min(.1f)] public float soilStripCenterLocalZ = 6.7f;
@@ -59,6 +60,13 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public bool IsReady { get; private set; }
     public bool MapSurfacePrepared { get; private set; }
     public string Status { get; private set; } = "Waiting for map ground";
+    /// <summary>Vertical drop from the excavator's original platform to the selected lower bench.</summary>
+    public float BenchDropMeters => float.IsFinite(originalSupportY) && float.IsFinite(selectedSupportY)
+        ? originalSupportY - selectedSupportY : 0f;
+    /// <summary>Predicted clearance from the initial bucket tooth to the prepared slope band.</summary>
+    public float ReadyTipClearanceMeters { get; private set; }
+    /// <summary>Number of frame yields used while sampling the Cesium work area.</summary>
+    public int SurveyFrameYieldCount { get; private set; }
     /// <summary>World-space footprint where the authored terrain replaces Cesium rendering and collision.</summary>
     public Bounds WorkAreaBounds
     {
@@ -73,6 +81,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
     private ArticulationBody root;
     private bool originalFixed, originalKeyboard, originalMachine;
     private BucketSoilCutter cutter;
+    private Vector3 readyTipOffsetInRoot;
+    private Vector3 swingPivotOffsetInRoot;
     private BucketSoilResistance resistance;
     private bool originalCutter, originalResistance;
     private Vector3 originalRootPosition;
@@ -86,6 +96,13 @@ public sealed class CesiumMoundSite : MonoBehaviour
     private float selectedFaceRise;
     private string candidateDiagnostics = string.Empty;
     private bool workFaceCoverageIncomplete;
+    private bool workFaceSearchSucceeded;
+    private bool moundPreparationSucceeded;
+    private float originalSupportY = float.NaN;
+    private int lastSearchMapRevision = int.MinValue;
+    private WorkFaceCandidate selectedWorkFace;
+    private CesiumCameraManager cameraManager;
+    private Camera surveyCamera;
 
     private void Awake()
     {
@@ -99,6 +116,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         keyboard = machine.GetComponent<Zx200KeyboardController>();
         keyboard.ResolveArticulationRoot(); root = keyboard.articulationRoot;
         originalRootPosition = root.transform.position;
+        InstallSurveyCamera();
         Collider[] truckColliders = truck.GetComponentsInChildren<Collider>()
             .Where(c => c.enabled && !c.isTrigger).ToArray();
         if (truckColliders.Length == 0)
@@ -115,11 +133,67 @@ public sealed class CesiumMoundSite : MonoBehaviour
         originalMachine = machine.enabled; machine.enabled = false;
         keyboard.fixedBase = true; keyboard.enabled = false; root.immovable = true;
         cutter = machine.GetComponentInChildren<BucketSoilCutter>();
+        readyTipOffsetInRoot = root.transform.InverseTransformPoint(cutter.TipWorldPosition);
+        if (machine.swingJoint != null)
+            swingPivotOffsetInRoot = root.transform.InverseTransformPoint(
+                machine.swingJoint.transform.TransformPoint(machine.swingJoint.anchorPosition));
         resistance = cutter.GetComponent<BucketSoilResistance>();
         originalCutter = cutter.enabled; cutter.enabled = false;
         if (resistance != null) { originalResistance = resistance.enabled; resistance.enabled = false; }
         soil.GetComponent<Terrain>().enabled = false;
         soil.SoilCollider.enabled = false;
+    }
+
+    private void OnDestroy()
+    {
+        ReleaseSurveyCamera();
+    }
+
+    private void InstallSurveyCamera()
+    {
+        cameraManager = tileset.GetComponentInParent<CesiumCameraManager>();
+        if (cameraManager == null) cameraManager = CesiumCameraManager.GetOrCreate(tileset.gameObject);
+
+        float footprintPadding = Mathf.Max(replacementAreaSize.x, replacementAreaSize.y) * .5f + 4f;
+        float halfExtent = workFaceSearchRadius + footprintPadding;
+        float altitude = Mathf.Max(120f, halfExtent * 2f);
+        var cameraObject = new GameObject("Cesium work-face survey camera")
+        {
+            hideFlags = HideFlags.HideAndDontSave
+        };
+        surveyCamera = cameraObject.AddComponent<Camera>();
+        surveyCamera.enabled = false;
+        surveyCamera.orthographic = true;
+        surveyCamera.orthographicSize = halfExtent;
+        surveyCamera.aspect = 1f;
+        surveyCamera.nearClipPlane = .1f;
+        surveyCamera.farClipPlane = altitude + 200f;
+        surveyCamera.transform.SetPositionAndRotation(
+            originalRootPosition + Vector3.up * altitude,
+            Quaternion.LookRotation(Vector3.down, Vector3.forward));
+        cameraManager.additionalCameras.Add(surveyCamera);
+    }
+
+    private void ReleaseSurveyCamera()
+    {
+        if (cameraManager != null && surveyCamera != null)
+            cameraManager.additionalCameras.Remove(surveyCamera);
+        if (surveyCamera != null)
+        {
+            if (Application.isPlaying) Destroy(surveyCamera.gameObject);
+            else DestroyImmediate(surveyCamera.gameObject);
+        }
+        surveyCamera = null;
+    }
+
+    private void FocusSurveyCameraOnWorkFace()
+    {
+        if (surveyCamera == null) return;
+        float footprintPadding = Mathf.Max(replacementAreaSize.x, replacementAreaSize.y) * .5f + 4f;
+        float altitude = Mathf.Max(120f, (workFaceSearchRadius + footprintPadding) * 2f);
+        surveyCamera.transform.SetPositionAndRotation(
+            selectedRootPosition + Vector3.up * altitude,
+            Quaternion.LookRotation(Vector3.down, Vector3.forward));
     }
 
     /// <summary>Resolve the local Cesium tileset without persisting a machine-specific absolute path in the scene.</summary>
@@ -138,26 +212,40 @@ public sealed class CesiumMoundSite : MonoBehaviour
         float deadline = Time.realtimeSinceStartup + loadingTimeout;
         float previousGround = float.NaN;
         int stable = 0;
+        int lastAttemptedMapRevision = int.MinValue;
         while (Time.realtimeSinceStartup < deadline)
         {
-            var map = tileset.GetComponentsInChildren<MeshCollider>().Where(c => c.enabled).ToArray();
+            MeshCollider[] map = GetLoadedMapColliders();
             if (TryTrackSupport(map, out float support))
             {
                 stable = float.IsFinite(previousGround) && Mathf.Abs(previousGround - support) < .025f ? stable + 1 : 0;
                 previousGround = support;
                 if (stable >= 3)
                 {
-                    if (!PrepareMound(map))
+                    if (!float.IsFinite(originalSupportY)) originalSupportY = support;
+                    int mapRevision = GetMapRevision(map);
+                    if (mapRevision == lastAttemptedMapRevision)
+                    {
+                        Status = $"等待 Cesium 坡面瓦片加载；当前碰撞瓦片={map.Length}。";
+                        yield return null;
+                        continue;
+                    }
+                    lastAttemptedMapRevision = mapRevision;
+                    lastSearchMapRevision = mapRevision;
+                    yield return PrepareMound(map, support);
+                    if (!moundPreparationSucceeded)
                     {
                         if (workFaceCoverageIncomplete)
                         {
-                            Status = "等待 Cesium 坡面瓦片完成加载；设备保持原位。";
-                            yield return new WaitForSecondsRealtime(.75f);
+                            Status = $"等待坡面瓦片覆盖完整采样区；碰撞瓦片={GetLoadedMapColliders().Length}，{candidateDiagnostics}";
+                            yield return null;
                             continue;
                         }
+                        ReleaseSurveyCamera();
                         Debug.LogWarning(Status, this);
                         yield break;
                     }
+                    FocusSurveyCameraOnWorkFace();
                     // Replace the source map over one matching footprint before parking either vehicle on the bench.
                     MapSurfacePrepared = true;
                     ConstructionSiteMapClip clip = tileset.GetComponent<ConstructionSiteMapClip>();
@@ -182,11 +270,15 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     keyboard.fixedBase = originalFixed; root.immovable = originalFixed; root.useGravity = !originalFixed;
                     machine.enabled = originalMachine;
                     keyboard.enabled = originalKeyboard;
+                    yield return new WaitForFixedUpdate();
+                    Physics.SyncTransforms();
                     IsReady = true; Status = "Stable lower bench and cuttable slope band ready";
                     Debug.Log($"SLOPE WORKFACE READY support={selectedSupportY:F3}, truck={selectedTruckGroundY:F3}, " +
                         $"strip={soilStripHeight:F2}m normal thickness x {soilStripHalfWidth * 2f:F1}m wide, " +
                         $"face={selectedFaceDirection}, root={root.transform.position}, " +
-                        $"relocated={root.transform.position - originalRootPosition}, predictedRise={selectedFaceRise:F2}m", this);
+                        $"targetRoot={rootTarget}, relocated={root.transform.position - originalRootPosition}, " +
+                        $"trackBottom={TrackBounds().min.y:F3} initialTrackBottom={originalTrackBounds.min.y:F3}, " +
+                        $"benchDrop={BenchDropMeters:F2}m predictedRise={selectedFaceRise:F2}m", this);
                     yield break;
                 }
             }
@@ -194,10 +286,32 @@ public sealed class CesiumMoundSite : MonoBehaviour
         }
         if (IsReady) yield break;
         if (workFaceCoverageIncomplete)
-            Status = "Cesium 坡面瓦片未能在限定时间内完整加载；设备保持原位，请调整视角或锚点后重试。";
+            Status = $"Cesium 坡面瓦片未能在限定时间内完整加载；设备保持原位。{candidateDiagnostics}";
         else if (string.IsNullOrEmpty(Status) || Status == "Waiting for map ground")
             Status = "Map support unavailable; machine held for safety. Reload scene to retry.";
+        ReleaseSurveyCamera();
         Debug.LogWarning(Status, this);
+    }
+
+    private MeshCollider[] GetLoadedMapColliders()
+    {
+        return tileset.GetComponentsInChildren<MeshCollider>()
+            .Where(c => c != null && c.enabled && c.gameObject.activeInHierarchy).ToArray();
+    }
+
+    private static int GetMapRevision(MeshCollider[] map)
+    {
+        unchecked
+        {
+            int revision = 17;
+            foreach (MeshCollider collider in map)
+            {
+                revision = revision * 31 + collider.GetEntityId().GetHashCode();
+                revision = revision * 31 + (collider.sharedMesh != null
+                    ? collider.sharedMesh.GetEntityId().GetHashCode() : 0);
+            }
+            return revision;
+        }
     }
 
     private Bounds TrackBounds()
@@ -215,6 +329,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         internal float supportY;
         internal float truckGroundY;
         internal float rise;
+        internal float readyTipClearance;
     }
 
     private bool TryTrackSupport(MeshCollider[] map, out float support)
@@ -234,23 +349,32 @@ public sealed class CesiumMoundSite : MonoBehaviour
         return support - minimum <= .35f;
     }
 
-    private bool PrepareMound(MeshCollider[] map)
+    private IEnumerator PrepareMound(MeshCollider[] map, float currentSupportY)
     {
+        moundPreparationSucceeded = false;
         workFaceCoverageIncomplete = false;
-        if (!TryChooseWorkFace(map, out WorkFaceCandidate candidate))
+        yield return ChooseWorkFace(map, currentSupportY);
+        if (MapChangedSinceSearch())
+        {
+            workFaceCoverageIncomplete = true;
+            Status = "Cesium 瓦片在坡面扫描期间更新；等待稳定后重新扫描。";
+            yield break;
+        }
+        if (!workFaceSearchSucceeded)
         {
             Status = useExplicitWorkFaceAnchor
-                ? $"指定坡脚锚点没有平整履带位、连续坡面或安全矿车位；设备保持原位。{candidateDiagnostics}"
-                : $"设备周边没有同时满足坡面连续度、履带支撑和矿车支撑的可达工作面；设备保持原位。{candidateDiagnostics}";
-            return false;
+                ? $"指定锚点没有至少 {minimumBenchDropMeters:F1}m 低差、稳定履带位和可切坡面；设备保持原位。{candidateDiagnostics}"
+                : $"搜索范围内没有至少 {minimumBenchDropMeters:F1}m 低差、坡高至少 {minimumWorkFaceRise:F1}m 的可达工作面；设备保持原位。{candidateDiagnostics}";
+            yield break;
         }
-
+        WorkFaceCandidate candidate = selectedWorkFace;
         selectedRootPosition = new Vector3(candidate.rootXZ.x, originalRootPosition.y, candidate.rootXZ.y);
         selectedRootRotation = Quaternion.LookRotation(candidate.direction, Vector3.up);
         selectedFaceDirection = candidate.direction;
         selectedSupportY = candidate.supportY;
         selectedTruckGroundY = candidate.truckGroundY;
         selectedFaceRise = candidate.rise;
+        ReadyTipClearanceMeters = candidate.readyTipClearance;
 
         soil.Initialize(soil.GetComponent<Terrain>());
         TerrainData data = soil.Terrain.terrainData;
@@ -265,20 +389,34 @@ public sealed class CesiumMoundSite : MonoBehaviour
         var stripMask = new float[n, n];
         float minimum = float.PositiveInfinity, maximum = float.NegativeInfinity;
         for (int z = 0; z < n; z++)
-        for (int x = 0; x < n; x++)
         {
-            Vector3 point = origin + new Vector3(size.x * x / (n - 1f), 0, size.z * z / (n - 1f));
-            if (!Sample(map, point, out float y))
+            for (int x = 0; x < n; x++)
             {
-                Status = "所选坡面替换范围超出已加载 Cesium 地图；设备保持原位。";
-                workFaceCoverageIncomplete = true;
-                return false;
+                Vector3 point = origin + new Vector3(size.x * x / (n - 1f), 0, size.z * z / (n - 1f));
+                if (!Sample(map, point, out float y))
+                {
+                    Status = "所选坡面替换范围超出已加载 Cesium 地图；设备保持原位。";
+                    workFaceCoverageIncomplete = true;
+                    yield break;
+                }
+                baseGround[z, x] = y + .008f;
+                Vector3 local = Quaternion.Inverse(selectedRootRotation) * (point - selectedRootPosition);
+                stripMask[z, x] = SoilStripMask(local);
+                minimum = Mathf.Min(minimum, baseGround[z, x]);
+                maximum = Mathf.Max(maximum, baseGround[z, x]);
             }
-            baseGround[z, x] = y + .008f;
-            Vector3 local = Quaternion.Inverse(selectedRootRotation) * (point - selectedRootPosition);
-            stripMask[z, x] = SoilStripMask(local);
-            minimum = Mathf.Min(minimum, baseGround[z, x]);
-            maximum = Mathf.Max(maximum, baseGround[z, x]);
+            if ((z + 1) % 4 == 0)
+            {
+                Status = $"采样坡面地面高度：{z + 1}/{n} 行。";
+                SurveyFrameYieldCount++;
+                yield return null;
+                if (MapChangedSinceSearch())
+                {
+                    workFaceCoverageIncomplete = true;
+                    Status = "Cesium 瓦片在地面采样期间更新；等待稳定后重新扫描。";
+                    yield break;
+                }
+            }
         }
 
         ApplyBenchSupportPads(baseGround, origin, size, candidate.rootXZ, candidate.direction,
@@ -287,7 +425,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
             out selectedSupportY, out selectedTruckGroundY, out string supportFailure))
         {
             Status = $"{supportFailure}；设备保持原位。";
-            return false;
+            yield break;
         }
 
         float dx = size.x / (n - 1f), dz = size.z / (n - 1f);
@@ -297,26 +435,40 @@ public sealed class CesiumMoundSite : MonoBehaviour
         var ground = new float[n, n];
         var targetWorldY = new float[n, n];
         for (int z = 0; z < n; z++)
-        for (int x = 0; x < n; x++)
         {
-            float thickness = 0f;
-            if (stripMask[z, x] > .001f)
+            for (int x = 0; x < n; x++)
             {
-                float slopeX = (baseGround[z, Mathf.Min(n - 1, x + normalStepX)] -
-                    baseGround[z, Mathf.Max(0, x - normalStepX)]) / (2f * normalStepX * dx);
-                float slopeZ = (baseGround[Mathf.Min(n - 1, z + normalStepZ), x] -
-                    baseGround[Mathf.Max(0, z - normalStepZ), x]) / (2f * normalStepZ * dz);
-                Vector3 normal = new Vector3(-slopeX, 1f, -slopeZ).normalized;
-                if (normal.y < minimumSurfaceNormalY)
+                float thickness = 0f;
+                if (stripMask[z, x] > .001f)
                 {
-                    Status = $"坡面局部过陡（法线 Y={normal.y:F2}），Unity 高度场无法安全表示；设备保持原位。";
-                    return false;
+                    float slopeX = (baseGround[z, Mathf.Min(n - 1, x + normalStepX)] -
+                        baseGround[z, Mathf.Max(0, x - normalStepX)]) / (2f * normalStepX * dx);
+                    float slopeZ = (baseGround[Mathf.Min(n - 1, z + normalStepZ), x] -
+                        baseGround[Mathf.Max(0, z - normalStepZ), x]) / (2f * normalStepZ * dz);
+                    Vector3 normal = new Vector3(-slopeX, 1f, -slopeZ).normalized;
+                    if (normal.y < minimumSurfaceNormalY)
+                    {
+                        Status = $"坡面局部过陡（法线 Y={normal.y:F2}），Unity 高度场无法安全表示；设备保持原位。";
+                        yield break;
+                    }
+                    thickness = GetVerticalOffsetForNormalThickness(
+                        soilStripHeight * stripMask[z, x], normal, minimumSurfaceNormalY);
                 }
-                thickness = GetVerticalOffsetForNormalThickness(
-                    soilStripHeight * stripMask[z, x], normal, minimumSurfaceNormalY);
+                targetWorldY[z, x] = baseGround[z, x] + thickness;
+                maximum = Mathf.Max(maximum, targetWorldY[z, x]);
             }
-            targetWorldY[z, x] = baseGround[z, x] + thickness;
-            maximum = Mathf.Max(maximum, targetWorldY[z, x]);
+            if ((z + 1) % 8 == 0)
+            {
+                Status = $"计算贴坡土带高度：{z + 1}/{n} 行。";
+                SurveyFrameYieldCount++;
+                yield return null;
+                if (MapChangedSinceSearch())
+                {
+                    workFaceCoverageIncomplete = true;
+                    Status = "Cesium 瓦片在土带高度计算期间更新；等待稳定后重新扫描。";
+                    yield break;
+                }
+            }
         }
 
         origin.y = minimum - .35f;
@@ -325,28 +477,60 @@ public sealed class CesiumMoundSite : MonoBehaviour
         data.size = size;
         soil.maximumCutDepth = soilStripHeight + .15f;
         for (int z = 0; z < n; z++)
-        for (int x = 0; x < n; x++)
         {
-            ground[z, x] = (baseGround[z, x] - origin.y) / size.y;
-            heights[z, x] = (targetWorldY[z, x] - origin.y) / size.y;
+            for (int x = 0; x < n; x++)
+            {
+                ground[z, x] = (baseGround[z, x] - origin.y) / size.y;
+                heights[z, x] = (targetWorldY[z, x] - origin.y) / size.y;
+            }
+            if ((z + 1) % 8 == 0)
+            {
+                SurveyFrameYieldCount++;
+                yield return null;
+                if (MapChangedSinceSearch())
+                {
+                    workFaceCoverageIncomplete = true;
+                    Status = "Cesium 瓦片在高度图写入期间更新；等待稳定后重新扫描。";
+                    yield break;
+                }
+            }
         }
         soil.PrepareMoundSurface(heights, ground);
         int holesResolution = data.holesResolution;
         var solidCells = new bool[holesResolution, holesResolution];
         for (int z = 0; z < holesResolution; z++)
-        for (int x = 0; x < holesResolution; x++) solidCells[z, x] = true;
+        {
+            for (int x = 0; x < holesResolution; x++) solidCells[z, x] = true;
+            if ((z + 1) % 8 == 0)
+            {
+                SurveyFrameYieldCount++;
+                yield return null;
+                if (MapChangedSinceSearch())
+                {
+                    workFaceCoverageIncomplete = true;
+                    Status = "Cesium 瓦片在碰撞孔洞准备期间更新；等待稳定后重新扫描。";
+                    yield break;
+                }
+            }
+        }
         data.SetHoles(0, 0, solidCells);
+        if (MapChangedSinceSearch())
+        {
+            workFaceCoverageIncomplete = true;
+            Status = "Cesium 瓦片在施工区准备期间更新；等待稳定后重新扫描。";
+            yield break;
+        }
         ConstructionSiteSurfaceAppearance appearance = GetComponent<ConstructionSiteSurfaceAppearance>();
         if (appearance == null) appearance = gameObject.AddComponent<ConstructionSiteSurfaceAppearance>();
         if (!appearance.ApplySlopeBand(tileset.gameObject, soil, WorkAreaBounds, stripMask))
             Debug.Log("Cesium map image unavailable for slope texture; retaining the existing soil TerrainLayer.", this);
         Status = "坡脚、坡面和矿车支撑均已通过验证，贴坡土带已生成。";
-        return true;
+        moundPreparationSucceeded = true;
     }
 
-    private bool TryChooseWorkFace(MeshCollider[] map, out WorkFaceCandidate best)
+    private IEnumerator ChooseWorkFace(MeshCollider[] map, float currentSupportY)
     {
-        best = default;
+        workFaceSearchSucceeded = false;
         float spacing = Mathf.Max(.5f, workFaceSearchSpacing);
         int searchCells = Mathf.CeilToInt(workFaceSearchRadius / spacing);
         float actualRadius = searchCells * spacing;
@@ -359,11 +543,25 @@ public sealed class CesiumMoundSite : MonoBehaviour
         var samples = new float[resolution, resolution];
         int validSamples = 0;
         for (int z = 0; z < resolution; z++)
-        for (int x = 0; x < resolution; x++)
         {
-            Vector3 point = gridOrigin + new Vector3(x * spacing, 0, z * spacing);
-            samples[z, x] = Sample(map, point, out float y) ? y : float.NaN;
-            if (float.IsFinite(samples[z, x])) validSamples++;
+            for (int x = 0; x < resolution; x++)
+            {
+                Vector3 point = gridOrigin + new Vector3(x * spacing, 0, z * spacing);
+                samples[z, x] = Sample(map, point, out float y) ? y : float.NaN;
+                if (float.IsFinite(samples[z, x])) validSamples++;
+            }
+            if ((z + 1) % 2 == 0)
+            {
+                Status = $"扫描 Cesium 坡面候选：{z + 1}/{resolution} 行，已采样 {validSamples} 点。";
+                SurveyFrameYieldCount++;
+                yield return null;
+                if (MapChangedSinceSearch())
+                {
+                    workFaceCoverageIncomplete = true;
+                    Status = "Cesium 瓦片在坡面扫描期间更新；等待稳定后重新扫描。";
+                    yield break;
+                }
+            }
         }
 
         int candidateStride = Mathf.Max(1, Mathf.RoundToInt(2f / spacing));
@@ -371,8 +569,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
         int last = paddingCells + searchCells * 2;
         float bestScore = float.PositiveInfinity;
         int testedPositions = 0, coveredPositions = 0, validFaces = 0;
-        int[] rejected = new int[8];
+        int[] rejected = new int[10];
         int directionCount = 16;
+        selectedWorkFace = default;
         int firstX = useExplicitWorkFaceAnchor
             ? Mathf.RoundToInt((workFaceAnchor.x - gridOrigin.x) / spacing) : first;
         int lastX = useExplicitWorkFaceAnchor ? firstX : last;
@@ -380,50 +579,76 @@ public sealed class CesiumMoundSite : MonoBehaviour
             ? Mathf.RoundToInt((workFaceAnchor.z - gridOrigin.z) / spacing) : first;
         int lastZ = useExplicitWorkFaceAnchor ? firstZ : last;
         for (int z = firstZ; z <= lastZ; z += useExplicitWorkFaceAnchor ? 1 : candidateStride)
-        for (int x = firstX; x <= lastX; x += useExplicitWorkFaceAnchor ? 1 : candidateStride)
         {
-            Vector2 rootXZ = useExplicitWorkFaceAnchor
-                ? new Vector2(workFaceAnchor.x, workFaceAnchor.z)
-                : new Vector2(gridOrigin.x + x * spacing, gridOrigin.z + z * spacing);
-            testedPositions++;
-            if (!useExplicitWorkFaceAnchor &&
-                Vector2.Distance(rootXZ, new Vector2(original.x, original.z)) > actualRadius) continue;
-            if (!HasReplacementCoverage(samples, gridOrigin, spacing, rootXZ)) continue;
-            coveredPositions++;
-
-            for (int directionIndex = 0; directionIndex < directionCount; directionIndex++)
+            for (int x = firstX; x <= lastX; x += useExplicitWorkFaceAnchor ? 1 : candidateStride)
             {
-                float angle = directionIndex * (360f / directionCount);
-                Vector3 direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
-                if (!EvaluateWorkFace(samples, gridOrigin, spacing, rootXZ, direction,
-                    out float supportY, out float truckY, out float rise, out float supportSpread,
-                    out int rejectionStage))
+                Vector2 rootXZ = useExplicitWorkFaceAnchor
+                    ? new Vector2(workFaceAnchor.x, workFaceAnchor.z)
+                    : new Vector2(gridOrigin.x + x * spacing, gridOrigin.z + z * spacing);
+                testedPositions++;
+                if (!useExplicitWorkFaceAnchor &&
+                    Vector2.Distance(rootXZ, new Vector2(original.x, original.z)) > actualRadius) continue;
+                if (!HasReplacementCoverage(samples, gridOrigin, spacing, rootXZ)) continue;
+                coveredPositions++;
+
+                for (int directionIndex = 0; directionIndex < directionCount; directionIndex++)
                 {
-                    rejected[rejectionStage]++;
-                    continue;
+                    float angle = directionIndex * (360f / directionCount);
+                    Vector3 direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
+                    if (!EvaluateWorkFace(samples, gridOrigin, spacing, rootXZ, direction,
+                        out float supportY, out float truckY, out float rise, out float supportSpread,
+                        out int rejectionStage))
+                    {
+                        rejected[rejectionStage]++;
+                        continue;
+                    }
+                    if (supportY > currentSupportY - minimumBenchDropMeters)
+                    {
+                        rejected[8]++;
+                        continue;
+                    }
+                    if (!TryMeasureReadyTipClearance(samples, gridOrigin, spacing, rootXZ,
+                        direction, supportY, out float readyTipClearance) || readyTipClearance < .25f)
+                    {
+                        rejected[9]++;
+                        continue;
+                    }
+                    validFaces++;
+                    float distance = Vector2.Distance(rootXZ, new Vector2(original.x, original.z));
+                    float benchDrop = currentSupportY - supportY;
+                    float score = Mathf.Abs(rise - 3.2f) + distance * .004f + supportSpread * 2f -
+                        benchDrop * .08f - Mathf.Min(readyTipClearance, 1f) * .15f;
+                    if (score >= bestScore) continue;
+                    bestScore = score;
+                    selectedWorkFace = new WorkFaceCandidate
+                    {
+                        rootXZ = rootXZ,
+                        direction = direction,
+                        supportY = supportY,
+                        truckGroundY = truckY,
+                        rise = rise,
+                        readyTipClearance = readyTipClearance
+                    };
                 }
-                validFaces++;
-                float distance = Vector2.Distance(rootXZ, new Vector2(original.x, original.z));
-                float score = Mathf.Abs(rise - 3.2f) + distance * .004f + supportSpread * 2f;
-                if (score >= bestScore) continue;
-                bestScore = score;
-                best = new WorkFaceCandidate
-                {
-                    rootXZ = rootXZ,
-                    direction = direction,
-                    supportY = supportY,
-                    truckGroundY = truckY,
-                    rise = rise
-                };
+            }
+            if (!useExplicitWorkFaceAnchor || z != lastZ)
+            {
+                SurveyFrameYieldCount++;
+                yield return null;
             }
         }
         candidateDiagnostics = $"[坡面搜索采样={validSamples}/{resolution * resolution}，" +
             $"位置={testedPositions}，替换范围完整={coveredPositions}，通过筛选={validFaces}，" +
-            $"失败类别(地图/履带不平/矿车地图/矿车不平/坡面地图/坡形/坡度)=" +
-            $"{rejected[1]}/{rejected[2]}/{rejected[3]}/{rejected[4]}/{rejected[5]}/{rejected[6]}/{rejected[7]}]";
+            $"失败类别(地图/履带不平/矿车地图/矿车不平/坡面地图/坡形/坡度/平台低差/斗尖净空)=" +
+            $"{rejected[1]}/{rejected[2]}/{rejected[3]}/{rejected[4]}/{rejected[5]}/{rejected[6]}/{rejected[7]}/{rejected[8]}/{rejected[9]}]";
         workFaceCoverageIncomplete = ShouldRetryWorkFaceSearch(
             coveredPositions, validFaces, validSamples, resolution * resolution);
-        return float.IsFinite(bestScore);
+        workFaceSearchSucceeded = float.IsFinite(bestScore);
+    }
+
+    private bool MapChangedSinceSearch()
+    {
+        return GetMapRevision(GetLoadedMapColliders()) != lastSearchMapRevision;
     }
 
     private static bool ShouldRetryWorkFaceSearch(
@@ -636,6 +861,49 @@ public sealed class CesiumMoundSite : MonoBehaviour
         return true;
     }
 
+    private bool TryMeasureReadyTipClearance(float[,] samples, Vector3 gridOrigin, float spacing,
+        Vector2 rootXZ, Vector3 direction, float supportY, out float clearance)
+    {
+        clearance = float.PositiveInfinity;
+        Quaternion rootRotation = Quaternion.LookRotation(direction, Vector3.up);
+        Vector3 rootPosition = new Vector3(rootXZ.x, 0f, rootXZ.y);
+        float readyTipHeight = supportY + .025f + (cutter.TipWorldPosition.y - originalTrackBounds.min.y);
+        for (int swingStep = -3; swingStep <= 3; swingStep++)
+        {
+            float swingDegrees = swingStep * 8f;
+            Vector3 swungTipOffset = swingPivotOffsetInRoot +
+                Quaternion.Euler(0f, swingDegrees, 0f) * (readyTipOffsetInRoot - swingPivotOffsetInRoot);
+            Vector3 tipPosition = rootPosition + rootRotation * swungTipOffset;
+            tipPosition.y = readyTipHeight;
+            if (!GridSample(samples, gridOrigin, spacing, tipPosition, out float groundY))
+            {
+                clearance = float.NegativeInfinity;
+                return false;
+            }
+
+            float bandMask = SoilStripMask(swungTipOffset);
+            float bandHeight = 0f;
+            if (bandMask > .001f)
+            {
+                const float normalSampleOffset = .75f;
+                if (!GridSample(samples, gridOrigin, spacing, tipPosition + Vector3.right * normalSampleOffset, out float rightY) ||
+                    !GridSample(samples, gridOrigin, spacing, tipPosition - Vector3.right * normalSampleOffset, out float leftY) ||
+                    !GridSample(samples, gridOrigin, spacing, tipPosition + Vector3.forward * normalSampleOffset, out float forwardY) ||
+                    !GridSample(samples, gridOrigin, spacing, tipPosition - Vector3.forward * normalSampleOffset, out float backY))
+                {
+                    clearance = float.NegativeInfinity;
+                    return false;
+                }
+                float slopeX = (rightY - leftY) / (2f * normalSampleOffset);
+                float slopeZ = (forwardY - backY) / (2f * normalSampleOffset);
+                float normalY = 1f / Mathf.Sqrt(1f + slopeX * slopeX + slopeZ * slopeZ);
+                bandHeight = soilStripHeight * bandMask / Mathf.Max(minimumSurfaceNormalY, normalY);
+            }
+            clearance = Mathf.Min(clearance, tipPosition.y - groundY - bandHeight);
+        }
+        return float.IsFinite(clearance);
+    }
+
     private static float Smooth01(float value)
     {
         float t = Mathf.Clamp01(value);
@@ -646,9 +914,15 @@ public sealed class CesiumMoundSite : MonoBehaviour
     {
         y = float.NegativeInfinity;
         foreach (var collider in map)
-            if (collider != null && collider.gameObject.activeInHierarchy &&
-                collider.Raycast(new Ray(new Vector3(point.x,100,point.z),Vector3.down),out var hit,200))
+        {
+            if (collider == null || !collider.enabled || !collider.gameObject.activeInHierarchy) continue;
+            Bounds bounds = collider.bounds;
+            if (point.x < bounds.min.x || point.x > bounds.max.x ||
+                point.z < bounds.min.z || point.z > bounds.max.z ||
+                bounds.min.y > 100f || bounds.max.y < -100f) continue;
+            if (collider.Raycast(new Ray(new Vector3(point.x, 100f, point.z), Vector3.down), out var hit, 200f))
                 y = Mathf.Max(y, hit.point.y);
+        }
         return float.IsFinite(y);
     }
 }

@@ -1033,7 +1033,8 @@ MonoBehaviour:
   workFaceAnchor: {x: 0, y: 0, z: 0}
   workFaceSearchRadius: 60
   workFaceSearchSpacing: 2
-  minimumWorkFaceRise: 1.1
+  minimumWorkFaceRise: 2.5
+  minimumBenchDropMeters: 2
   minimumSurfaceNormalY: 0.42
   soilStripHalfWidth: 4.8
   soilStripCenterLocalZ: 6.7
