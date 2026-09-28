@@ -63,6 +63,9 @@ public class Zx200DigController : MonoBehaviour
     private Coroutine automaticPoseRoutine;
     private bool automaticMotionCancellationRequested;
 
+    [Header("Parked Pose")]
+    public Zx200JointPose parkedPose = new Zx200JointPose(0f, -42f, 88f, 42f, 0.8f);
+
     [Header("Work-ready Pose")]
     public Zx200JointPose workReadyPose = new Zx200JointPose(0f, -48f, 68f, 25f, 1f);
 
@@ -98,7 +101,7 @@ public class Zx200DigController : MonoBehaviour
     {
         // PhysX创建关节树时的广义坐标也必须与保存的模型姿态一致。只在Awake初始化，
         // 后续控制仅修改驱动目标，不覆写求解器状态。
-        ApplyWorkReadyPose();
+        ApplyParkedPose();
         InitializeJoint(swingJoint);
         InitializeJoint(boomJoint);
         InitializeJoint(armJoint);
@@ -116,7 +119,6 @@ public class Zx200DigController : MonoBehaviour
 
     private void Start()
     {
-        ApplyWorkReadyPose();
         Debug.Log("ZX200 digging controller ready. Focus the Game view and press Space to dig.", this);
     }
 
@@ -182,6 +184,14 @@ public class Zx200DigController : MonoBehaviour
     public void ApplyWorkReadyPose()
     {
         ApplyPose(workReadyPose);
+    }
+
+    /// <summary>
+    /// 请求紧凑安全的停放姿态；运行中通过驱动平滑到位，编辑时直接更新关节目标。
+    /// </summary>
+    public void ApplyParkedPose()
+    {
+        ApplyPose(parkedPose);
     }
 
     /// <summary>
@@ -532,7 +542,8 @@ public class Zx200DigController : MonoBehaviour
         if (!IsFiniteNonNegative(dumpHoldDuration))
             return Invalid("dumpHoldDuration", out error);
 
-        if (!ValidatePose(workReadyPose, "workReadyPose", out error) ||
+        if (!ValidatePose(parkedPose, "parkedPose", out error) ||
+            !ValidatePose(workReadyPose, "workReadyPose", out error) ||
             !ValidatePose(approachPose, "approachPose", out error) ||
             !ValidatePose(curlPose, "curlPose", out error) ||
             !ValidatePose(liftPose, "liftPose", out error) ||

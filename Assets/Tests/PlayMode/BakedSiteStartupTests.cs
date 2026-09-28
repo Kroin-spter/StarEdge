@@ -69,9 +69,11 @@ namespace ExcavatorControls.Tests
             {
                 if (attempt == 0) ExpectKnownLegacySceneWarnings();
                 ExpectThreeMissingMapWarnings();
-                float started = Time.realtimeSinceStartup;
+                float loadStarted = Time.realtimeSinceStartup;
                 yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
                     new LoadSceneParameters(LoadSceneMode.Additive));
+                float sceneLoadElapsed = Time.realtimeSinceStartup - loadStarted;
+                float siteReadyStarted = Time.realtimeSinceStartup;
                 loadedScene = SceneManager.GetSceneByPath(ScenePath);
                 Assert.That(loadedScene.IsValid(), Is.True);
                 SceneManager.SetActiveScene(loadedScene);
@@ -87,8 +89,23 @@ namespace ExcavatorControls.Tests
                 Assert.That((bool)siteType.GetProperty("IsReady").GetValue(site), Is.True, status);
                 Assert.That((bool)siteType.GetProperty("MapSurfacePrepared").GetValue(site), Is.True);
                 Assert.That((int)siteType.GetProperty("SurveyFrameYieldCount").GetValue(site), Is.Zero);
+                float siteReadyElapsed = Time.realtimeSinceStartup - siteReadyStarted;
 
                 DeformableSoilTerrain soil = (DeformableSoilTerrain)siteType.GetField("soil").GetValue(site);
+                Zx200DigController machine = FindInScene<Zx200DigController>(loadedScene);
+                BucketSoilCutter cutter = FindInScene<BucketSoilCutter>(loadedScene);
+                Zx200KeyboardController keyboard = machine.GetComponent<Zx200KeyboardController>();
+                float poseDeadline = Time.realtimeSinceStartup + 8f;
+                while (!machine.IsPoseWithinTolerance(machine.parkedPose, 2f) &&
+                    Time.realtimeSinceStartup < poseDeadline) yield return new WaitForFixedUpdate();
+                Assert.That(machine.IsPoseWithinTolerance(machine.parkedPose, 2f), Is.True,
+                    $"The scene must start parked: actual={machine.ReadActualPose().boom:F1}/" +
+                    $"{machine.ReadActualPose().arm:F1}/{machine.ReadActualPose().bucket:F1}");
+                Assert.That(keyboard.articulationRoot.immovable, Is.False,
+                    "A parked excavator must remain physically mobile.");
+                Assert.That(cutter.StartupReady, Is.False,
+                    "Parked pose must not bypass the cutter's separate work-ready interlock.");
+                AssertTerrainClearance(cutter, soil.Terrain.GetComponent<TerrainCollider>());
                 Assert.That(soil.SourceTerrainData, Is.SameAs(source));
                 Assert.That(soil.Terrain.terrainData, Is.Not.SameAs(source));
                 AssertTerrainMatches(soil.Terrain.terrainData, sourceSnapshot,
@@ -103,10 +120,37 @@ namespace ExcavatorControls.Tests
                     soil.ResetSoil();
                     AssertTerrainMatches(soil.Terrain.terrainData, sourceSnapshot,
                         "runtime Terrain after reset");
+
+                    AutonomousExcavationController autonomy = FindInScene<AutonomousExcavationController>(loadedScene);
+                    Assert.That(autonomy.StartAutonomousJob(.02), Is.True,
+                        "An autonomous task must start from the parked pose.");
+                    float workReadyDeadline = Time.realtimeSinceStartup + 15f;
+                    while (autonomy.IsRunning && !cutter.StartupReady &&
+                        Time.realtimeSinceStartup < workReadyDeadline) yield return new WaitForFixedUpdate();
+                    Assert.That(autonomy.IsRunning, Is.True, autonomy.Status);
+                    Assert.That(cutter.StartupReady, Is.True,
+                        $"The job must move into work-ready before cutting is enabled: {autonomy.Status}");
+                    Assert.That(machine.IsPoseWithinTolerance(machine.workReadyPose, 2f), Is.True);
+                    autonomy.RequestManualTakeover();
+
+                    autonomy.ResetAutonomousJob();
+                    float resetDeadline = Time.realtimeSinceStartup + 10f;
+                    while (autonomy.State != AutonomousExcavationState.Idle &&
+                        Time.realtimeSinceStartup < resetDeadline) yield return new WaitForFixedUpdate();
+                    Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Idle), autonomy.Status);
+                    // The crawler is intentionally unlocked on reset; allow its small gravity-settling offset.
+                    Assert.That(machine.IsPoseWithinTolerance(machine.parkedPose, 3f), Is.True,
+                        $"Backspace reset must return to parked pose; actual=" +
+                        $"{machine.ReadActualPose().swing:F1}/{machine.ReadActualPose().boom:F1}/" +
+                        $"{machine.ReadActualPose().arm:F1}/{machine.ReadActualPose().bucket:F1}, " +
+                        $"target={machine.parkedPose.swing:F1}/{machine.parkedPose.boom:F1}/" +
+                        $"{machine.parkedPose.arm:F1}/{machine.parkedPose.bucket:F1}");
+                    Assert.That(keyboard.articulationRoot.immovable, Is.False,
+                        "Reset must release the automatic base lock.");
                 }
 
-                float elapsed = Time.realtimeSinceStartup - started;
-                Debug.Log($"[ZX200 BAKED START] attempt={attempt + 1}/5, elapsed={elapsed:F3}s, status={status}");
+                Debug.Log($"[ZX200 BAKED START] attempt={attempt + 1}/5, sceneLoad={sceneLoadElapsed:F3}s, " +
+                    $"siteReady={siteReadyElapsed:F3}s, status={status}");
                 AssertSourceUnchanged(source, sourceSnapshot, initialHeights, baked, bakedAssetHash,
                     terrainAssetHash, $"before unloading start {attempt + 1}");
 
@@ -139,6 +183,33 @@ namespace ExcavatorControls.Tests
             LogAssert.Expect(LogType.Warning,
                 "Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). " +
                 "The partial hull will be used. Consider simplifying your mesh. Source mesh name: body");
+        }
+
+        private static T FindInScene<T>(Scene scene) where T : Component
+        {
+            return scene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<T>(true))
+                .Single(component => component != null);
+        }
+
+        private static void AssertTerrainClearance(BucketSoilCutter cutter, TerrainCollider terrain)
+        {
+            Assert.That(cutter, Is.Not.Null);
+            Assert.That(terrain, Is.Not.Null);
+            float minimumClearance = float.PositiveInfinity;
+            int sampledCorners = 0;
+            foreach (Vector3 corner in cutter.GetBladeWorldCorners())
+            {
+                Ray ray = new Ray(corner + Vector3.up * 50f, Vector3.down);
+                if (!terrain.Raycast(ray, out RaycastHit hit, 100f)) continue;
+                sampledCorners++;
+                minimumClearance = Mathf.Min(minimumClearance, corner.y - hit.point.y);
+            }
+            Assert.That(sampledCorners, Is.GreaterThan(0),
+                "At least one blade corner must be over the baked work slope.");
+            Assert.That(minimumClearance, Is.GreaterThan(.1f),
+                $"The parked blade must stay clear of the work slope; measured {minimumClearance:F3}m.");
+            Debug.Log($"[ZX200 PARKED CLEARANCE] corners={sampledCorners}, minimum={minimumClearance:F3}m");
         }
 
         private static TerrainSnapshot Capture(TerrainData source)

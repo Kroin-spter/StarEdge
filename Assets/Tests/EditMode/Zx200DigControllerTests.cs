@@ -38,6 +38,47 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void Defaults_KeepCompactParkedPoseSeparateFromCuttingReadiness()
+        {
+            FieldInfo parkedField = typeof(Zx200DigController).GetField("parkedPose");
+            Assert.That(parkedField, Is.Not.Null,
+                "The startup/park pose must not reuse the articulation's cutting-ready pose.");
+            Zx200JointPose parked = (Zx200JointPose)parkedField.GetValue(controller);
+
+            Assert.That(parked.swing, Is.EqualTo(0f));
+            Assert.That(parked.arm, Is.GreaterThan(controller.workReadyPose.arm + 15f),
+                "The parked stick must visibly retract without changing the cutting-ready trajectory.");
+            Assert.That(parked.bucket, Is.GreaterThan(controller.workReadyPose.bucket + 10f),
+                "The parked bucket must be tucked inward rather than hanging open.");
+            Assert.That(controller.workReadyPose.boom, Is.EqualTo(-48f),
+                "The work-ready preset remains independent for the cutter's settled-pose gate.");
+        }
+
+        [Test]
+        public void ApplyParkedPose_ChangesDriveTargetsWithoutOverwritingSolverPositions()
+        {
+            FieldInfo parkedField = typeof(Zx200DigController).GetField("parkedPose");
+            MethodInfo applyParkedPose = typeof(Zx200DigController).GetMethod("ApplyParkedPose");
+            Assert.That(parkedField, Is.Not.Null);
+            Assert.That(applyParkedPose, Is.Not.Null);
+            controller.ResolveJoints();
+            Zx200JointPose parked = (Zx200JointPose)parkedField.GetValue(controller);
+            Zx200JointPose before = controller.ReadActualPose();
+
+            applyParkedPose.Invoke(controller, null);
+
+            Assert.That(controller.swingJoint.xDrive.target, Is.EqualTo(parked.swing));
+            Assert.That(controller.boomJoint.xDrive.target, Is.EqualTo(parked.boom));
+            Assert.That(controller.armJoint.xDrive.target, Is.EqualTo(parked.arm));
+            Assert.That(controller.bucketJoint.xDrive.target, Is.EqualTo(parked.bucket));
+            Zx200JointPose after = controller.ReadActualPose();
+            Assert.That(after.swing, Is.EqualTo(before.swing));
+            Assert.That(after.boom, Is.EqualTo(before.boom));
+            Assert.That(after.arm, Is.EqualTo(before.arm));
+            Assert.That(after.bucket, Is.EqualTo(before.bucket));
+        }
+
+        [Test]
         public void Defaults_UseCalibratedDigAndRightDumpTrajectory()
         {
             Assert.That(controller.approachPose.boom, Is.EqualTo(-60f));
@@ -161,6 +202,16 @@ namespace ExcavatorControls.Tests
         public void PrepareForPhysics_RejectsNonFinitePoseTarget()
         {
             controller.workReadyPose = new Zx200JointPose(float.NaN, -48f, 68f, 25f, 1f);
+
+            Assert.That(controller.PrepareForPhysics(), Is.False);
+        }
+
+        [Test]
+        public void PrepareForPhysics_RejectsNonFiniteParkedPose()
+        {
+            FieldInfo parkedField = typeof(Zx200DigController).GetField("parkedPose");
+            Assert.That(parkedField, Is.Not.Null);
+            parkedField.SetValue(controller, new Zx200JointPose(0f, float.NaN, 100f, 45f, 1f));
 
             Assert.That(controller.PrepareForPhysics(), Is.False);
         }

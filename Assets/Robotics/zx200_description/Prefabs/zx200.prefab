@@ -254,7 +254,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1612160260473201318}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.13886464, y: -0, z: -0, w: 0.9903114}
+  m_LocalRotation: {x: -0.07958, y: 0, z: 0, w: 0.99683}
   m_LocalPosition: {x: 0.040186998, y: 0.83668995, z: 0.22767}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -305,7 +305,7 @@ ArticulationBody:
     stiffness: 10000000
     damping: 500000
     forceLimit: 750000
-    target: -48
+    target: -42
     targetVelocity: 0
     driveType: 0
   m_YDrive:
@@ -1152,7 +1152,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5823045463797048516}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.6754017, y: -0, z: -0, w: 0.73745006}
+  m_LocalRotation: {x: 0.79406, y: 0, z: 0, w: 0.60785}
   m_LocalPosition: {x: -0.010957003, y: 2.9958997, z: 4.7878}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -1203,7 +1203,7 @@ ArticulationBody:
     stiffness: 10000000
     damping: 500000
     forceLimit: 750000
-    target: 68
+    target: 88
     targetVelocity: 0
     driveType: 0
   m_YDrive:
@@ -1742,6 +1742,12 @@ MonoBehaviour:
   jointToleranceDegrees: 1.5
   settleTimeoutSeconds: 3
   motionSmoothTime: 0.3
+  parkedPose:
+    swing: 0
+    boom: -42
+    arm: 88
+    bucket: 42
+    duration: 0.8
   workReadyPose:
     swing: 0
     boom: -48
@@ -2520,7 +2526,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8749736413370045183}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.13743743, y: -0, z: -0, w: 0.99051046}
+  m_LocalRotation: {x: 0.28247, y: 0, z: 0, w: 0.95928}
   m_LocalPosition: {x: 0.023545995, y: 2.1809006, z: 1.8953995}
   m_LocalScale: {x: 1, y: 0.9999999, z: 0.9999999}
   m_ConstrainProportionsScale: 0
@@ -2571,7 +2577,7 @@ ArticulationBody:
     stiffness: 10000000
     damping: 500000
     forceLimit: 750000
-    target: 25
+    target: 42
     targetVelocity: 0
     driveType: 0
   m_YDrive:

@@ -431,6 +431,8 @@ namespace ExcavatorControls.Tests
                 }
 
                 Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Idle));
+                Assert.That(machine.IsPoseWithinTolerance(machine.parkedPose, 3f), Is.True,
+                    "Reset must finish in the compact parked pose rather than cutting-ready pose.");
                 Assert.That(unloader.enabled, Is.True,
                     "Resetting from Dump must restore the unloader after stopping the job coroutine.");
                 Assert.That(cutter.VolumeM3, Is.Zero.Within(1e-8));

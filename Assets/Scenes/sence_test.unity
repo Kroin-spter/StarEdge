@@ -140,7 +140,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 1061092100976964549, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_XDrive.target
-      value: -29
+      value: -42
       objectReference: {fileID: 0}
     - target: {fileID: 1218141847121198258, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_ParentAnchorPosition.x
@@ -188,7 +188,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.13743751
+      value: 0.28248
+      objectReference: {fileID: 0}
+    - target: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.95927
       objectReference: {fileID: 0}
     - target: {fileID: 2267995629348204275, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x

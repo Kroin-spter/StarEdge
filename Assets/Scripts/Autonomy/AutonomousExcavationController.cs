@@ -1628,7 +1628,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 yield return MoveToPose(clearTruck, "复位时回转离开车厢超时", 3f, true, true);
                 if (State != AutonomousExcavationState.Resetting || !stageSucceeded) yield break;
 
-                yield return MoveToPose(machine.workReadyPose, "复位待机姿态超时", -1f, true, true);
+                yield return MoveToPose(machine.parkedPose, "复位停放姿态超时", -1f, true, true);
                 if (State != AutonomousExcavationState.Resetting || !stageSucceeded) yield break;
             }
             resetSucceeded = true;
