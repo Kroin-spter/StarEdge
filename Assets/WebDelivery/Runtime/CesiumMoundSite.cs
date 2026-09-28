@@ -44,6 +44,10 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public bool useExplicitWorkFaceAnchor;
     [Tooltip("World X/Z of the desired track-base center. Automatic slope search is used when disabled.")]
     public Vector3 workFaceAnchor;
+    [Tooltip("Keep the excavator and truck at their authored lower-bench transforms instead of choosing a new parking point.")]
+    public bool usePrepositionedEquipment;
+    [Tooltip("Measured upper-bench support height used to report the bench drop for pre-positioned equipment.")]
+    public float prepositionedUpperBenchSupportY = 7.512f;
     [Min(8f)] public float workFaceSearchRadius = 60f;
     [Min(.5f)] public float workFaceSearchSpacing = 2f;
     [Min(.1f)] public float minimumWorkFaceRise = 2.5f;
@@ -103,6 +107,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
     private WorkFaceCandidate selectedWorkFace;
     private CesiumCameraManager cameraManager;
     private Camera surveyCamera;
+    private bool originalSceneViewCameraInEditor;
+    private bool sceneViewCameraSettingCaptured;
 
     private void Awake()
     {
@@ -122,6 +128,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         if (truckColliders.Length == 0)
         {
             Status = "Truck has no solid support colliders";
+            ReleaseSurveyCamera();
             enabled = false;
             return;
         }
@@ -149,10 +156,21 @@ public sealed class CesiumMoundSite : MonoBehaviour
         ReleaseSurveyCamera();
     }
 
+    private void OnDisable()
+    {
+        if (!IsReady) ReleaseSurveyCamera();
+    }
+
     private void InstallSurveyCamera()
     {
         cameraManager = tileset.GetComponentInParent<CesiumCameraManager>();
         if (cameraManager == null) cameraManager = CesiumCameraManager.GetOrCreate(tileset.gameObject);
+        if (cameraManager != null && !sceneViewCameraSettingCaptured)
+        {
+            originalSceneViewCameraInEditor = cameraManager.useSceneViewCameraInEditor;
+            sceneViewCameraSettingCaptured = true;
+            cameraManager.useSceneViewCameraInEditor = false;
+        }
 
         float footprintPadding = Mathf.Max(replacementAreaSize.x, replacementAreaSize.y) * .5f + 4f;
         float halfExtent = workFaceSearchRadius + footprintPadding;
@@ -176,6 +194,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
 
     private void ReleaseSurveyCamera()
     {
+        RestoreSceneViewCameraSetting();
         if (cameraManager != null && surveyCamera != null)
             cameraManager.additionalCameras.Remove(surveyCamera);
         if (surveyCamera != null)
@@ -184,6 +203,14 @@ public sealed class CesiumMoundSite : MonoBehaviour
             else DestroyImmediate(surveyCamera.gameObject);
         }
         surveyCamera = null;
+    }
+
+    private void RestoreSceneViewCameraSetting()
+    {
+        if (!sceneViewCameraSettingCaptured) return;
+        if (cameraManager != null)
+            cameraManager.useSceneViewCameraInEditor = originalSceneViewCameraInEditor;
+        sceneViewCameraSettingCaptured = false;
     }
 
     private void FocusSurveyCameraOnWorkFace()
@@ -222,7 +249,19 @@ public sealed class CesiumMoundSite : MonoBehaviour
                 previousGround = support;
                 if (stable >= 3)
                 {
-                    if (!float.IsFinite(originalSupportY)) originalSupportY = support;
+                    if (!float.IsFinite(originalSupportY))
+                    {
+                        if (usePrepositionedEquipment &&
+                            (!float.IsFinite(prepositionedUpperBenchSupportY) ||
+                             prepositionedUpperBenchSupportY <= support + minimumBenchDropMeters))
+                        {
+                            Status = "预置低台位置未能验证与上层平台的高度差；设备保持原位。";
+                            ReleaseSurveyCamera();
+                            Debug.LogWarning(Status, this);
+                            yield break;
+                        }
+                        originalSupportY = usePrepositionedEquipment ? prepositionedUpperBenchSupportY : support;
+                    }
                     int mapRevision = GetMapRevision(map);
                     if (mapRevision == lastAttemptedMapRevision)
                     {
@@ -254,15 +293,19 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     clip.RefreshLoadedTiles();
                     Physics.SyncTransforms();
 
-                    // Move only after terrain preparation and Cesium clipping have both succeeded.
-                    float bottom = originalTrackBounds.min.y;
-                    Vector3 rootTarget = selectedRootPosition + Vector3.up * (selectedSupportY + .025f - bottom);
-                    root.TeleportRoot(rootTarget, selectedRootRotation);
-                    root.linearVelocity = Vector3.zero; root.angularVelocity = Vector3.zero;
-                    Vector3 truckXZ = selectedRootPosition + selectedRootRotation * truckParkingOffsetLocal;
-                    truck.position = new Vector3(truckXZ.x,
-                        selectedTruckGroundY - originalTruckBottomOffset, truckXZ.z);
-                    truck.rotation = selectedRootRotation * Quaternion.Euler(0f, truckParkingYawDegrees, 0f);
+                    // Auto-selected equipment is parked only after the terrain is ready; authored poses stay untouched.
+                    Vector3 rootTarget = originalRootPosition;
+                    if (!usePrepositionedEquipment)
+                    {
+                        float bottom = originalTrackBounds.min.y;
+                        rootTarget = selectedRootPosition + Vector3.up * (selectedSupportY + .025f - bottom);
+                        root.TeleportRoot(rootTarget, selectedRootRotation);
+                        root.linearVelocity = Vector3.zero; root.angularVelocity = Vector3.zero;
+                        Vector3 truckXZ = selectedRootPosition + selectedRootRotation * truckParkingOffsetLocal;
+                        truck.position = new Vector3(truckXZ.x,
+                            selectedTruckGroundY - originalTruckBottomOffset, truckXZ.z);
+                        truck.rotation = selectedRootRotation * Quaternion.Euler(0f, truckParkingYawDegrees, 0f);
+                    }
                     Physics.SyncTransforms();
                     soil.GetComponent<Terrain>().enabled = true; soil.SoilCollider.enabled = true;
                     cutter.enabled = originalCutter;
@@ -273,6 +316,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     yield return new WaitForFixedUpdate();
                     Physics.SyncTransforms();
                     IsReady = true; Status = "Stable lower bench and cuttable slope band ready";
+                    RestoreSceneViewCameraSetting();
                     Debug.Log($"SLOPE WORKFACE READY support={selectedSupportY:F3}, truck={selectedTruckGroundY:F3}, " +
                         $"strip={soilStripHeight:F2}m normal thickness x {soilStripHalfWidth * 2f:F1}m wide, " +
                         $"face={selectedFaceDirection}, root={root.transform.position}, " +
@@ -362,7 +406,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
         }
         if (!workFaceSearchSucceeded)
         {
-            Status = useExplicitWorkFaceAnchor
+            Status = usePrepositionedEquipment
+                ? $"预置低台位置没有稳定履带位和可切坡面；设备保持原位。{candidateDiagnostics}"
+                : useExplicitWorkFaceAnchor
                 ? $"指定锚点没有至少 {minimumBenchDropMeters:F1}m 低差、稳定履带位和可切坡面；设备保持原位。{candidateDiagnostics}"
                 : $"搜索范围内没有至少 {minimumBenchDropMeters:F1}m 低差、坡高至少 {minimumWorkFaceRise:F1}m 的可达工作面；设备保持原位。{candidateDiagnostics}";
             yield break;
@@ -570,7 +616,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         float bestScore = float.PositiveInfinity;
         int testedPositions = 0, coveredPositions = 0, validFaces = 0;
         int[] rejected = new int[10];
-        int directionCount = 16;
+        int directionCount = usePrepositionedEquipment ? 1 : 16;
         selectedWorkFace = default;
         int firstX = useExplicitWorkFaceAnchor
             ? Mathf.RoundToInt((workFaceAnchor.x - gridOrigin.x) / spacing) : first;
@@ -593,8 +639,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
 
                 for (int directionIndex = 0; directionIndex < directionCount; directionIndex++)
                 {
-                    float angle = directionIndex * (360f / directionCount);
-                    Vector3 direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
+                    Vector3 direction = usePrepositionedEquipment
+                        ? root.transform.forward
+                        : Quaternion.Euler(0, directionIndex * (360f / directionCount), 0) * Vector3.forward;
                     if (!EvaluateWorkFace(samples, gridOrigin, spacing, rootXZ, direction,
                         out float supportY, out float truckY, out float rise, out float supportSpread,
                         out int rejectionStage))
@@ -602,7 +649,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
                         rejected[rejectionStage]++;
                         continue;
                     }
-                    if (supportY > currentSupportY - minimumBenchDropMeters)
+                    if (!usePrepositionedEquipment && supportY > currentSupportY - minimumBenchDropMeters)
                     {
                         rejected[8]++;
                         continue;

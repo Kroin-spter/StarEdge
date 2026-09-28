@@ -280,19 +280,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 330.01
+      value: 292.01
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 7.8
+      value: -2.74
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 398.27
+      value: 354.27
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 1
+      value: 0.98078525
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.x
@@ -300,7 +300,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0
+      value: 0.19509032
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.z
@@ -312,7 +312,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
+      value: 22.5
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
@@ -485,19 +485,19 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 335.70
+      value: 299.4038
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 7.8
+      value: -2.847
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 400.38
+      value: 349.9085
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.5224986
+      value: 0.5555702
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.x
@@ -505,7 +505,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.8526402
+      value: 0.8314696
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.z
@@ -517,7 +517,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalEulerAnglesHint.y
-      value: 117
+      value: 112.5
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
@@ -1029,9 +1029,11 @@ MonoBehaviour:
   truck: {fileID: 91113228}
   mapName: osgb_small_005_004
   replacementAreaSize: {x: 28, y: 28}
-  useExplicitWorkFaceAnchor: 0
-  workFaceAnchor: {x: 0, y: 0, z: 0}
-  workFaceSearchRadius: 60
+  useExplicitWorkFaceAnchor: 1
+  workFaceAnchor: {x: 292.01, y: 0, z: 354.27}
+  usePrepositionedEquipment: 1
+  prepositionedUpperBenchSupportY: 7.512
+  workFaceSearchRadius: 8
   workFaceSearchSpacing: 2
   minimumWorkFaceRise: 2.5
   minimumBenchDropMeters: 2

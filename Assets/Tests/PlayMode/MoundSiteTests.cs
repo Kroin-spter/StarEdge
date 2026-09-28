@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -10,6 +12,94 @@ namespace ExcavatorControls.Tests
 {
     public class MoundSiteTests
     {
+        /// <summary>Cesium Scene-view tile scheduling is suspended only while the lower work face is surveyed.</summary>
+        /// <returns>Scene loading, work-face preparation, camera-setting restoration and cleanup.</returns>
+        [UnityTest]
+        public IEnumerator SceneViewTileSchedulingIsRestoredAfterWorkFaceSurvey()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            AsyncOperation unload = null;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                MonoBehaviour site = scene.GetRootGameObjects()
+                    .SelectMany(root => root.GetComponentsInChildren<MonoBehaviour>(true))
+                    .Single(component => component != null && component.GetType().Name == "CesiumMoundSite");
+                Type managerType = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(assembly => assembly.GetType("CesiumForUnity.CesiumCameraManager"))
+                    .First(type => type != null);
+                Component tileset = (Component)site.GetType().GetField("tileset").GetValue(site);
+                Component cameraManager = tileset.GetComponentInParent(managerType);
+                Assert.That(cameraManager, Is.Not.Null);
+                PropertyInfo sceneViewSetting = managerType.GetProperty("useSceneViewCameraInEditor");
+
+                bool observedSuppression = false;
+                float deadline = Time.realtimeSinceStartup + 40f;
+                PropertyInfo readyProperty = site.GetType().GetProperty("IsReady");
+                PropertyInfo statusProperty = site.GetType().GetProperty("Status");
+                while (!(bool)readyProperty.GetValue(site) && Time.realtimeSinceStartup < deadline)
+                {
+                    observedSuppression |= !((bool)sceneViewSetting.GetValue(cameraManager));
+                    yield return null;
+                }
+
+                Assert.That((bool)readyProperty.GetValue(site), Is.True, statusProperty.GetValue(site).ToString());
+                Assert.That(observedSuppression, Is.True,
+                    "The moving Editor Scene view must not invalidate the local Cesium survey.");
+                Assert.That((bool)sceneViewSetting.GetValue(cameraManager), Is.True,
+                    "Restore the user's Scene-view tile scheduling after preparation.");
+            }
+            finally
+            {
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Disabling an unfinished site survey restores Cesium settings and removes its temporary camera.</summary>
+        /// <returns>Scene loading, cancellation cleanup and scene unloading.</returns>
+        [UnityTest]
+        public IEnumerator DisablingSiteDuringSurveyRestoresCesiumCameraSettings()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            AsyncOperation unload = null;
+            try
+            {
+                MonoBehaviour site = scene.GetRootGameObjects()
+                    .SelectMany(root => root.GetComponentsInChildren<MonoBehaviour>(true))
+                    .Single(component => component != null && component.GetType().Name == "CesiumMoundSite");
+                Type managerType = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(assembly => assembly.GetType("CesiumForUnity.CesiumCameraManager"))
+                    .First(type => type != null);
+                Component tileset = (Component)site.GetType().GetField("tileset").GetValue(site);
+                Component cameraManager = tileset.GetComponentInParent(managerType);
+                PropertyInfo sceneViewSetting = managerType.GetProperty("useSceneViewCameraInEditor");
+                IList additionalCameras = (IList)managerType.GetProperty("additionalCameras").GetValue(cameraManager);
+
+                Assert.That((bool)site.GetType().GetProperty("IsReady").GetValue(site), Is.False);
+                Assert.That((bool)sceneViewSetting.GetValue(cameraManager), Is.False);
+                Assert.That(additionalCameras.Cast<Camera>().Any(camera => camera != null &&
+                    camera.name == "Cesium work-face survey camera"), Is.True);
+
+                site.enabled = false;
+
+                Assert.That((bool)sceneViewSetting.GetValue(cameraManager), Is.True);
+                Assert.That(additionalCameras.Cast<Camera>().Any(camera => camera != null &&
+                    camera.name == "Cesium work-face survey camera"), Is.False);
+            }
+            finally
+            {
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
         /// <summary>Verify the excavator occupies a lower pit, faces a raised work strip, and uses one clipped ground.</summary>
         /// <returns>Scene loading, tile streaming and cleanup.</returns>
         [UnityTest]
@@ -39,6 +129,9 @@ namespace ExcavatorControls.Tests
                 Assert.That(trackBase.position.x, Is.InRange(workArea.min.x, workArea.max.x),
                     "The excavator must stand inside the one-for-one Cesium replacement area.");
                 Assert.That(trackBase.position.z, Is.InRange(workArea.min.z, workArea.max.z));
+                Assert.That(Vector3.Distance(trackBase.position, new Vector3(292.01f, -2.74f, 354.27f)),
+                    Is.LessThan(.025f), "Play must keep the excavator at its authored lower-bench pose.");
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.1f));
                 float visibleRootOffset = Vector2.Distance(
                     new Vector2(trackBase.position.x, trackBase.position.z),
                     new Vector2(workArea.center.x, workArea.center.z));
@@ -47,6 +140,9 @@ namespace ExcavatorControls.Tests
                 Assert.That(truck.position.x, Is.InRange(workArea.min.x, workArea.max.x),
                     "The truck must stand on the same replaced lower work floor.");
                 Assert.That(truck.position.z, Is.InRange(workArea.min.z, workArea.max.z));
+                Assert.That(Vector3.Distance(truck.position, new Vector3(299.4038f, -2.847f, 349.9085f)),
+                    Is.LessThan(.025f), "Play must keep the truck at its authored lower-bench pose.");
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(truck.eulerAngles.y, 112.5f)), Is.LessThan(.1f));
 
                 float lowerY = float.NegativeInfinity;
                 foreach (float x in new[] { -1.5f, 1.5f })
