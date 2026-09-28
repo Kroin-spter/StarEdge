@@ -24,6 +24,8 @@ obj/
 /Data/Plugins/lib_burst_generated.wasm
 
 # Local recovery and temporary content
+.worktrees/
+.superpowers/
 /Assets/ConstructionSite/sence_test.before-site.unity
 /Assets/ConstructionSite/sence_test.before-site.unity.meta
 /Assets/_Recovery/
