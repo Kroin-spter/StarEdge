@@ -589,7 +589,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         Zx200JointPose target = new Zx200JointPose(
             actual.swing, actual.boom, machine.curlPose.arm,
             machine.curlPose.bucket, Mathf.Max(machine.curlPose.duration, cutTimeoutSeconds * .75f));
-        float minimumCurlDegrees = Mathf.Lerp(actual.bucket, target.bucket, .9f);
+        float minimumCurlDegrees = Mathf.Lerp(actual.bucket, target.bucket, .8f);
         CurrentMotionAxis = AutonomousMotionAxis.ArmAndBucket;
         try
         {
@@ -927,10 +927,10 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         ArticulationDrive bucketDrive = machine.bucketJoint.xDrive;
         // Use the configured truck-side working reach while still in the dig sector, before slewing over the bed.
         Zx200JointPose truckReady = machine.dumpPose;
-        // Keep the measured curl reached by FillBucket; forcing liftPose.bucket adds an unnecessary final curl
-        // while the bucket is still close to the bench and can wedge the physical bucket against the ground.
+        // Add a small post-cut curl only after the boom has lifted the bucket clear of the bench.
         float retainedBucketAngle = Zx200DigController.ClampTarget(
-            actual.bucket, bucketDrive.lowerLimit, bucketDrive.upperLimit);
+            actual.bucket + Mathf.Sign(machine.curlPose.bucket - actual.bucket) * 6f,
+            bucketDrive.lowerLimit, bucketDrive.upperLimit);
         Zx200JointPose target = CreatePreSwingApproachPose(
             actual,
             truckReady,
@@ -961,8 +961,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
             Zx200JointPose waypoint = machine.ReadActualPose();
             waypoint.arm = target.arm;
-            waypoint.duration = Mathf.Max(.8f, machine.swingToDumpPose.duration * .5f);
-            yield return MoveToPose(waypoint, "高位转运斗杆调整超时");
+            waypoint.bucket = target.bucket;
+            waypoint.duration = Mathf.Max(1.2f, machine.swingToDumpPose.duration);
+            yield return MoveArmAndBucketToPose(waypoint, "挖后斗杆与铲斗回收超时");
             if (!IsRunning || !stageSucceeded) yield break;
 
             // The arm change can lower the tip; revalidate and raise again before slewing toward the bed.
@@ -972,6 +973,52 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         {
             if (resistanceWasEnabled && resistance != null) resistance.enabled = true;
             if (cutterWasEnabled && cutter != null) cutter.SetCuttingSuppressed(wasCuttingSuppressed);
+        }
+    }
+
+    private IEnumerator MoveArmAndBucketToPose(Zx200JointPose target, string timeoutReason)
+    {
+        stageSucceeded = false;
+        CurrentMotionAxis = AutonomousMotionAxis.ArmAndBucket;
+        try
+        {
+            float startDeadline = Time.realtimeSinceStartup + stageTimeoutSeconds;
+            while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < startDeadline)
+            {
+                HandleManualInput();
+                yield return new WaitForFixedUpdate();
+            }
+            if (!IsRunning) yield break;
+            if (machine.IsBusy)
+            {
+                EnterFault($"等待关节释放超时，无法执行挖后回收：{timeoutReason}");
+                yield break;
+            }
+            if (!machine.StartAutomaticPose(target))
+            {
+                EnterFault("无法启动挖后斗杆与铲斗协同回收");
+                yield break;
+            }
+
+            float deadline = Time.realtimeSinceStartup + stageTimeoutSeconds + target.duration;
+            while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
+            {
+                HandleManualInput();
+                yield return new WaitForFixedUpdate();
+            }
+            if (!IsRunning) yield break;
+            if (machine.IsBusy || !machine.IsPoseWithinTolerance(target, machine.jointToleranceDegrees))
+            {
+                machine.StopAutomaticMotion();
+                EnterFault($"{timeoutReason}；目标姿态=({target.swing:F1},{target.boom:F1}," +
+                    $"{target.arm:F1},{target.bucket:F1})，实际姿态={machine.ReadActualPose()}");
+                yield break;
+            }
+            stageSucceeded = true;
+        }
+        finally
+        {
+            CurrentMotionAxis = AutonomousMotionAxis.None;
         }
     }
 
@@ -1477,7 +1524,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             AutonomousMotionAxis.Boom => "动臂",
             AutonomousMotionAxis.Arm => "斗杆",
             AutonomousMotionAxis.Swing => "上车回转",
-            AutonomousMotionAxis.ArmAndBucket => "斗杆+铲斗协同切削",
+            AutonomousMotionAxis.ArmAndBucket => "斗杆+铲斗协同运动",
             _ => "未知"
         };
     }
