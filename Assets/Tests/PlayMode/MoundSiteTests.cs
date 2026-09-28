@@ -117,11 +117,14 @@ namespace ExcavatorControls.Tests
                 var site = all.Single(c => c != null && c.GetType().Name == "CesiumMoundSite");
                 float stripCenterLocalZ = (float)site.GetType().GetField("soilStripCenterLocalZ").GetValue(site);
                 float stripHalfWidth = (float)site.GetType().GetField("soilStripHalfWidth").GetValue(site);
+                float stripHalfDepth = (float)site.GetType().GetField("soilStripHalfDepth").GetValue(site);
                 float stripHeight = (float)site.GetType().GetField("soilStripHeight").GetValue(site);
+                float minimumSurfaceNormalY = (float)site.GetType().GetField("minimumSurfaceNormalY").GetValue(site);
                 var dig = all.OfType<Zx200DigController>().Single();
                 var keyboard = dig.GetComponent<Zx200KeyboardController>();
                 Transform trackBase = keyboard.articulationRoot.transform;
                 var truck = all.OfType<SoilReceivingZone>().Single().transform.parent;
+                Vector3 authoredLeftSeed = new Vector3(281.0765f, trackBase.position.y, 359.2318f);
                 Component clip = all.FirstOrDefault(c => c != null && c.GetType().Name == "ConstructionSiteMapClip");
                 Assert.That(clip, Is.Not.Null, "The site must install a bounded Cesium render/collision clip.");
                 Bounds workArea = (Bounds)clip.GetType().GetField("workArea").GetValue(clip);
@@ -129,8 +132,9 @@ namespace ExcavatorControls.Tests
                 Assert.That(trackBase.position.x, Is.InRange(workArea.min.x, workArea.max.x),
                     "The excavator must stand inside the one-for-one Cesium replacement area.");
                 Assert.That(trackBase.position.z, Is.InRange(workArea.min.z, workArea.max.z));
-                Assert.That(Vector3.Distance(trackBase.position, new Vector3(292.01f, -2.74f, 354.27f)),
-                    Is.LessThan(.025f), "Play must keep the excavator at its authored lower-bench pose.");
+                Assert.That(Vector2.Distance(new Vector2(trackBase.position.x, trackBase.position.z),
+                    new Vector2(authoredLeftSeed.x, authoredLeftSeed.z)), Is.LessThanOrEqualTo(8.5f),
+                    "The terrain-validated lower-bench placement must stay near the authored left-side target.");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.1f));
                 float visibleRootOffset = Vector2.Distance(
                     new Vector2(trackBase.position.x, trackBase.position.z),
@@ -140,8 +144,12 @@ namespace ExcavatorControls.Tests
                 Assert.That(truck.position.x, Is.InRange(workArea.min.x, workArea.max.x),
                     "The truck must stand on the same replaced lower work floor.");
                 Assert.That(truck.position.z, Is.InRange(workArea.min.z, workArea.max.z));
-                Assert.That(Vector3.Distance(truck.position, new Vector3(299.4038f, -2.847f, 349.9085f)),
-                    Is.LessThan(.025f), "Play must keep the truck at its authored lower-bench pose.");
+                Vector3 truckOffset = (Vector3)site.GetType()
+                    .GetField("truckParkingOffsetLocal").GetValue(site);
+                Vector3 expectedTruckXZ = trackBase.position + trackBase.rotation * truckOffset;
+                Assert.That(Vector2.Distance(new Vector2(truck.position.x, truck.position.z),
+                    new Vector2(expectedTruckXZ.x, expectedTruckXZ.z)), Is.LessThan(.1f),
+                    "The truck must follow the selected excavator pose while preserving its side-parking offset.");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(truck.eulerAngles.y, 112.5f)), Is.LessThan(.1f));
 
                 float lowerY = float.NegativeInfinity;
@@ -182,7 +190,12 @@ namespace ExcavatorControls.Tests
                 float slopeZ = (soil.GetFloorWorldY(stripCenter + trackBase.forward) -
                     soil.GetFloorWorldY(stripCenter - trackBase.forward)) * .5f;
                 float normalY = 1f / Mathf.Sqrt(1f + slopeX * slopeX + slopeZ * slopeZ);
+                float selectedNormalY = (float)site.GetType().GetProperty("SelectedSurfaceNormalY").GetValue(site);
+                Assert.That(selectedNormalY, Is.GreaterThanOrEqualTo(minimumSurfaceNormalY),
+                    "The selected work face should favor a less steep slope, not merely a cuttable wall.");
                 float normalThickness = (topCenterY - baseCenterY) * normalY;
+                Assert.That(stripHalfWidth, Is.EqualTo(6f).Within(.01f));
+                Assert.That(stripHalfDepth, Is.EqualTo(2f).Within(.01f));
                 Assert.That(normalThickness, Is.InRange(stripHeight * .75f, stripHeight * 1.25f),
                     "The soil band must follow the Cesium slope with approximately constant normal thickness.");
                 float besideBandY = soil.Terrain.SampleHeight(

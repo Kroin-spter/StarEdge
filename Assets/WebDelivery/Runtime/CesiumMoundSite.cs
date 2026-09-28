@@ -44,18 +44,20 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public bool useExplicitWorkFaceAnchor;
     [Tooltip("World X/Z of the desired track-base center. Automatic slope search is used when disabled.")]
     public Vector3 workFaceAnchor;
-    [Tooltip("Keep the excavator and truck at their authored lower-bench transforms instead of choosing a new parking point.")]
+    [Tooltip("Use the authored machine heading and upper-bench height as references while selecting a lower work face.")]
     public bool usePrepositionedEquipment;
+    [Tooltip("Move the excavator and truck to the selected work face after all map, support, slope, and bucket-clearance checks pass.")]
+    public bool relocateEquipmentToSelectedWorkFace;
     [Tooltip("Measured upper-bench support height used to report the bench drop for pre-positioned equipment.")]
     public float prepositionedUpperBenchSupportY = 7.512f;
     [Min(8f)] public float workFaceSearchRadius = 60f;
     [Min(.5f)] public float workFaceSearchSpacing = 2f;
     [Min(.1f)] public float minimumWorkFaceRise = 2.5f;
     [Min(0f)] public float minimumBenchDropMeters = 2f;
-    [Range(.2f, .9f)] public float minimumSurfaceNormalY = .42f;
-    [Min(.1f)] public float soilStripHalfWidth = 4.8f;
+    [Range(.2f, .9f)] public float minimumSurfaceNormalY = .55f;
+    [Min(.1f)] public float soilStripHalfWidth = 6f;
     [Min(.1f)] public float soilStripCenterLocalZ = 6.7f;
-    [Min(.1f)] public float soilStripHalfDepth = .9f;
+    [Min(.1f)] public float soilStripHalfDepth = 2f;
     [Min(.05f)] public float soilStripHeight = .55f;
     [Header("Truck parking on the lower bench")]
     public Vector3 truckParkingOffsetLocal = new Vector3(7.9f, 0f, -1.2f);
@@ -71,6 +73,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public bool OriginalFixedBase => originalFixed;
     /// <summary>Predicted clearance from the initial bucket tooth to the prepared slope band.</summary>
     public float ReadyTipClearanceMeters { get; private set; }
+    /// <summary>Vertical component of the normalized surface normal at the selected work face.</summary>
+    public float SelectedSurfaceNormalY { get; private set; }
     /// <summary>Number of frame yields used while sampling the Cesium work area.</summary>
     public int SurveyFrameYieldCount { get; private set; }
     /// <summary>World-space footprint where the authored terrain replaces Cesium rendering and collision.</summary>
@@ -295,9 +299,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     clip.RefreshLoadedTiles();
                     Physics.SyncTransforms();
 
-                    // Auto-selected equipment is parked only after the terrain is ready; authored poses stay untouched.
+                    // Move equipment only after the replacement terrain and all work-face checks are ready.
                     Vector3 rootTarget = originalRootPosition;
-                    if (!usePrepositionedEquipment)
+                    if (relocateEquipmentToSelectedWorkFace)
                     {
                         float bottom = originalTrackBounds.min.y;
                         rootTarget = selectedRootPosition + Vector3.up * (selectedSupportY + .025f - bottom);
@@ -323,6 +327,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
                         $"strip={soilStripHeight:F2}m normal thickness x {soilStripHalfWidth * 2f:F1}m wide, " +
                         $"face={selectedFaceDirection}, root={root.transform.position}, " +
                         $"targetRoot={rootTarget}, relocated={root.transform.position - originalRootPosition}, " +
+                        $"normalY={SelectedSurfaceNormalY:F2}, " +
                         $"trackBottom={TrackBounds().min.y:F3} initialTrackBottom={originalTrackBounds.min.y:F3}, " +
                         $"benchDrop={BenchDropMeters:F2}m predictedRise={selectedFaceRise:F2}m", this);
                     yield break;
@@ -375,6 +380,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         internal float supportY;
         internal float truckGroundY;
         internal float rise;
+        internal float surfaceNormalY;
         internal float readyTipClearance;
     }
 
@@ -422,6 +428,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         selectedSupportY = candidate.supportY;
         selectedTruckGroundY = candidate.truckGroundY;
         selectedFaceRise = candidate.rise;
+        SelectedSurfaceNormalY = candidate.surfaceNormalY;
         ReadyTipClearanceMeters = candidate.readyTipClearance;
 
         soil.Initialize(soil.GetComponent<Terrain>());
@@ -646,12 +653,13 @@ public sealed class CesiumMoundSite : MonoBehaviour
                         : Quaternion.Euler(0, directionIndex * (360f / directionCount), 0) * Vector3.forward;
                     if (!EvaluateWorkFace(samples, gridOrigin, spacing, rootXZ, direction,
                         out float supportY, out float truckY, out float rise, out float supportSpread,
-                        out int rejectionStage))
+                        out float surfaceNormalY, out int rejectionStage))
                     {
                         rejected[rejectionStage]++;
                         continue;
                     }
-                    if (!usePrepositionedEquipment && supportY > currentSupportY - minimumBenchDropMeters)
+                    float benchReferenceY = usePrepositionedEquipment ? originalSupportY : currentSupportY;
+                    if (supportY > benchReferenceY - minimumBenchDropMeters)
                     {
                         rejected[8]++;
                         continue;
@@ -664,9 +672,10 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     }
                     validFaces++;
                     float distance = Vector2.Distance(rootXZ, new Vector2(original.x, original.z));
-                    float benchDrop = currentSupportY - supportY;
-                    float score = Mathf.Abs(rise - 3.2f) + distance * .004f + supportSpread * 2f -
-                        benchDrop * .08f - Mathf.Min(readyTipClearance, 1f) * .15f;
+                    float benchDrop = benchReferenceY - supportY;
+                    float score = Mathf.Abs(rise - 3.2f) + distance * .04f + supportSpread * 2f +
+                        (1f - surfaceNormalY) * 4f - benchDrop * .08f -
+                        Mathf.Min(readyTipClearance, 1f) * .15f;
                     if (score >= bestScore) continue;
                     bestScore = score;
                     selectedWorkFace = new WorkFaceCandidate
@@ -676,6 +685,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
                         supportY = supportY,
                         truckGroundY = truckY,
                         rise = rise,
+                        surfaceNormalY = surfaceNormalY,
                         readyTipClearance = readyTipClearance
                     };
                 }
@@ -813,9 +823,10 @@ public sealed class CesiumMoundSite : MonoBehaviour
 
     private bool EvaluateWorkFace(float[,] samples, Vector3 gridOrigin, float spacing,
         Vector2 rootXZ, Vector3 direction, out float supportY, out float truckY,
-        out float rise, out float supportSpread, out int rejectionStage)
+        out float rise, out float supportSpread, out float surfaceNormalY, out int rejectionStage)
     {
         supportY = truckY = rise = supportSpread = 0f;
+        surfaceNormalY = 1f;
         rejectionStage = 1;
         Quaternion rotation = Quaternion.LookRotation(direction, Vector3.up);
         float minSupport = float.PositiveInfinity;
@@ -883,9 +894,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     rotation * Vector3.right * .75f, out float leftY))
             slopeX = (rightY - leftY) / 1.5f;
         float slopeZ = (crest - foot) / 8f;
-        float normalY = 1f / Mathf.Sqrt(1f + slopeX * slopeX + slopeZ * slopeZ);
+        surfaceNormalY = 1f / Mathf.Sqrt(1f + slopeX * slopeX + slopeZ * slopeZ);
         rejectionStage = 7;
-        return normalY >= minimumSurfaceNormalY;
+        return surfaceNormalY >= minimumSurfaceNormalY;
     }
 
     private float SoilStripMask(Vector3 machineLocal)

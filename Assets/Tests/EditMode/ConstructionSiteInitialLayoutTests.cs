@@ -24,13 +24,19 @@ namespace ExcavatorControls.Tests
                 keyboard.ResolveArticulationRoot();
 
                 Transform trackBase = keyboard.articulationRoot.transform;
-                AssertPosition(trackBase.position, new Vector3(292.1631f, -2.74f, 354.6396f), "excavator track base");
+                AssertPosition(trackBase.position, new Vector3(281.0765f, -2.74f, 359.2318f), "excavator track base");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.1f));
-                Assert.That(site.useExplicitWorkFaceAnchor, Is.True);
+                Assert.That(site.useExplicitWorkFaceAnchor, Is.False,
+                    "The authored point should seed a small terrain-validated search rather than pinning one failing point.");
                 Assert.That(site.usePrepositionedEquipment, Is.True);
-                Assert.That(site.workFaceAnchor.x, Is.EqualTo(292.1631f).Within(.01f));
-                Assert.That(site.workFaceAnchor.z, Is.EqualTo(354.6396f).Within(.01f));
-                AssertPosition(site.truck.position, new Vector3(299.0025f, -2.847f, 350.5077f), "dump truck");
+                Assert.That(site.relocateEquipmentToSelectedWorkFace, Is.True);
+                Assert.That(site.workFaceAnchor.x, Is.EqualTo(281.0765f).Within(.01f));
+                Assert.That(site.workFaceAnchor.z, Is.EqualTo(359.2318f).Within(.01f));
+                Assert.That(site.workFaceSearchRadius, Is.EqualTo(8f).Within(.01f));
+                Assert.That(site.minimumSurfaceNormalY, Is.EqualTo(.55f).Within(.001f));
+                Assert.That(site.soilStripHalfWidth, Is.EqualTo(6f).Within(.01f));
+                Assert.That(site.soilStripHalfDepth, Is.EqualTo(2f).Within(.01f));
+                AssertPosition(site.truck.position, new Vector3(287.9159f, -2.847f, 355.0999f), "dump truck");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(site.truck.eulerAngles.y, 112.5f)), Is.LessThan(.1f));
                 SoilReceivingZone receiver = site.truck.GetComponentInChildren<SoilReceivingZone>();
                 BoxCollider bedFloor = site.truck.GetComponentsInChildren<BoxCollider>()

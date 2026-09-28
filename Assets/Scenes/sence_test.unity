@@ -280,7 +280,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 292.1631
+      value: 281.0765
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.y
@@ -288,7 +288,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 354.6396
+      value: 359.2318
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.w
@@ -485,7 +485,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 299.0025
+      value: 287.9159
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y
@@ -493,7 +493,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 350.5077
+      value: 355.0999
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.w
@@ -1029,18 +1029,19 @@ MonoBehaviour:
   truck: {fileID: 91113228}
   mapName: osgb_small_005_004
   replacementAreaSize: {x: 28, y: 28}
-  useExplicitWorkFaceAnchor: 1
-  workFaceAnchor: {x: 292.1631, y: 0, z: 354.6396}
+  useExplicitWorkFaceAnchor: 0
+  workFaceAnchor: {x: 281.0765, y: 0, z: 359.2318}
   usePrepositionedEquipment: 1
+  relocateEquipmentToSelectedWorkFace: 1
   prepositionedUpperBenchSupportY: 7.512
   workFaceSearchRadius: 8
   workFaceSearchSpacing: 2
   minimumWorkFaceRise: 2.5
   minimumBenchDropMeters: 2
-  minimumSurfaceNormalY: 0.42
-  soilStripHalfWidth: 4.8
+  minimumSurfaceNormalY: 0.55
+  soilStripHalfWidth: 6
   soilStripCenterLocalZ: 9.1
-  soilStripHalfDepth: 1.55
+  soilStripHalfDepth: 2
   soilStripHeight: 0.55
   truckParkingOffsetLocal: {x: 7.9, y: 0, z: -1.2}
   truckParkingYawDegrees: 90
