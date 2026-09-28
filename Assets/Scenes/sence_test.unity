@@ -1039,6 +1039,7 @@ MonoBehaviour:
   minimumWorkFaceRise: 2.5
   minimumBenchDropMeters: 2
   minimumSurfaceNormalY: 0.55
+  minimumReadyTipClearanceMeters: 0.6
   soilStripHalfWidth: 6
   soilStripCenterLocalZ: 9.1
   soilStripHalfDepth: 2

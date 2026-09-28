@@ -34,6 +34,7 @@ namespace ExcavatorControls.Tests
                 Assert.That(site.workFaceAnchor.z, Is.EqualTo(359.2318f).Within(.01f));
                 Assert.That(site.workFaceSearchRadius, Is.EqualTo(8f).Within(.01f));
                 Assert.That(site.minimumSurfaceNormalY, Is.EqualTo(.55f).Within(.001f));
+                Assert.That(site.minimumReadyTipClearanceMeters, Is.EqualTo(.6f).Within(.001f));
                 Assert.That(site.soilStripHalfWidth, Is.EqualTo(6f).Within(.01f));
                 Assert.That(site.soilStripHalfDepth, Is.EqualTo(2f).Within(.01f));
                 AssertPosition(site.truck.position, new Vector3(287.9159f, -2.847f, 355.0999f), "dump truck");

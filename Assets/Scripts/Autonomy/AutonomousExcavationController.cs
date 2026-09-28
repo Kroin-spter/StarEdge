@@ -641,6 +641,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             bool curlComplete = target.bucket >= actual.bucket
                 ? cutEnd.bucket >= minimumCurlDegrees
                 : cutEnd.bucket <= minimumCurlDegrees;
+            if (!curlComplete && cutter.VolumeM3 >= cutter.EffectiveCapacityM3 - .0001f)
+            {
+                yield return FinishFullBucketCurl(minimumCurlDegrees, target.bucket);
+                yield break;
+            }
             if (!curlComplete && cutter.VolumeM3 - before >= minimumLoadVolumeM3)
             {
                 EnterFault($"铲斗未完成收斗，不能带半开斗抬升；实际={cutEnd.bucket:F1}°，" +
@@ -663,6 +668,62 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         {
             CurrentMotionAxis = AutonomousMotionAxis.None;
         }
+    }
+
+    private IEnumerator FinishFullBucketCurl(float minimumCurlDegrees, float targetBucketDegrees)
+    {
+        // A full bucket may stop its own downward-moving tooth at the penetration guard.
+        // Withdraw only far enough to clear the cut face, then close it before the loaded lift.
+        ArticulationDrive boomDrive = machine.boomJoint.xDrive;
+        for (int attempt = 0; IsRunning && attempt < 8; attempt++)
+        {
+            Vector3 tip = cutter.TipWorldPosition;
+            float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+            if (tip.y >= surface + .12f) break;
+            Zx200JointPose withdrawal = machine.ReadActualPose();
+            Vector3 axis = machine.boomJoint.transform.TransformDirection(
+                machine.boomJoint.anchorRotation * Vector3.right).normalized;
+            Vector3 pivot = machine.boomJoint.transform.TransformPoint(machine.boomJoint.anchorPosition);
+            float sign = GetHeightImprovingRotationSign(axis, tip - pivot);
+            withdrawal.boom = Zx200DigController.ClampTarget(withdrawal.boom + sign * 6f,
+                boomDrive.lowerLimit, boomDrive.upperLimit);
+            if (Mathf.Abs(withdrawal.boom - machine.ReadActualPose().boom) < .5f) break;
+            withdrawal.duration = 1.2f;
+            yield return MoveToPose(withdrawal, "满斗小幅脱离切削面超时");
+            if (!IsRunning || !stageSucceeded) yield break;
+        }
+
+        Vector3 clearedTip = cutter.TipWorldPosition;
+        float clearedSurface = cutter.soil.Terrain.SampleHeight(clearedTip) + cutter.soil.transform.position.y;
+        if (clearedTip.y < clearedSurface + .12f)
+        {
+            EnterFault($"满斗收斗前无法脱离坡面；斗尖={clearedTip.y:F2}m，土面={clearedSurface:F2}m");
+            yield break;
+        }
+
+        Zx200JointPose close = machine.ReadActualPose();
+        close.bucket = targetBucketDegrees;
+        close.duration = Mathf.Max(1.5f, machine.curlPose.duration);
+        BucketSoilResistance resistance = machine.bucketJoint.GetComponent<BucketSoilResistance>();
+        bool resistanceWasEnabled = resistance != null && resistance.enabled;
+        bool cuttingWasSuppressed = cutter.IsCuttingSuppressed;
+        cutter.SetCuttingSuppressed(true);
+        if (resistanceWasEnabled) resistance.enabled = false;
+        try
+        {
+            // Once clear of the face, finish containing the already-full load. The cutting
+            // guard must not reinterpret this carry curl as a new downward cut.
+            yield return MoveArmAndBucketToPose(close, "满斗脱离土面后收斗超时");
+        }
+        finally
+        {
+            if (resistanceWasEnabled && resistance != null) resistance.enabled = true;
+            cutter.SetCuttingSuppressed(cuttingWasSuppressed);
+        }
+        if (!IsRunning || !stageSucceeded) yield break;
+        float closed = machine.ReadActualPose().bucket;
+        if (closed < minimumCurlDegrees)
+            EnterFault($"满斗脱离土面后仍未收斗；实际={closed:F1}°，目标至少={minimumCurlDegrees:F1}°");
     }
 
     private IEnumerator PrepareForCut()
@@ -1022,8 +1083,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             if (machine.IsBusy || !machine.IsPoseWithinTolerance(target, machine.jointToleranceDegrees))
             {
                 machine.StopAutomaticMotion();
+                Zx200JointPose failed = machine.ReadActualPose();
+                BucketSoilResistance guard = machine.bucketJoint.GetComponent<BucketSoilResistance>();
                 EnterFault($"{timeoutReason}；目标姿态=({target.swing:F1},{target.boom:F1}," +
-                    $"{target.arm:F1},{target.bucket:F1})，实际姿态={machine.ReadActualPose()}");
+                    $"{target.arm:F1},{target.bucket:F1})，实际姿态=" +
+                    $"({failed.swing:F1},{failed.boom:F1},{failed.arm:F1},{failed.bucket:F1})，" +
+                    $"斗尖={cutter.TipWorldPosition}，切削保护={guard?.BlockReason}");
                 yield break;
             }
             stageSucceeded = true;

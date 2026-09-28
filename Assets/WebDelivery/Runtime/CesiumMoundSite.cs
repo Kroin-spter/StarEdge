@@ -55,6 +55,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
     [Min(.1f)] public float minimumWorkFaceRise = 2.5f;
     [Min(0f)] public float minimumBenchDropMeters = 2f;
     [Range(.2f, .9f)] public float minimumSurfaceNormalY = .55f;
+    [Min(.25f)] public float minimumReadyTipClearanceMeters = .6f;
     [Min(.1f)] public float soilStripHalfWidth = 6f;
     [Min(.1f)] public float soilStripCenterLocalZ = 6.7f;
     [Min(.1f)] public float soilStripHalfDepth = 2f;
@@ -489,6 +490,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
         var heights = new float[n, n];
         var ground = new float[n, n];
         var targetWorldY = new float[n, n];
+        int steepBandCells = 0;
+        float lowestBandNormalY = 1f;
         for (int z = 0; z < n; z++)
         {
             for (int x = 0; x < n; x++)
@@ -501,13 +504,12 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     float slopeZ = (baseGround[Mathf.Min(n - 1, z + normalStepZ), x] -
                         baseGround[Mathf.Max(0, z - normalStepZ), x]) / (2f * normalStepZ * dz);
                     Vector3 normal = new Vector3(-slopeX, 1f, -slopeZ).normalized;
-                    if (normal.y < minimumSurfaceNormalY)
-                    {
-                        Status = $"坡面局部过陡（法线 Y={normal.y:F2}），Unity 高度场无法安全表示；设备保持原位。";
-                        yield break;
-                    }
-                    thickness = GetVerticalOffsetForNormalThickness(
-                        soilStripHeight * stripMask[z, x], normal, minimumSurfaceNormalY);
+                    lowestBandNormalY = Mathf.Min(lowestBandNormalY, normal.y);
+                    if (normal.y < minimumSurfaceNormalY) steepBandCells++;
+                    // On isolated steep photogrammetry cells, cap vertical buildup rather than
+                    // aborting the whole work face or creating a tall soil spike.
+                    thickness = soilStripHeight * stripMask[z, x] /
+                        Mathf.Max(minimumSurfaceNormalY, normal.y);
                 }
                 targetWorldY[z, x] = baseGround[z, x] + thickness;
                 maximum = Mathf.Max(maximum, targetWorldY[z, x]);
@@ -525,6 +527,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
                 }
             }
         }
+        if (steepBandCells > 0)
+            Debug.Log($"施工区土带已对 {steepBandCells} 个陡坡网格限厚；最小法线 Y={lowestBandNormalY:F3}。", this);
 
         origin.y = minimum - .35f;
         soil.transform.position = origin;
@@ -665,7 +669,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
                         continue;
                     }
                     if (!TryMeasureReadyTipClearance(samples, gridOrigin, spacing, rootXZ,
-                        direction, supportY, out float readyTipClearance) || readyTipClearance < .25f)
+                        direction, supportY, out float readyTipClearance) ||
+                        readyTipClearance < minimumReadyTipClearanceMeters)
                     {
                         rejected[9]++;
                         continue;

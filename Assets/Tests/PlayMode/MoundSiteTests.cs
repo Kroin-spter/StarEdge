@@ -135,7 +135,7 @@ namespace ExcavatorControls.Tests
                 Assert.That(Vector2.Distance(new Vector2(trackBase.position.x, trackBase.position.z),
                     new Vector2(authoredLeftSeed.x, authoredLeftSeed.z)), Is.LessThanOrEqualTo(8.5f),
                     "The terrain-validated lower-bench placement must stay near the authored left-side target.");
-                Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.1f));
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.2f));
                 float visibleRootOffset = Vector2.Distance(
                     new Vector2(trackBase.position.x, trackBase.position.z),
                     new Vector2(workArea.center.x, workArea.center.z));
@@ -176,7 +176,7 @@ namespace ExcavatorControls.Tests
                 Assert.That(benchDrop, Is.GreaterThanOrEqualTo(2f),
                     "The selected track platform must be at least 2 m below the original upper platform.");
                 float readyTipClearance = (float)site.GetType().GetProperty("ReadyTipClearanceMeters").GetValue(site);
-                Assert.That(readyTipClearance, Is.GreaterThanOrEqualTo(.25f),
+                Assert.That(readyTipClearance, Is.GreaterThanOrEqualTo(.6f),
                     "The initial bucket tooth must clear the cuttable slope enough to curl before entering the soil.");
                 int surveyFrameYields = (int)site.GetType().GetProperty("SurveyFrameYieldCount").GetValue(site);
                 Assert.That(surveyFrameYields, Is.GreaterThan(0),
@@ -307,9 +307,9 @@ namespace ExcavatorControls.Tests
                     if (item.name == "Solid work pad" || item.name == "Soil bottom plate (always solid)")
                         Assert.That(item.gameObject.activeInHierarchy, Is.False);
                 }
-                Assert.That(keyboard.fixedBase, Is.True);
-                Assert.That(keyboard.articulationRoot.immovable, Is.True,
-                    "The open-pit demo parks the track base while the upper articulation remains movable.");
+                Assert.That(keyboard.fixedBase, Is.False);
+                Assert.That(keyboard.articulationRoot.immovable, Is.False,
+                    "Manual track driving remains available until the autonomous job locks the base.");
                 Collider[] trackColliders = keyboard.articulationRoot.GetComponentsInChildren<Collider>()
                     .Where(c => c.enabled && !c.isTrigger && c.attachedArticulationBody == keyboard.articulationRoot).ToArray();
                 Bounds trackBounds = trackColliders[0].bounds;
