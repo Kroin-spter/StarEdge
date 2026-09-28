@@ -13,7 +13,7 @@
 
 - TDD 红灯：`/tmp/task1-red.log` 在新增数据类型前报 `CS0246 BakedConstructionSiteData`；实现后，`/tmp/task1-editmode-rebuild.xml` 的 3 个定向 EditMode 测试 **3/3 Passed**，覆盖损坏数据/错地图、缺资源不回退、运行时切削与复位不污染源数据。
 - 真实本地 Cesium 烘焙：`/tmp/task1-local-bake4.xml` **1/1 Passed**；`/tmp/task1-local-bake4.log` 记录资产路径和 **33.268 m³**。场景随后应用了该资产，并保持 `Baked` 模式。
-- 离线重复启动：将 `CESIUM_TILESET_DIR` 指向不存在的目录，`/tmp/task1-startup-green5.xml` **1/1 Passed**，内部完成 **5 次**加载/卸载。启动时间 **0.291、0.063、0.063、0.065、0.070 s**；逐点比较整个运行高度图、复位后高度图及地形尺寸、图层/树原型元数据；每次 Play 前后还对烘焙资源和 TerrainData 子资源文件做 SHA-256 比较。
+- 离线重复启动：将 `CESIUM_TILESET_DIR` 指向不存在的目录，`/tmp/task1-startup-green5.xml` **1/1 Passed**，内部完成 **5 次**加载/卸载。启动时间 **0.291、0.063、0.063、0.065、0.070 s**；逐点比较整个运行高度图与 holes 碰撞孔洞图、复位后高度图及地形尺寸、图层/树原型元数据；每次 Play 前后还对烘焙资源和 TerrainData 子资源文件做 SHA-256 比较。复核期间另用 `/tmp/task1-holes-red.xml` **1/1 Passed** 注入一次运行时孔洞变化，确认完整性断言能捕获并在 `finally` 中恢复后继续通过。
 - 场景布局与引用：`/tmp/task1-layout-baked2.xml` **1/1 Passed**，验证 `sence_test` 的烘焙引用、下方工作面设备布局和裁剪组件。测试与编译在隔离工程/cache 完成，未占用原工程 GUI Editor。
 - Review 修复 TDD：旧净体积判定下，`/tmp/task1-review-red.xml` 的“切土+回填净量归零仍禁止烘焙”和“无 Terrain 材质拒绝”两项测试按预期失败；修复后 `/tmp/task1-review-green.xml` **5/5 Passed**，覆盖以上用例、既有资源校验和运行时切削复位隔离。
 - 启动测试不再修改 `LogAssert.ignoreFailingMessages`。只登记精确已知日志：Cesium 本地瓦片缺失提示，以及场景原有的三个无效树预制体引用和 ZX200 凸包回退；其他未登记的测试日志仍导致失败。测试 XML 与 Editor log 保存在 `/tmp/task1-startup-green5.xml`、`/tmp/task1-startup-green5.log`。

@@ -96,6 +96,7 @@ namespace ExcavatorControls.Tests
 
                 if (attempt == 0)
                 {
+                    AssertRuntimeHoleChangesAreDetected(soil.Terrain.terrainData, sourceSnapshot);
                     Vector3 point = soil.transform.position + new Vector3(source.size.x * .5f, 0,
                         source.size.z * .5f);
                     Assert.That(soil.Deposit(point, 1f, .05), Is.GreaterThan(0));
@@ -144,8 +145,10 @@ namespace ExcavatorControls.Tests
         {
             int heightResolution = source.heightmapResolution;
             float[,] heights = source.GetHeights(0, 0, heightResolution, heightResolution);
+            int holesResolution = source.holesResolution;
+            bool[,] holes = source.GetHoles(0, 0, holesResolution, holesResolution);
             TerrainLayer[] terrainLayers = source.terrainLayers ?? Array.Empty<TerrainLayer>();
-            return new TerrainSnapshot(source.size, heightResolution, heights,
+            return new TerrainSnapshot(source.size, heightResolution, heights, holesResolution, holes,
                 source.alphamapResolution, source.alphamapLayers,
                 terrainLayers, source.treePrototypes ?? Array.Empty<TreePrototype>(), source.treeInstances);
         }
@@ -155,12 +158,16 @@ namespace ExcavatorControls.Tests
             Assert.That(actual.size, Is.EqualTo(expected.Size), $"{label}: Terrain size changed.");
             Assert.That(actual.heightmapResolution, Is.EqualTo(expected.HeightResolution),
                 $"{label}: heightmap resolution changed.");
+            Assert.That(actual.holesResolution, Is.EqualTo(expected.HolesResolution),
+                $"{label}: holes resolution changed.");
             Assert.That(actual.alphamapResolution, Is.EqualTo(expected.AlphamapResolution),
                 $"{label}: alphamap resolution changed.");
             Assert.That(actual.alphamapLayers, Is.EqualTo(expected.AlphamapLayers),
                 $"{label}: alphamap layer count changed.");
             AssertHeightmapsEqual(actual.GetHeights(0, 0, expected.HeightResolution, expected.HeightResolution),
                 expected.Heights, label);
+            AssertHolemapsEqual(actual.GetHoles(0, 0, expected.HolesResolution, expected.HolesResolution),
+                expected.Holes, label);
             TerrainLayer[] actualLayers = actual.terrainLayers ?? Array.Empty<TerrainLayer>();
             Assert.That(actualLayers, Is.EqualTo(expected.TerrainLayers),
                 $"{label}: TerrainLayer references changed.");
@@ -204,11 +211,44 @@ namespace ExcavatorControls.Tests
                         Assert.Fail($"{label}: height sample ({x}, {z}) changed from {expected[z, x]:R} to {actual[z, x]:R}.");
         }
 
+        private static void AssertRuntimeHoleChangesAreDetected(TerrainData runtime, TerrainSnapshot expected)
+        {
+            bool[,] original = runtime.GetHoles(0, 0, expected.HolesResolution, expected.HolesResolution);
+            bool[,] changed = (bool[,])original.Clone();
+            changed[0, 0] = !changed[0, 0];
+            runtime.SetHoles(0, 0, changed);
+            try
+            {
+                Assert.Throws<AssertionException>(() => AssertTerrainMatches(runtime, expected,
+                    "deliberately changed runtime holes"));
+            }
+            finally
+            {
+                runtime.SetHoles(0, 0, original);
+            }
+            AssertTerrainMatches(runtime, expected, "runtime holes after probe restore");
+        }
+
+        private static void AssertHolemapsEqual(bool[,] actual, bool[,] expected, string label)
+        {
+            Assert.That(actual.GetLength(0), Is.EqualTo(expected.GetLength(0)),
+                $"{label}: hole rows differ.");
+            Assert.That(actual.GetLength(1), Is.EqualTo(expected.GetLength(1)),
+                $"{label}: hole columns differ.");
+            for (int z = 0; z < expected.GetLength(0); z++)
+                for (int x = 0; x < expected.GetLength(1); x++)
+                    if (actual[z, x] != expected[z, x])
+                        Assert.Fail($"{label}: Terrain hole ({x}, {z}) changed from " +
+                            $"{expected[z, x]} to {actual[z, x]}.");
+        }
+
         private sealed class TerrainSnapshot
         {
             internal readonly Vector3 Size;
             internal readonly int HeightResolution;
             internal readonly float[,] Heights;
+            internal readonly int HolesResolution;
+            internal readonly bool[,] Holes;
             internal readonly int AlphamapResolution;
             internal readonly int AlphamapLayers;
             internal readonly TerrainLayer[] TerrainLayers;
@@ -216,12 +256,15 @@ namespace ExcavatorControls.Tests
             internal readonly TreeInstance[] TreeInstances;
 
             internal TerrainSnapshot(Vector3 size, int heightResolution, float[,] heights,
+                int holesResolution, bool[,] holes,
                 int alphamapResolution, int alphamapLayers, TerrainLayer[] terrainLayers, TreePrototype[] treePrototypes,
                 TreeInstance[] treeInstances)
             {
                 Size = size;
                 HeightResolution = heightResolution;
                 Heights = heights;
+                HolesResolution = holesResolution;
+                Holes = holes;
                 AlphamapResolution = alphamapResolution;
                 AlphamapLayers = alphamapLayers;
                 TerrainLayers = terrainLayers;
