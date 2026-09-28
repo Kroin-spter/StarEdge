@@ -1,4 +1,6 @@
+using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace ExcavatorControls.Tests
@@ -8,6 +10,8 @@ namespace ExcavatorControls.Tests
         private TerrainData terrainData;
         private BakedConstructionSiteData baked;
         private GameObject ground;
+        private GameObject georeferenceRoot;
+        private Material terrainMaterial;
 
         [SetUp]
         public void SetUp()
@@ -19,6 +23,9 @@ namespace ExcavatorControls.Tests
             terrainData.SetHeights(0, 0, heights);
             baked = ScriptableObject.CreateInstance<BakedConstructionSiteData>();
             baked.terrainData = terrainData;
+            terrainMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/ConstructionSite/Terrain.mat");
+            Assert.That(terrainMaterial, Is.Not.Null, "The test fixture requires the project's persistent terrain material.");
+            baked.terrainMaterial = terrainMaterial;
             baked.sourceMapName = "example-map";
             baked.terrainOrigin = new Vector3(10, 7, 20);
             baked.georeferenceLatitude = 43.5;
@@ -40,6 +47,7 @@ namespace ExcavatorControls.Tests
         public void TearDown()
         {
             if (ground != null) Object.DestroyImmediate(ground);
+            if (georeferenceRoot != null) Object.DestroyImmediate(georeferenceRoot);
             Object.DestroyImmediate(baked);
             Object.DestroyImmediate(terrainData);
         }
@@ -57,6 +65,15 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void MissingTerrainMaterialIsRejectedWithRepairReason()
+        {
+            baked.terrainMaterial = null;
+
+            Assert.That(baked.TryValidate("example-map", 43.5, 81.5, 1322.8, out string reason), Is.False);
+            Assert.That(reason, Does.Contain("材质"));
+        }
+
+        [Test]
         public void RuntimeCutAndResetNeverChangeBakedTerrainOrFloor()
         {
             ground = Terrain.CreateTerrainGameObject(terrainData);
@@ -71,6 +88,85 @@ namespace ExcavatorControls.Tests
             Assert.That(ground.GetComponent<Terrain>().terrainData.GetHeight(16, 16),
                 Is.EqualTo(.8f).Within(.0001f));
             Assert.That(baked.groundHeights[16 * 33 + 16], Is.EqualTo(.2f));
+        }
+
+        [Test]
+        public void CutThenDepositWithZeroNetVolumeCannotBeBaked()
+        {
+            ground = Terrain.CreateTerrainGameObject(terrainData);
+            ground.GetComponent<Terrain>().materialTemplate = terrainMaterial;
+            var soil = ground.AddComponent<DeformableSoilTerrain>();
+            soil.PrepareMoundSurface(terrainData.GetHeights(0, 0, 33, 33),
+                FilledHeights(.2f));
+            Vector3 point = baked.terrainOrigin + new Vector3(2f, 0, 2f);
+            soil.transform.position = baked.terrainOrigin;
+            double removed = soil.CutSweep(point + Vector3.up * .5f,
+                point + Vector3.up * .5f, .6f, 1f);
+            Assert.That(removed, Is.GreaterThan(0));
+            double deposited = soil.Deposit(point, .6f, removed);
+            Assert.That(deposited, Is.GreaterThan(0));
+
+            // Terrain height quantization may leave a tiny volume remainder. Set one distant
+            // vertex so the net integral cancels exactly while the cut and deposit remain visible.
+            TerrainData runtime = soil.Terrain.terrainData;
+            float[,] heights = runtime.GetHeights(0, 0, 33, 33);
+            double net = soil.RecalculateRemovedVolumeM3();
+            double vertexVolume = runtime.size.x * runtime.size.y * runtime.size.z / (32d * 32d);
+            heights[8, 8] += (float)(net / vertexVolume);
+            runtime.SetHeights(0, 0, heights);
+            Assert.That(System.Math.Abs(soil.RecalculateRemovedVolumeM3()), Is.LessThan(1e-5));
+
+            var site = ground.AddComponent<CesiumMoundSite>();
+            georeferenceRoot = new GameObject("test georeference");
+            var georeference = georeferenceRoot.AddComponent(FindCesiumType("CesiumGeoreference"));
+            ((Behaviour)georeference).enabled = false;
+            var map = new GameObject("test map");
+            map.transform.SetParent(georeferenceRoot.transform);
+            var tileset = map.AddComponent(FindCesiumType("Cesium3DTileset"));
+            ((Behaviour)tileset).enabled = false;
+            site.GetType().GetField("tileset").SetValue(site, tileset);
+            site.siteMode = CesiumMoundSite.SitePreparationMode.DynamicDeveloper;
+            site.soil = soil;
+            var truck = new GameObject("test truck");
+            truck.transform.SetParent(ground.transform);
+            site.truck = truck.transform;
+            var machineRoot = new GameObject("test articulation root");
+            machineRoot.transform.SetParent(ground.transform);
+            site.GetType().GetField("root", BindingFlags.NonPublic | BindingFlags.Instance)
+                .SetValue(site, machineRoot.AddComponent<ArticulationBody>());
+            typeof(CesiumMoundSite).GetProperty("IsReady").SetValue(site, true);
+            typeof(CesiumMoundSite).GetField("preparedSoilMask", BindingFlags.NonPublic | BindingFlags.Instance)
+                .SetValue(site, FilledHeights(1f));
+            var target = ScriptableObject.CreateInstance<BakedConstructionSiteData>();
+            target.terrainData = Object.Instantiate(runtime);
+            try
+            {
+                Assert.That(site.TryCaptureBakedData(target, out string reason), Is.False);
+                Assert.That(reason, Does.Contain("尚未挖动"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(target.terrainData);
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        private static float[,] FilledHeights(float value)
+        {
+            var heights = new float[33, 33];
+            for (int z = 0; z < 33; z++)
+                for (int x = 0; x < 33; x++) heights[z, x] = value;
+            return heights;
+        }
+
+        private static System.Type FindCesiumType(string name)
+        {
+            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                System.Type type = assembly.GetType("CesiumForUnity." + name);
+                if (type != null) return type;
+            }
+            throw new System.InvalidOperationException("Missing Cesium component: " + name);
         }
 
         [Test]

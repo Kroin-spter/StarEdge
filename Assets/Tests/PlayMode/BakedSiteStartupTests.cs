@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -12,70 +14,219 @@ namespace ExcavatorControls.Tests
 {
     public sealed class BakedSiteStartupTests
     {
-        private bool previousLogPolicy;
+        private const string ScenePath = "Assets/Scenes/sence_test.unity";
+        private const string BakedAssetPath = "Assets/ConstructionSite/Baked/SenceTest/ConstructionSite.asset";
+        private const string CesiumTilesetMissingHint =
+            " Set CESIUM_TILESET_DIR or place the map beside the project.";
+        private string tilesetPath;
+        private bool localMapIsMissing;
+        private Scene previousActiveScene;
+        private Scene loadedScene;
 
-        /// <summary>Allow unrelated legacy scene import errors while validating explicit site state.</summary>
+        /// <summary>Resolve the configured local map and retain normal Unity log assertions.</summary>
         [SetUp]
         public void SetUp()
         {
-            previousLogPolicy = LogAssert.ignoreFailingMessages;
-            LogAssert.ignoreFailingMessages = true;
+            string configuredDirectory = Environment.GetEnvironmentVariable("CESIUM_TILESET_DIR");
+            string tilesetDirectory = string.IsNullOrWhiteSpace(configuredDirectory)
+                ? Path.GetFullPath(Path.Combine(Application.dataPath, "../../tilesets/osgb_small_005_004"))
+                : Path.GetFullPath(configuredDirectory);
+            tilesetPath = Path.Combine(tilesetDirectory, "tileset.json");
+            localMapIsMissing = !File.Exists(tilesetPath);
+            previousActiveScene = SceneManager.GetActiveScene();
+            loadedScene = default;
         }
 
-        /// <summary>Restore the Unity Test Framework log policy after this isolated fixture.</summary>
-        [TearDown]
-        public void TearDown()
+        /// <summary>Unload an additive test scene even when an assertion fails.</summary>
+        /// <returns>The asynchronous scene-unload operation, when needed.</returns>
+        [UnityTearDown]
+        public IEnumerator TearDown()
         {
-            LogAssert.ignoreFailingMessages = previousLogPolicy;
+            if (previousActiveScene.IsValid() && previousActiveScene.isLoaded)
+                SceneManager.SetActiveScene(previousActiveScene);
+            if (loadedScene.IsValid() && loadedScene.isLoaded)
+            {
+                AsyncOperation unload = SceneManager.UnloadSceneAsync(loadedScene);
+                if (unload != null) yield return unload;
+            }
         }
 
-        /// <summary>Five offline starts must use the saved soil source without surveying Cesium or changing that source.</summary>
-        /// <returns>Five complete scene loads, local-soil checks and unloads.</returns>
+        /// <summary>Five offline starts use independent mutable TerrainData and preserve the entire baked source.</summary>
+        /// <returns>Five complete scene loads, source-integrity checks and unloads.</returns>
         [UnityTest]
         public IEnumerator FiveOfflineStartsUseIndependentTerrainCopies()
         {
-            const string scenePath = "Assets/Scenes/sence_test.unity";
-            const string assetPath = "Assets/ConstructionSite/Baked/SenceTest/ConstructionSite.asset";
-            var baked = AssetDatabase.LoadAssetAtPath<ScriptableObject>(assetPath);
+            ScriptableObject baked = AssetDatabase.LoadAssetAtPath<ScriptableObject>(BakedAssetPath);
             Assert.That(baked, Is.Not.Null);
-            var source = (TerrainData)baked.GetType().GetField("terrainData").GetValue(baked);
+            TerrainData source = (TerrainData)baked.GetType().GetField("terrainData").GetValue(baked);
             Assert.That(source, Is.Not.Null);
-            int middle = source.heightmapResolution / 2;
-            float sourceHeight = source.GetHeight(middle, middle);
+            TerrainSnapshot sourceSnapshot = Capture(source);
+            string bakedAssetHash = HashAssetFile(baked);
+            string terrainAssetHash = HashAssetFile(source);
+            float[,] initialHeights = (float[,])sourceSnapshot.Heights.Clone();
+
             for (int attempt = 0; attempt < 5; attempt++)
             {
+                if (attempt == 0) ExpectKnownLegacySceneWarnings();
+                ExpectThreeMissingMapWarnings();
                 float started = Time.realtimeSinceStartup;
-                yield return EditorSceneManager.LoadSceneAsyncInPlayMode(scenePath,
+                yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
                     new LoadSceneParameters(LoadSceneMode.Additive));
-                Scene scene = SceneManager.GetSceneByPath(scenePath);
-                Assert.That(scene.IsValid(), Is.True);
-                SceneManager.SetActiveScene(scene);
-                MonoBehaviour site = scene.GetRootGameObjects()
+                loadedScene = SceneManager.GetSceneByPath(ScenePath);
+                Assert.That(loadedScene.IsValid(), Is.True);
+                SceneManager.SetActiveScene(loadedScene);
+
+                MonoBehaviour site = loadedScene.GetRootGameObjects()
                     .SelectMany(root => root.GetComponentsInChildren<MonoBehaviour>(true))
                     .Single(component => component != null && component.GetType().Name == "CesiumMoundSite");
+                Type siteType = site.GetType();
                 float deadline = Time.realtimeSinceStartup + 8f;
-                while (!(bool)site.GetType().GetProperty("IsReady").GetValue(site) &&
-                    Time.realtimeSinceStartup < deadline)
-                    yield return null;
-                string status = (string)site.GetType().GetProperty("Status").GetValue(site);
-                Assert.That((bool)site.GetType().GetProperty("IsReady").GetValue(site), Is.True, status);
-                Assert.That((bool)site.GetType().GetProperty("MapSurfacePrepared").GetValue(site), Is.True);
-                Assert.That((int)site.GetType().GetProperty("SurveyFrameYieldCount").GetValue(site), Is.Zero);
-                var soil = (DeformableSoilTerrain)site.GetType().GetField("soil").GetValue(site);
+                while (!(bool)siteType.GetProperty("IsReady").GetValue(site) &&
+                    Time.realtimeSinceStartup < deadline) yield return null;
+                string status = (string)siteType.GetProperty("Status").GetValue(site);
+                Assert.That((bool)siteType.GetProperty("IsReady").GetValue(site), Is.True, status);
+                Assert.That((bool)siteType.GetProperty("MapSurfacePrepared").GetValue(site), Is.True);
+                Assert.That((int)siteType.GetProperty("SurveyFrameYieldCount").GetValue(site), Is.Zero);
+
+                DeformableSoilTerrain soil = (DeformableSoilTerrain)siteType.GetField("soil").GetValue(site);
                 Assert.That(soil.SourceTerrainData, Is.SameAs(source));
                 Assert.That(soil.Terrain.terrainData, Is.Not.SameAs(source));
+                AssertTerrainMatches(soil.Terrain.terrainData, sourceSnapshot,
+                    $"runtime initial Terrain, start {attempt + 1}");
+
                 if (attempt == 0)
                 {
                     Vector3 point = soil.transform.position + new Vector3(source.size.x * .5f, 0,
                         source.size.z * .5f);
                     Assert.That(soil.Deposit(point, 1f, .05), Is.GreaterThan(0));
                     soil.ResetSoil();
+                    AssertTerrainMatches(soil.Terrain.terrainData, sourceSnapshot,
+                        "runtime Terrain after reset");
                 }
+
                 float elapsed = Time.realtimeSinceStartup - started;
                 Debug.Log($"[ZX200 BAKED START] attempt={attempt + 1}/5, elapsed={elapsed:F3}s, status={status}");
-                Assert.That(source.GetHeight(middle, middle), Is.EqualTo(sourceHeight).Within(.00001f));
-                AsyncOperation unload = SceneManager.UnloadSceneAsync(scene);
+                AssertSourceUnchanged(source, sourceSnapshot, initialHeights, baked, bakedAssetHash,
+                    terrainAssetHash, $"before unloading start {attempt + 1}");
+
+                AsyncOperation unload = SceneManager.UnloadSceneAsync(loadedScene);
                 if (unload != null) yield return unload;
+                loadedScene = default;
+                if (previousActiveScene.IsValid() && previousActiveScene.isLoaded)
+                    SceneManager.SetActiveScene(previousActiveScene);
+                AssertSourceUnchanged(source, sourceSnapshot, initialHeights, baked, bakedAssetHash,
+                    terrainAssetHash, $"after unloading start {attempt + 1}");
+            }
+        }
+
+        private void ExpectThreeMissingMapWarnings()
+        {
+            if (!localMapIsMissing) return;
+            tilesetPath = Path.GetFullPath(tilesetPath);
+            string expected = $"Cesium local map is missing: {tilesetPath}.{CesiumTilesetMissingHint}";
+            // CesiumLocalMapReference.OnEnable, CesiumMoundSite.Awake and Start each resolve the same absent local map.
+            for (int i = 0; i < 3; i++) LogAssert.Expect(LogType.Warning, expected);
+        }
+
+        private static void ExpectKnownLegacySceneWarnings()
+        {
+            // These exact invalid legacy tree references and the imported ZX200 convex-hull fallback
+            // are emitted once when the scene's Terrain and articulation colliders are first loaded.
+            LogAssert.Expect(LogType.Error, "Tree prefab at index 0 is missing.");
+            LogAssert.Expect(LogType.Error, "Tree prefab at index 1 is missing.");
+            LogAssert.Expect(LogType.Error, "Tree prefab at index 2 is missing.");
+            LogAssert.Expect(LogType.Warning,
+                "Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). " +
+                "The partial hull will be used. Consider simplifying your mesh. Source mesh name: body");
+        }
+
+        private static TerrainSnapshot Capture(TerrainData source)
+        {
+            int heightResolution = source.heightmapResolution;
+            float[,] heights = source.GetHeights(0, 0, heightResolution, heightResolution);
+            TerrainLayer[] terrainLayers = source.terrainLayers ?? Array.Empty<TerrainLayer>();
+            return new TerrainSnapshot(source.size, heightResolution, heights,
+                source.alphamapResolution, source.alphamapLayers,
+                terrainLayers, source.treePrototypes ?? Array.Empty<TreePrototype>(), source.treeInstances);
+        }
+
+        private static void AssertTerrainMatches(TerrainData actual, TerrainSnapshot expected, string label)
+        {
+            Assert.That(actual.size, Is.EqualTo(expected.Size), $"{label}: Terrain size changed.");
+            Assert.That(actual.heightmapResolution, Is.EqualTo(expected.HeightResolution),
+                $"{label}: heightmap resolution changed.");
+            Assert.That(actual.alphamapResolution, Is.EqualTo(expected.AlphamapResolution),
+                $"{label}: alphamap resolution changed.");
+            Assert.That(actual.alphamapLayers, Is.EqualTo(expected.AlphamapLayers),
+                $"{label}: alphamap layer count changed.");
+            AssertHeightmapsEqual(actual.GetHeights(0, 0, expected.HeightResolution, expected.HeightResolution),
+                expected.Heights, label);
+            TerrainLayer[] actualLayers = actual.terrainLayers ?? Array.Empty<TerrainLayer>();
+            Assert.That(actualLayers, Is.EqualTo(expected.TerrainLayers),
+                $"{label}: TerrainLayer references changed.");
+            Assert.That(actual.treePrototypes.Length, Is.EqualTo(expected.TreePrototypes.Length),
+                $"{label}: tree prototype count changed.");
+            for (int i = 0; i < expected.TreePrototypes.Length; i++)
+                Assert.That(actual.treePrototypes[i].prefab, Is.SameAs(expected.TreePrototypes[i].prefab),
+                    $"{label}: tree prototype {i} changed.");
+            CollectionAssert.AreEqual(expected.TreeInstances, actual.treeInstances,
+                $"{label}: tree instances changed.");
+        }
+
+        private static void AssertSourceUnchanged(TerrainData source, TerrainSnapshot expected,
+            float[,] initialHeights, ScriptableObject baked, string bakedAssetHash,
+            string terrainAssetHash, string label)
+        {
+            AssertTerrainMatches(source, expected, $"baked source {label}");
+            AssertHeightmapsEqual(source.GetHeights(0, 0, expected.HeightResolution, expected.HeightResolution),
+                initialHeights, $"baked source heightmap {label}");
+            Assert.That(HashAssetFile(baked), Is.EqualTo(bakedAssetHash),
+                $"The full baked ScriptableObject asset changed {label}.");
+            Assert.That(HashAssetFile(source), Is.EqualTo(terrainAssetHash),
+                $"The serialized TerrainData subasset changed {label}.");
+        }
+
+        private static string HashAssetFile(UnityEngine.Object asset)
+        {
+            string path = AssetDatabase.GetAssetPath(asset);
+            Assert.That(path, Is.Not.Empty, $"No persistent asset path for {asset.name}.");
+            using (SHA256 sha = SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(path)));
+        }
+
+        private static void AssertHeightmapsEqual(float[,] actual, float[,] expected, string label)
+        {
+            Assert.That(actual.GetLength(0), Is.EqualTo(expected.GetLength(0)), $"{label}: heightmap rows differ.");
+            Assert.That(actual.GetLength(1), Is.EqualTo(expected.GetLength(1)), $"{label}: heightmap columns differ.");
+            for (int z = 0; z < expected.GetLength(0); z++)
+                for (int x = 0; x < expected.GetLength(1); x++)
+                    if (Mathf.Abs(actual[z, x] - expected[z, x]) > 1e-6f)
+                        Assert.Fail($"{label}: height sample ({x}, {z}) changed from {expected[z, x]:R} to {actual[z, x]:R}.");
+        }
+
+        private sealed class TerrainSnapshot
+        {
+            internal readonly Vector3 Size;
+            internal readonly int HeightResolution;
+            internal readonly float[,] Heights;
+            internal readonly int AlphamapResolution;
+            internal readonly int AlphamapLayers;
+            internal readonly TerrainLayer[] TerrainLayers;
+            internal readonly TreePrototype[] TreePrototypes;
+            internal readonly TreeInstance[] TreeInstances;
+
+            internal TerrainSnapshot(Vector3 size, int heightResolution, float[,] heights,
+                int alphamapResolution, int alphamapLayers, TerrainLayer[] terrainLayers, TreePrototype[] treePrototypes,
+                TreeInstance[] treeInstances)
+            {
+                Size = size;
+                HeightResolution = heightResolution;
+                Heights = heights;
+                AlphamapResolution = alphamapResolution;
+                AlphamapLayers = alphamapLayers;
+                TerrainLayers = terrainLayers;
+                TreePrototypes = treePrototypes;
+                TreeInstances = treeInstances;
             }
         }
     }

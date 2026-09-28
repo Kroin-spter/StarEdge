@@ -46,10 +46,10 @@ public sealed class BakedConstructionSiteData : ScriptableObject
             !double.IsFinite(georeferenceHeight) || Math.Abs(latitude - georeferenceLatitude) > 1e-7 ||
             Math.Abs(longitude - georeferenceLongitude) > 1e-7 || Math.Abs(height - georeferenceHeight) > .01)
         { reason = "烘焙资源地理参考与场景不匹配，需要重新烘焙。"; return false; }
-        if (terrainData == null || !Finite(terrainOrigin) || !Finite(machinePosition) || !Finite(truckPosition) ||
+        if (terrainData == null || terrainMaterial == null || !Finite(terrainOrigin) || !Finite(machinePosition) || !Finite(truckPosition) ||
             !Finite(machineRotation) || !Finite(truckRotation) || Quaternion.Dot(machineRotation, machineRotation) < .9f ||
             Quaternion.Dot(truckRotation, truckRotation) < .9f)
-        { reason = "烘焙资源缺少地形或设备布局损坏，需要重新烘焙。"; return false; }
+        { reason = "烘焙资源缺少地形/材质或设备布局损坏，需要重新烘焙。"; return false; }
         Vector3 size = terrainData.size;
         int n = terrainData.heightmapResolution;
         if (!Finite(size) || size.x <= 0 || size.y <= 0 || size.z <= 0 || n < 3 ||

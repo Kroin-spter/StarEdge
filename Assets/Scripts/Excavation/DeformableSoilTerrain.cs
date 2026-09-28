@@ -351,6 +351,20 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
         return sum;
     }
 
+    /// <summary>Check every height sample against the prepared surface before authoring a persistent site.</summary>
+    /// <returns>True only when a prepared runtime heightmap exists and no vertex differs from its baseline.</returns>
+    public bool IsPreparedSurfaceUnchanged()
+    {
+        if (runtime == null || initial == null) return false;
+        int n = runtime.heightmapResolution;
+        if (initial.GetLength(0) != n || initial.GetLength(1) != n) return false;
+        float[,] heights = runtime.GetHeights(0, 0, n, n);
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+                if (heights[z, x] != initial[z, x]) return false;
+        return true;
+    }
+
     /// <summary>Set the prepared surface and reset baseline before excavation; source assets stay unchanged.</summary>
     /// <param name="heights">Complete normalized heightmap matching the runtime resolution.</param>
     public void SetPreparedSurface(float[,] heights)
@@ -359,7 +373,7 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
         int n = runtime.heightmapResolution;
         if (heights == null || heights.GetLength(0) != n || heights.GetLength(1) != n)
             throw new ArgumentException("Prepared surface must match the terrain resolution.", nameof(heights));
-        if (Math.Abs(RecalculateRemovedVolumeM3()) > 1e-8)
+        if (!IsPreparedSurfaceUnchanged())
             throw new InvalidOperationException("Cannot prepare soil after excavation or deposition.");
         foreach (float height in heights)
             if (!float.IsFinite(height) || height < 0 || height > 1)

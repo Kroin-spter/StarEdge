@@ -455,7 +455,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
     {
         reason = string.Empty;
         if (siteMode != SitePreparationMode.DynamicDeveloper || !IsReady || target == null || target.terrainData == null ||
-            Math.Abs(soil.RecalculateRemovedVolumeM3()) > 1e-5)
+            soil == null || !soil.IsPreparedSurfaceUnchanged())
         { reason = "仅能在动态开发模式施工区就绪且土层尚未挖动时烘焙。"; return false; }
         float[,] floor = soil.GetPreparedGroundCopy();
         if (floor == null || preparedSoilMask == null)
