@@ -19,7 +19,7 @@ namespace Zx200.Editor
         public static readonly Vector3 SoilStripSizeLocal = new Vector3(13f, .8f, 1.8f);
 
         /// <summary>车辆相对于挖掘机底盘停在低位右侧偏后方，单位为米。</summary>
-        public static readonly Vector3 TruckParkingOffsetLocal = new Vector3(8.5f, 0f, -1.2f);
+        public static readonly Vector3 TruckParkingOffsetLocal = new Vector3(7.9f, 0f, -1.2f);
 
         /// <summary>Create a parked truck with a 3.6×4.5 metre receiving bed; returns its root without saving assets.</summary>
         /// <param name="groundPosition">World position beneath the bed centre at ground level.</param>
@@ -81,9 +81,8 @@ namespace Zx200.Editor
             var robot = dig.gameObject;
             robot.transform.position = new Vector3(330.01f,7.8f,398.27f);
             var keyboard = robot.GetComponent<Zx200KeyboardController>();
-            // This scene demonstrates stationary bench digging and upper-structure swing;
-            // keep the general ZX200 prefab's mobile-track mode unchanged.
-            keyboard.fixedBase = true;
+            // Keep manual track driving available; autonomous cycles lock the base while working.
+            keyboard.fixedBase = false;
             keyboard.boomSpeed = 10; keyboard.armSpeed = 10; keyboard.bucketSpeed = 15; keyboard.swingSpeed = 15;
             dig.workReadyPose = new Zx200JointPose(0,-26,68,25,1);
             dig.dumpPose.boom = -40;

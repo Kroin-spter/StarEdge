@@ -280,7 +280,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 292.01
+      value: 292.1631
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.y
@@ -288,7 +288,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 354.27
+      value: 354.6396
       objectReference: {fileID: 0}
     - target: {fileID: 5398066472528027042, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.w
@@ -348,7 +348,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: fixedBase
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: swingSpeed
@@ -485,7 +485,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 299.4038
+      value: 299.0025
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y
@@ -493,7 +493,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 349.9085
+      value: 350.5077
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.w
@@ -1030,7 +1030,7 @@ MonoBehaviour:
   mapName: osgb_small_005_004
   replacementAreaSize: {x: 28, y: 28}
   useExplicitWorkFaceAnchor: 1
-  workFaceAnchor: {x: 292.01, y: 0, z: 354.27}
+  workFaceAnchor: {x: 292.1631, y: 0, z: 354.6396}
   usePrepositionedEquipment: 1
   prepositionedUpperBenchSupportY: 7.512
   workFaceSearchRadius: 8
@@ -1039,10 +1039,10 @@ MonoBehaviour:
   minimumBenchDropMeters: 2
   minimumSurfaceNormalY: 0.42
   soilStripHalfWidth: 4.8
-  soilStripCenterLocalZ: 9.5
+  soilStripCenterLocalZ: 9.1
   soilStripHalfDepth: 1.55
   soilStripHeight: 0.55
-  truckParkingOffsetLocal: {x: 8.5, y: 0, z: -1.2}
+  truckParkingOffsetLocal: {x: 7.9, y: 0, z: -1.2}
   truckParkingYawDegrees: 90
   loadingTimeout: 30
 --- !u!114 &471781302

@@ -183,6 +183,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private bool unloaderEnabledBeforeDump;
     private bool jobOwnsUnloaderEnabledState;
     private bool unloaderEnabledBeforeJob;
+    private bool automaticModeOwnsBaseLock;
+    private bool fixedBaseBeforeAutomaticMode;
     private bool cuttingSuppressionPending;
     private bool cuttingWasSuppressedBeforeEntry;
 
@@ -254,11 +256,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         nextDigPointIndex = 0;
         stateHistory.Clear();
         FaultReason = string.Empty;
+        keyboard.SetAutomaticControl(true);
+        LockBaseForAutomaticMotion();
         IsRunning = true;
         unloaderEnabledBeforeJob = unloader.enabled;
         jobOwnsUnloaderEnabledState = true;
         unloader.enabled = false;
-        keyboard.SetAutomaticControl(true);
         SetState(AutonomousExcavationState.WaitingForSite, "等待施工区域就绪");
         jobRoutine = StartCoroutine(RunJob());
         return jobRoutine != null;
@@ -276,6 +279,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         RestoreCuttingSuppression();
         if (machine != null) machine.StopAutomaticMotion();
         if (keyboard != null) keyboard.SetAutomaticControl(false);
+        RestoreBaseDriveMode();
         CurrentMotionAxis = AutonomousMotionAxis.None;
         SetState(AutonomousExcavationState.ManualTakeover, "人工接管，自动流程已停止");
     }
@@ -297,6 +301,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (resetRoutine != null) StopCoroutine(resetRoutine);
         IsRunning = false;
         if (machine != null) machine.StopAutomaticMotion();
+        if (Application.isPlaying) LockBaseForAutomaticMotion();
         if (keyboard != null) keyboard.SetAutomaticControl(true);
         if (cutter != null) cutter.ResetExcavation();
         DeliveredVolumeM3 = 0;
@@ -306,6 +311,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (!Application.isPlaying)
         {
             if (keyboard != null) keyboard.SetAutomaticControl(false);
+            RestoreBaseDriveMode();
             SetState(AutonomousExcavationState.Idle, "已复位，等待启动");
             return;
         }
@@ -328,7 +334,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
     private void OnDisable()
     {
-        if (!IsRunning && !jobOwnsUnloaderEnabledState && !dumpOwnsUnloaderEnabledState) return;
+        if (!IsRunning && !jobOwnsUnloaderEnabledState && !dumpOwnsUnloaderEnabledState &&
+            !automaticModeOwnsBaseLock) return;
         IsRunning = false;
         if (jobRoutine != null) StopCoroutine(jobRoutine);
         jobRoutine = null;
@@ -337,6 +344,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         RestoreCuttingSuppression();
         if (machine != null) machine.StopAutomaticMotion();
         if (keyboard != null) keyboard.SetAutomaticControl(false);
+        RestoreBaseDriveMode();
         CurrentMotionAxis = AutonomousMotionAxis.None;
     }
 
@@ -359,6 +367,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         yield return WaitForSiteReady();
         if (!IsRunning || !stageSucceeded) yield break;
+        // Cesium site preparation restores the scene's manual-drive setting when it becomes ready.
+        // Reassert the autonomous lock before the first machine motion.
+        LockBaseForAutomaticMotion();
 
         while (IsRunning)
         {
@@ -456,10 +467,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                         $"斗尖={cutter.TipWorldPosition}，要求高度={GetTruckClearanceY() + dumpClearanceMarginMeters:F2}米");
                     yield break;
                 }
-                // Finish swing alignment before opening: the open-bucket tip shifts sideways.
+                // The projected open tip was checked above; enable soil flow during the opening stroke
+                // so the bucket starts emptying as its mouth rotates, not only at the final angle.
                 dump = machine.ReadActualPose();
                 dump.bucket = machine.dumpPose.bucket;
                 dump.duration = Mathf.Max(1.2f, machine.dumpPose.duration);
+                unloader.enabled = true;
                 yield return MoveToPose(dump, "卸料姿态超时");
                 if (!IsRunning || !stageSucceeded) yield break;
                 if (!IsDumpApproachSafe())
@@ -467,7 +480,6 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     EnterFault("铲斗打开后斗口偏离车厢安全接收区，未释放土方");
                     yield break;
                 }
-                unloader.enabled = true;
                 yield return WaitForDump();
                 if (!IsRunning || !stageSucceeded) yield break;
             }
@@ -927,17 +939,17 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         ArticulationDrive bucketDrive = machine.bucketJoint.xDrive;
         // Use the configured truck-side working reach while still in the dig sector, before slewing over the bed.
         Zx200JointPose truckReady = machine.dumpPose;
-        // Add a small post-cut curl only after the boom has lifted the bucket clear of the bench.
+        // Close the bucket to a moderate carry angle only after the boom clears the cut face.
         float retainedBucketAngle = Zx200DigController.ClampTarget(
-            actual.bucket + Mathf.Sign(machine.curlPose.bucket - actual.bucket) * 6f,
+            machine.curlPose.bucket - 5f,
             bucketDrive.lowerLimit, bucketDrive.upperLimit);
         Zx200JointPose target = CreatePreSwingApproachPose(
             actual,
             truckReady,
             retainedBucketAngle);
-        target.arm = Zx200DigController.ClampTarget(truckReady.arm,
+        target.arm = Zx200DigController.ClampTarget(truckReady.arm - 5f,
             armDrive.lowerLimit, armDrive.upperLimit);
-        target.duration = Mathf.Max(1f, machine.swingToDumpPose.duration);
+        target.duration = Mathf.Max(1.8f, machine.swingToDumpPose.duration);
         BucketSoilResistance resistance = machine.bucketJoint.GetComponent<BucketSoilResistance>();
         bool cutterWasEnabled = cutter != null && cutter.enabled;
         bool wasCuttingSuppressed = cutter != null && cutter.IsCuttingSuppressed;
@@ -962,7 +974,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             Zx200JointPose waypoint = machine.ReadActualPose();
             waypoint.arm = target.arm;
             waypoint.bucket = target.bucket;
-            waypoint.duration = Mathf.Max(1.2f, machine.swingToDumpPose.duration);
+            waypoint.duration = Mathf.Max(1.8f, machine.swingToDumpPose.duration);
             yield return MoveArmAndBucketToPose(waypoint, "挖后斗杆与铲斗回收超时");
             if (!IsRunning || !stageSucceeded) yield break;
 
@@ -1471,6 +1483,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             if (resistanceWasEnabled && resistance != null) resistance.enabled = true;
             if (cutterWasEnabled && cutter != null) cutter.SetCuttingSuppressed(wasCuttingSuppressed);
             if (keyboard != null) keyboard.SetAutomaticControl(false);
+            RestoreBaseDriveMode();
             CurrentMotionAxis = AutonomousMotionAxis.None;
             resetRoutine = null;
             if (resetSucceeded)
@@ -1513,6 +1526,59 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (!jobOwnsUnloaderEnabledState) return;
         if (unloader != null) unloader.enabled = unloaderEnabledBeforeJob;
         jobOwnsUnloaderEnabledState = false;
+    }
+
+    private void LockBaseForAutomaticMotion()
+    {
+        if (keyboard == null) return;
+        if (!automaticModeOwnsBaseLock)
+        {
+            fixedBaseBeforeAutomaticMode = GetBaseDriveModeBeforeAutomaticMotion();
+            automaticModeOwnsBaseLock = true;
+        }
+        ApplyBaseDriveMode(true);
+    }
+
+    private bool GetBaseDriveModeBeforeAutomaticMotion()
+    {
+        if (IsSitePreparationInProgress())
+        {
+            PropertyInfo originalFixedBaseProperty = siteReadinessSource.GetType().GetProperty(
+                "OriginalFixedBase", BindingFlags.Instance | BindingFlags.Public);
+            if (originalFixedBaseProperty != null &&
+                originalFixedBaseProperty.GetValue(siteReadinessSource) is bool originalFixedBase)
+                return originalFixedBase;
+        }
+        return keyboard.fixedBase;
+    }
+
+    private void RestoreBaseDriveMode()
+    {
+        if (!automaticModeOwnsBaseLock) return;
+        // The site component owns the temporary lock until Cesium support preparation finishes.
+        if (!IsSitePreparationInProgress())
+            ApplyBaseDriveMode(fixedBaseBeforeAutomaticMode);
+        automaticModeOwnsBaseLock = false;
+    }
+
+    private bool IsSitePreparationInProgress()
+    {
+        if (siteReadinessSource == null || siteReadyProperty == null) return false;
+        try { return siteReadyProperty.GetValue(siteReadinessSource) is bool ready && !ready; }
+        catch { return false; }
+    }
+
+    private void ApplyBaseDriveMode(bool fixedBase)
+    {
+        if (keyboard == null) return;
+        keyboard.fixedBase = fixedBase;
+        if (!keyboard.ResolveArticulationRoot()) return;
+
+        ArticulationBody rootBody = keyboard.articulationRoot;
+        rootBody.linearVelocity = Vector3.zero;
+        rootBody.angularVelocity = Vector3.zero;
+        rootBody.immovable = fixedBase;
+        rootBody.useGravity = !fixedBase;
     }
 
     private string GetMotionAxisLabel()
@@ -1659,6 +1725,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         RestoreCuttingSuppression();
         if (machine != null) machine.StopAutomaticMotion();
         if (keyboard != null) keyboard.SetAutomaticControl(false);
+        RestoreBaseDriveMode();
         SetState(terminalState, message);
     }
 

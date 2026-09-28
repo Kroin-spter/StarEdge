@@ -42,10 +42,10 @@ namespace ExcavatorControls.Tests
                 double groundPileBefore = ManualSoilTestMotion.GroundPileVolumeFor(cutter);
                 Zx200KeyboardController keyboard = machine.GetComponent<Zx200KeyboardController>();
                 ArticulationBody trackBase = keyboard.articulationRoot;
-                Assert.That(keyboard.fixedBase, Is.True,
-                    "The open-pit worksite is a parked excavator demo; only its upper structure should slew.");
-                Assert.That(trackBase.immovable, Is.True,
-                    "The track articulation root must be physically immovable during stationary bench work.");
+                Assert.That(keyboard.fixedBase, Is.False,
+                    "Manual track driving is available while the autonomous job is idle.");
+                Assert.That(trackBase.immovable, Is.False,
+                    "The idle track articulation root is released for manual driving.");
                 Vector3 trackBaseAtSpawn = trackBase.transform.position;
                 for (int i = 0; i < 100; i++) yield return new WaitForFixedUpdate();
                 Vector3 trackBaseAtStart = trackBase.transform.position;

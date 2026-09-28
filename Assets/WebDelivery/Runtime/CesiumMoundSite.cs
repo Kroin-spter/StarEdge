@@ -58,7 +58,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
     [Min(.1f)] public float soilStripHalfDepth = .9f;
     [Min(.05f)] public float soilStripHeight = .55f;
     [Header("Truck parking on the lower bench")]
-    public Vector3 truckParkingOffsetLocal = new Vector3(8.5f, 0f, -1.2f);
+    public Vector3 truckParkingOffsetLocal = new Vector3(7.9f, 0f, -1.2f);
     public float truckParkingYawDegrees = 90f;
     [Min(1f)] public float loadingTimeout = 30f;
     public bool IsReady { get; private set; }
@@ -67,6 +67,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
     /// <summary>Vertical drop from the excavator's original platform to the selected lower bench.</summary>
     public float BenchDropMeters => float.IsFinite(originalSupportY) && float.IsFinite(selectedSupportY)
         ? originalSupportY - selectedSupportY : 0f;
+    /// <summary>Whether the track base was fixed before temporary Cesium site preparation began.</summary>
+    public bool OriginalFixedBase => originalFixed;
     /// <summary>Predicted clearance from the initial bucket tooth to the prepared slope band.</summary>
     public float ReadyTipClearanceMeters { get; private set; }
     /// <summary>Number of frame yields used while sampling the Cesium work area.</summary>

@@ -11,7 +11,7 @@ namespace ExcavatorControls.Tests
     {
         /// <summary>The excavator and truck must be saved at the tested lower work face.</summary>
         [Test]
-        public void SenceTestStartsWithExcavatorAndTruckAtFixedLowerWorkFace()
+        public void SenceTestStartsWithMobileExcavatorAndTruckAtLowerWorkFace()
         {
             const string scenePath = "Assets/Scenes/sence_test.unity";
             Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
@@ -24,13 +24,13 @@ namespace ExcavatorControls.Tests
                 keyboard.ResolveArticulationRoot();
 
                 Transform trackBase = keyboard.articulationRoot.transform;
-                AssertPosition(trackBase.position, new Vector3(292.01f, -2.74f, 354.27f), "excavator track base");
+                AssertPosition(trackBase.position, new Vector3(292.1631f, -2.74f, 354.6396f), "excavator track base");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.1f));
                 Assert.That(site.useExplicitWorkFaceAnchor, Is.True);
                 Assert.That(site.usePrepositionedEquipment, Is.True);
-                Assert.That(site.workFaceAnchor.x, Is.EqualTo(292.01f).Within(.01f));
-                Assert.That(site.workFaceAnchor.z, Is.EqualTo(354.27f).Within(.01f));
-                AssertPosition(site.truck.position, new Vector3(299.4038f, -2.847f, 349.9085f), "dump truck");
+                Assert.That(site.workFaceAnchor.x, Is.EqualTo(292.1631f).Within(.01f));
+                Assert.That(site.workFaceAnchor.z, Is.EqualTo(354.6396f).Within(.01f));
+                AssertPosition(site.truck.position, new Vector3(299.0025f, -2.847f, 350.5077f), "dump truck");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(site.truck.eulerAngles.y, 112.5f)), Is.LessThan(.1f));
                 SoilReceivingZone receiver = site.truck.GetComponentInChildren<SoilReceivingZone>();
                 BoxCollider bedFloor = site.truck.GetComponentsInChildren<BoxCollider>()
