@@ -589,7 +589,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         Zx200JointPose target = new Zx200JointPose(
             actual.swing, actual.boom, machine.curlPose.arm,
             machine.curlPose.bucket, Mathf.Max(machine.curlPose.duration, cutTimeoutSeconds * .75f));
-        float minimumCurlDegrees = Mathf.Lerp(actual.bucket, target.bucket, .8f);
+        float minimumCurlDegrees = Mathf.Lerp(actual.bucket, target.bucket, .9f);
         CurrentMotionAxis = AutonomousMotionAxis.ArmAndBucket;
         try
         {
