@@ -58,6 +58,17 @@ namespace ExcavatorControls.Tests
                 bool bucketOpeningObserved = false;
                 int openedBucketCycles = 0;
                 float maximumCutBucketAngle = float.NegativeInfinity;
+                float nearFullStartTime = float.NaN;
+                float bucketAngleAtNearFull = float.NaN;
+                float nearFullCurlDelay = float.NaN;
+                float longestNearFullPause = 0f;
+                float lastNearFullMotionTime = float.NaN;
+                Vector3 lastNearFullTip = Vector3.zero;
+                Zx200JointPose lastNearFullPose = default;
+                float carriedArmAngle = float.NegativeInfinity;
+                float carriedBoomAngle = float.NaN;
+                float carriedBucketAngle = float.NaN;
+                float carriedMouthUpDot = float.NaN;
                 Vector3 trackBaseAtMaximumDrift = trackBaseAtStart;
                 AutonomousExcavationState stateAtMaximumTrackBaseDrift = autonomy.State;
                 Assert.That(autonomy.StartAutonomousJob(.32), Is.True);
@@ -74,7 +85,47 @@ namespace ExcavatorControls.Tests
                         Assert.That(cutter.GetComponent<BucketSoilUnloader>().enabled, Is.False,
                             "Soil must stay in the bucket until it opens over the truck.");
                     if (autonomy.State == AutonomousExcavationState.FillBucket)
+                    {
                         maximumCutBucketAngle = Mathf.Max(maximumCutBucketAngle, machine.ReadActualPose().bucket);
+                        if (cutter.VolumeM3 >= cutter.EffectiveCapacityM3 * .8f)
+                        {
+                            if (float.IsNaN(nearFullStartTime))
+                            {
+                                nearFullStartTime = Time.realtimeSinceStartup;
+                                bucketAngleAtNearFull = machine.ReadActualPose().bucket;
+                                lastNearFullMotionTime = nearFullStartTime;
+                                lastNearFullTip = cutter.TipWorldPosition;
+                                lastNearFullPose = machine.ReadActualPose();
+                            }
+                            else if (float.IsNaN(nearFullCurlDelay) &&
+                                machine.ReadActualPose().bucket >= bucketAngleAtNearFull + 5f)
+                                nearFullCurlDelay = Time.realtimeSinceStartup - nearFullStartTime;
+                            Zx200JointPose nearFullPose = machine.ReadActualPose();
+                            Vector3 nearFullTip = cutter.TipWorldPosition;
+                            bool progressed = Vector3.Distance(nearFullTip, lastNearFullTip) > .04f ||
+                                Mathf.Abs(nearFullPose.boom - lastNearFullPose.boom) > 1f ||
+                                Mathf.Abs(nearFullPose.arm - lastNearFullPose.arm) > 1f ||
+                                Mathf.Abs(nearFullPose.bucket - lastNearFullPose.bucket) > 1f;
+                            if (progressed)
+                            {
+                                lastNearFullMotionTime = Time.realtimeSinceStartup;
+                                lastNearFullTip = nearFullTip;
+                                lastNearFullPose = nearFullPose;
+                            }
+                            longestNearFullPause = Mathf.Max(longestNearFullPause,
+                                Time.realtimeSinceStartup - lastNearFullMotionTime);
+                        }
+                    }
+                    if (autonomy.State == AutonomousExcavationState.SwingToTruck && carriedArmAngle < 0f)
+                    {
+                        carriedArmAngle = machine.ReadActualPose().arm;
+                        carriedBoomAngle = machine.ReadActualPose().boom;
+                        carriedBucketAngle = machine.ReadActualPose().bucket;
+                        BucketSoilUnloader mouth = cutter.GetComponent<BucketSoilUnloader>();
+                        carriedMouthUpDot = Vector3.Dot(
+                            mouth.transform.TransformDirection(mouth.openingNormalLocal).normalized,
+                            Vector3.up);
+                    }
                     if (autonomy.State == AutonomousExcavationState.Dump)
                     {
                         Zx200JointPose dumpMotion = machine.ReadActualPose();
@@ -132,6 +183,25 @@ namespace ExcavatorControls.Tests
                 Assert.That(openedBucketCycles, Is.GreaterThanOrEqualTo(2));
                 Assert.That(maximumCutBucketAngle, Is.GreaterThan(70f),
                     "The bucket must curl through most of its scoop stroke before the loaded swing.");
+                Debug.Log($"NEAR FULL motion angle={bucketAngleAtNearFull:F1}, " +
+                    $"next 5-degree curl delay={nearFullCurlDelay:F2}s, " +
+                    $"longest no-motion pause={longestNearFullPause:F2}s, " +
+                    $"carry boom/arm/bucket=({carriedBoomAngle:F1},{carriedArmAngle:F1},{carriedBucketAngle:F1}), " +
+                    $"mouth up dot={carriedMouthUpDot:F2}");
+                Assert.That(float.IsNaN(nearFullCurlDelay), Is.False,
+                    "The near-full bucket must continue curling before the machine leaves the cut state.");
+                Assert.That(nearFullCurlDelay, Is.LessThan(4f),
+                    "The near-full bucket must not remain stationary waiting for the cut timeout.");
+                Assert.That(longestNearFullPause, Is.LessThan(1.5f),
+                    "The near-full digging phase must not pause with every working joint stationary.");
+                Assert.That(carriedArmAngle, Is.GreaterThan(75f),
+                    "The loaded arm should retract visibly before the swing to the truck.");
+                Assert.That(carriedBoomAngle, Is.LessThan(-32f),
+                    "The loaded boom should rise to a useful, but not excessive, carry height.");
+                Assert.That(carriedBucketAngle, Is.InRange(88f, 102f),
+                    "The bucket joint must settle near its level carrying angle before slewing.");
+                Assert.That(carriedMouthUpDot, Is.GreaterThan(.6f),
+                    "The full bucket mouth must face mostly upward during the carry swing.");
                 Assert.That(maximumSwingAfterDumpOpens, Is.LessThan(2f),
                     "The upper structure must finish aligning before the bucket opens over the truck.");
                 Assert.That(maximumObservedBucketLoad, Is.GreaterThanOrEqualTo(.12),
@@ -474,6 +544,46 @@ namespace ExcavatorControls.Tests
                 Assert.That(autonomy.IsRunning, Is.False);
                 Assert.That(unloader.enabled, Is.True);
                 Assert.That(keyboard.AutomaticControlActive, Is.False);
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Manual takeover during empty-cut clearance must release temporary cutting suppression.</summary>
+        /// <returns>Scene setup, empty-cut recovery, takeover assertions and cleanup.</returns>
+        [UnityTest]
+        public IEnumerator ManualTakeoverDuringEmptyCutRestoresCutting()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
+                ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var cutter = FindInScene<BucketSoilCutter>(scene);
+                autonomy.cutEntryDepthMeters = 100f;
+                Assert.That(autonomy.StartAutonomousJob(.32), Is.True);
+                float deadline = Time.realtimeSinceStartup + 45f;
+                while (autonomy.IsRunning &&
+                    !(autonomy.State == AutonomousExcavationState.EmptyCut && cutter.IsCuttingSuppressed) &&
+                    Time.realtimeSinceStartup < deadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.EmptyCut), autonomy.Status);
+                Assert.That(cutter.IsCuttingSuppressed, Is.True,
+                    "The empty-cut clearance must own temporary cutting suppression.");
+                autonomy.RequestManualTakeover();
+                yield return null;
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.ManualTakeover));
+                Assert.That(cutter.IsCuttingSuppressed, Is.False,
+                    "Manual takeover must release the cutter after the recovery coroutine exits.");
             }
             finally
             {

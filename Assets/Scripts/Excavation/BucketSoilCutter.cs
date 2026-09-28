@@ -59,6 +59,8 @@ public sealed class BucketSoilCutter : MonoBehaviour
     public string Status { get; private set; } = "等待刃口运动";
     private bool hasPrevious;
     private bool startupReady;
+    /// <summary>Whether the physical machine has settled at its initial work-ready pose so cutting may be counted.</summary>
+    public bool StartupReady => startupReady;
     private Zx200DigController machine;
     private Vector3 previous;
     private Vector3 lastObserved;
@@ -319,7 +321,10 @@ public sealed class BucketSoilCutter : MonoBehaviour
     private bool IsMachineReady()
     {
         if (machine == null) return true;
-        if (!machine.IsPoseWithinTolerance(machine.workReadyPose, machine.jointToleranceDegrees)) return false;
+        // The heavy arm can settle a few degrees off its drive target under gravity;
+        // requiring the motion-controller's tight waypoint tolerance deadlocks cutting.
+        if (!machine.IsPoseWithinTolerance(machine.workReadyPose,
+            Mathf.Max(machine.jointToleranceDegrees, 4f))) return false;
         return IsJointSettled(machine.swingJoint) && IsJointSettled(machine.boomJoint) &&
                IsJointSettled(machine.armJoint) && IsJointSettled(machine.bucketJoint);
     }

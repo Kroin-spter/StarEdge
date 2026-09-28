@@ -35,9 +35,14 @@ namespace ExcavatorControls.Tests
                 Assert.That(site.workFaceSearchRadius, Is.EqualTo(8f).Within(.01f));
                 Assert.That(site.minimumSurfaceNormalY, Is.EqualTo(.55f).Within(.001f));
                 Assert.That(site.minimumReadyTipClearanceMeters, Is.EqualTo(.6f).Within(.001f));
+                Zx200DigController dig = behaviours.OfType<Zx200DigController>().Single();
+                Assert.That(dig.approachPose.boom, Is.GreaterThan(-45f),
+                    "The cut approach must not lift the boom to the old high -60 degree pose.");
+                Assert.That(site.truckParkingOffsetLocal.x, Is.LessThanOrEqualTo(6.9f),
+                    "The truck should park closer to the excavator while keeping its side clearance.");
                 Assert.That(site.soilStripHalfWidth, Is.EqualTo(6f).Within(.01f));
                 Assert.That(site.soilStripHalfDepth, Is.EqualTo(2f).Within(.01f));
-                AssertPosition(site.truck.position, new Vector3(287.9159f, -2.847f, 355.0999f), "dump truck");
+                AssertPosition(site.truck.position, new Vector3(286.9159f, -2.847f, 355.0999f), "dump truck");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(site.truck.eulerAngles.y, 112.5f)), Is.LessThan(.1f));
                 SoilReceivingZone receiver = site.truck.GetComponentInChildren<SoilReceivingZone>();
                 BoxCollider bedFloor = site.truck.GetComponentsInChildren<BoxCollider>()

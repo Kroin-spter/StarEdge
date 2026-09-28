@@ -159,6 +159,10 @@ PrefabInstance:
       value: -29
       objectReference: {fileID: 0}
     - target: {fileID: 1605801095713466271, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+      propertyPath: approachPose.boom
+      value: -42
+      objectReference: {fileID: 0}
+    - target: {fileID: 1605801095713466271, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: curlPose.bucket
       value: 105
       objectReference: {fileID: 0}
@@ -485,7 +489,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 287.9159
+      value: 286.9159
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y
@@ -1044,7 +1048,7 @@ MonoBehaviour:
   soilStripCenterLocalZ: 9.1
   soilStripHalfDepth: 2
   soilStripHeight: 0.55
-  truckParkingOffsetLocal: {x: 7.9, y: 0, z: -1.2}
+  truckParkingOffsetLocal: {x: 6.9, y: 0, z: -1.2}
   truckParkingYawDegrees: 90
   loadingTimeout: 30
 --- !u!114 &471781302
