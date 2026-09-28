@@ -430,7 +430,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ExcavatorControls::BucketSoilResistance
   maximumPenetration: 0.18
   contactMargin: 0.03
-  cuttingSpeedDegrees: 6
+  cuttingSpeedDegrees: 18
   specificResistancePa: 10000
   soilUnitWeightNPerM3: 17000
   cohesionPa: 3500
@@ -1039,8 +1039,8 @@ MonoBehaviour:
   minimumBenchDropMeters: 2
   minimumSurfaceNormalY: 0.42
   soilStripHalfWidth: 4.8
-  soilStripCenterLocalZ: 6.7
-  soilStripHalfDepth: 0.9
+  soilStripCenterLocalZ: 9.5
+  soilStripHalfDepth: 1.55
   soilStripHeight: 0.55
   truckParkingOffsetLocal: {x: 8.5, y: 0, z: -1.2}
   truckParkingYawDegrees: 90
@@ -1071,7 +1071,7 @@ MonoBehaviour:
   cutTimeoutSeconds: 8
   dumpTimeoutSeconds: 12
   soilFloorMargin: 0.04
-  cutEntryDepthMeters: 0.12
+  cutEntryDepthMeters: 0.01
   dumpClearanceMarginMeters: 0.25
 --- !u!114 &2098765431
 MonoBehaviour:

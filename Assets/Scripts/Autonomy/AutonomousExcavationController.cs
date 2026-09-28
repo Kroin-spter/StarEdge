@@ -46,7 +46,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private static readonly float[] DigPointSwingOffsetsDegrees = { 0f, -8f, 8f, -16f, 16f, -24f, 24f };
     // The validated high-clearance dump pose may be up to 7 m above the receiver; wall clearance is checked separately.
     private const float MaximumDumpDropMeters = 7f;
-    private const float DumpLandingInsetMeters = .7f;
+    private const float DumpLandingInsetMeters = .25f;
     private const float TruckSwingClearanceReserveMeters = .05f;
     private const float TruckSwingStartReserveMeters = .7f;
     private const float TruckCollisionSlopToleranceMeters = .01f;
@@ -181,6 +181,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private bool stageSucceeded;
     private bool dumpOwnsUnloaderEnabledState;
     private bool unloaderEnabledBeforeDump;
+    private bool jobOwnsUnloaderEnabledState;
+    private bool unloaderEnabledBeforeJob;
     private bool cuttingSuppressionPending;
     private bool cuttingWasSuppressedBeforeEntry;
 
@@ -253,6 +255,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         stateHistory.Clear();
         FaultReason = string.Empty;
         IsRunning = true;
+        unloaderEnabledBeforeJob = unloader.enabled;
+        jobOwnsUnloaderEnabledState = true;
+        unloader.enabled = false;
         keyboard.SetAutomaticControl(true);
         SetState(AutonomousExcavationState.WaitingForSite, "等待施工区域就绪");
         jobRoutine = StartCoroutine(RunJob());
@@ -266,6 +271,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         if (!IsRunning) return;
         IsRunning = false;
+        RestoreUnloaderEnabledState();
+        RestoreJobUnloaderEnabledState();
         RestoreCuttingSuppression();
         if (machine != null) machine.StopAutomaticMotion();
         if (keyboard != null) keyboard.SetAutomaticControl(false);
@@ -284,6 +291,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             jobRoutine = null;
         }
         RestoreUnloaderEnabledState();
+        RestoreJobUnloaderEnabledState();
         RestoreCuttingSuppression();
         CurrentMotionAxis = AutonomousMotionAxis.None;
         if (resetRoutine != null) StopCoroutine(resetRoutine);
@@ -316,6 +324,20 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Backspace)) ResetAutonomousJob();
         if (IsRunning && keyboard != null && keyboard.ManualInputActive)
             RequestManualTakeover();
+    }
+
+    private void OnDisable()
+    {
+        if (!IsRunning && !jobOwnsUnloaderEnabledState && !dumpOwnsUnloaderEnabledState) return;
+        IsRunning = false;
+        if (jobRoutine != null) StopCoroutine(jobRoutine);
+        jobRoutine = null;
+        RestoreUnloaderEnabledState();
+        RestoreJobUnloaderEnabledState();
+        RestoreCuttingSuppression();
+        if (machine != null) machine.StopAutomaticMotion();
+        if (keyboard != null) keyboard.SetAutomaticControl(false);
+        CurrentMotionAxis = AutonomousMotionAxis.None;
     }
 
     private void OnGUI()
@@ -397,15 +419,13 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             unloader.enabled = false;
             try
             {
-                yield return MoveToPose(dump, "卸料姿态超时");
-                if (!IsRunning || !stageSucceeded) yield break;
                 bool safeDumpPose = false;
                 ArticulationDrive boomDrive = machine.boomJoint.xDrive;
                 for (int attempt = 0; IsRunning && attempt < 9; attempt++)
                 {
                     yield return AlignCurrentSwing(false);
                     if (!IsRunning) yield break;
-                    if (stageSucceeded && IsDumpApproachSafe())
+                    if (stageSucceeded && IsProjectedDumpApproachSafe())
                     {
                         safeDumpPose = true;
                         break;
@@ -434,6 +454,17 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     EnterFault($"未找到车厢上方安全卸料姿态；回转/动臂/斗杆/铲斗=" +
                         $"({unsafePose.swing:F1},{unsafePose.boom:F1},{unsafePose.arm:F1},{unsafePose.bucket:F1})，" +
                         $"斗尖={cutter.TipWorldPosition}，要求高度={GetTruckClearanceY() + dumpClearanceMarginMeters:F2}米");
+                    yield break;
+                }
+                // Finish swing alignment before opening: the open-bucket tip shifts sideways.
+                dump = machine.ReadActualPose();
+                dump.bucket = machine.dumpPose.bucket;
+                dump.duration = Mathf.Max(1.2f, machine.dumpPose.duration);
+                yield return MoveToPose(dump, "卸料姿态超时");
+                if (!IsRunning || !stageSucceeded) yield break;
+                if (!IsDumpApproachSafe())
+                {
+                    EnterFault("铲斗打开后斗口偏离车厢安全接收区，未释放土方");
                     yield break;
                 }
                 unloader.enabled = true;
@@ -558,6 +589,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         Zx200JointPose target = new Zx200JointPose(
             actual.swing, actual.boom, machine.curlPose.arm,
             machine.curlPose.bucket, Mathf.Max(machine.curlPose.duration, cutTimeoutSeconds * .75f));
+        float minimumCurlDegrees = Mathf.Lerp(actual.bucket, target.bucket, .8f);
         CurrentMotionAxis = AutonomousMotionAxis.ArmAndBucket;
         try
         {
@@ -579,7 +611,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     bool bucketStarted = Mathf.Abs(moving.bucket - actual.bucket) >= minimumCoordinatedStartAngle;
                     if (armStarted && bucketStarted) RestoreCuttingSuppression();
                 }
-                if (cutter.VolumeM3 >= targetLoad)
+                Zx200JointPose stroke = machine.ReadActualPose();
+                bool bucketMostlyCurled = target.bucket >= actual.bucket
+                    ? stroke.bucket >= minimumCurlDegrees
+                    : stroke.bucket <= minimumCurlDegrees;
+                if (cutter.VolumeM3 >= targetLoad && bucketMostlyCurled)
                 {
                     machine.StopAutomaticMotion();
                     stageSucceeded = true;
@@ -588,6 +624,17 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 yield return new WaitForFixedUpdate();
             }
             if (!IsRunning) yield break;
+            if (machine.IsBusy) machine.StopAutomaticMotion();
+            Zx200JointPose cutEnd = machine.ReadActualPose();
+            bool curlComplete = target.bucket >= actual.bucket
+                ? cutEnd.bucket >= minimumCurlDegrees
+                : cutEnd.bucket <= minimumCurlDegrees;
+            if (!curlComplete && cutter.VolumeM3 - before >= minimumLoadVolumeM3)
+            {
+                EnterFault($"铲斗未完成收斗，不能带半开斗抬升；实际={cutEnd.bucket:F1}°，" +
+                    $"最低收斗目标={minimumCurlDegrees:F1}°");
+                yield break;
+            }
             if (cutter.VolumeM3 - before >= minimumLoadVolumeM3)
             {
                 stageSucceeded = true;
@@ -621,10 +668,38 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             cuttingSuppressionPending = true;
         }
         Zx200JointPose actual = machine.ReadActualPose();
-        yield return MoveToPose(new Zx200JointPose(
-            actual.swing, actual.boom, actual.arm,
-            actual.bucket + bucketCloseDeltaDegrees, .8f), "闭斗姿态超时", 3f);
-        if (!IsRunning || !stageSucceeded) yield break;
+        Zx200JointPose approach = machine.approachPose;
+        approach.swing = actual.swing;
+        if (!machine.StartAutomaticPose(approach))
+        {
+            EnterFault("无法启动坡面切入准备姿态");
+            yield break;
+        }
+        float approachDeadline = Time.realtimeSinceStartup + stageTimeoutSeconds;
+        while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < approachDeadline)
+        {
+            HandleManualInput();
+            Vector3 tip = cutter.TipWorldPosition;
+            if (cutter.soil.HasSurfaceAt(tip))
+            {
+                float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+                BucketSoilResistance resistance = machine.bucketJoint.GetComponent<BucketSoilResistance>();
+                if (resistance != null && surface - tip.y >= resistance.maximumPenetration)
+                {
+                    machine.StopAutomaticMotion();
+                    EnterFault("坡面准备动作斗齿提前深入土层，已停止关节运动");
+                    yield break;
+                }
+            }
+            yield return new WaitForFixedUpdate();
+        }
+        if (!IsRunning) yield break;
+        if (machine.IsBusy || !machine.IsPoseWithinTolerance(approach, machine.jointToleranceDegrees))
+        {
+            machine.StopAutomaticMotion();
+            EnterFault("坡面切入准备姿态超时");
+            yield break;
+        }
 
         actual = machine.ReadActualPose();
         Zx200JointPose target = new Zx200JointPose(
@@ -710,8 +785,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 }
             }
             Zx200JointPose actual = machine.ReadActualPose();
+            float swingDuration = Mathf.Max(2.5f, Mathf.Abs(Mathf.DeltaAngle(actual.swing, dumpSwingTarget)) / 24f);
             Zx200JointPose swingToDump = new Zx200JointPose(
-                dumpSwingTarget, actual.boom, actual.arm, actual.bucket, .9f);
+                dumpSwingTarget, actual.boom, actual.arm, actual.bucket, swingDuration);
             if (!machine.StartAutomaticPose(swingToDump))
             {
                 EnterFault("无法启动回转至车厢姿态");
@@ -768,13 +844,13 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         stageSucceeded = false;
         for (int attempt = 0; IsRunning && attempt < 4; attempt++)
         {
-            dumpSwingTarget = ComputeDumpSwingTarget();
+            dumpSwingTarget = ComputeDumpSwingTarget(true);
             if (State == AutonomousExcavationState.SwingToTruck &&
                 !HasPredictedTruckSwingClearance(dumpSwingTarget))
             {
                 yield return RaiseBoomToTruckClearance(dumpSwingTarget);
                 if (!IsRunning || !stageSucceeded) yield break;
-                dumpSwingTarget = ComputeDumpSwingTarget();
+                dumpSwingTarget = ComputeDumpSwingTarget(true);
                 if (!HasPredictedTruckSwingClearance(dumpSwingTarget))
                 {
                     stageSucceeded = false;
@@ -786,7 +862,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             }
             Zx200JointPose actual = machine.ReadActualPose();
             Zx200JointPose target = new Zx200JointPose(
-                dumpSwingTarget, actual.boom, actual.arm, actual.bucket, .7f);
+                dumpSwingTarget, actual.boom, actual.arm, actual.bucket,
+                Mathf.Max(.7f, Mathf.Abs(Mathf.DeltaAngle(actual.swing, dumpSwingTarget)) / 24f));
             if (!machine.StartAutomaticPose(target))
             {
                 EnterFault("无法微调卸料回转姿态");
@@ -811,7 +888,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     EnterFault("卸料对准动作与卡车实体发生穿透，已停止：" + collision);
                     yield break;
                 }
-                if (IsBucketOverReceiver())
+                if (IsProjectedDumpCentered())
                 {
                     machine.StopAutomaticMotion();
                     stageSucceeded = true;
@@ -821,7 +898,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             }
             if (!IsRunning) yield break;
             machine.StopAutomaticMotion();
-            if (IsBucketOverReceiver())
+            if (IsProjectedDumpCentered())
             {
                 stageSucceeded = true;
                 yield break;
@@ -869,23 +946,20 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (resistanceWasEnabled) resistance.enabled = false;
         try
         {
+            // The boom first frees the loaded bucket; the arm supplies remaining clearance
+            // if the boom reaches its drive limit.
+            Zx200JointPose initialLift = machine.ReadActualPose();
+            Vector3 boomAxis = machine.boomJoint.transform.TransformDirection(
+                machine.boomJoint.anchorRotation * Vector3.right).normalized;
+            Vector3 boomPivot = machine.boomJoint.transform.TransformPoint(machine.boomJoint.anchorPosition);
+            float liftSign = GetHeightImprovingRotationSign(boomAxis, cutter.TipWorldPosition - boomPivot);
+            initialLift.boom = Zx200DigController.ClampTarget(initialLift.boom + liftSign * 12f,
+                boomDrive.lowerLimit, boomDrive.upperLimit);
+            initialLift.duration = Mathf.Max(2f, machine.liftPose.duration);
+            yield return MoveToPose(initialLift, "满斗离开切削面超时");
+            if (!IsRunning || !stageSucceeded) yield break;
+
             Zx200JointPose waypoint = machine.ReadActualPose();
-            waypoint.bucket = target.bucket;
-            waypoint.duration = Mathf.Max(.8f, machine.swingToDumpPose.duration * .5f);
-            yield return MoveToPose(waypoint, "抬升前闭斗姿态超时");
-            if (!IsRunning || !stageSucceeded) yield break;
-
-            waypoint = machine.ReadActualPose();
-            waypoint.boom = target.boom;
-            waypoint.duration = Mathf.Max(1f, machine.swingToDumpPose.duration);
-            yield return MoveToPose(waypoint, "逐步抬升动臂超时");
-            if (!IsRunning || !stageSucceeded) yield break;
-
-            // Raise with the measured arm pose first so extending the arm cannot sweep through the ground pile.
-            yield return RaiseBoomUntilTruckClearance("伸展斗杆前抬升至车厢净空超时");
-            if (!IsRunning || !stageSucceeded) yield break;
-
-            waypoint = machine.ReadActualPose();
             waypoint.arm = target.arm;
             waypoint.duration = Mathf.Max(.8f, machine.swingToDumpPose.duration * .5f);
             yield return MoveToPose(waypoint, "高位转运斗杆调整超时");
@@ -922,8 +996,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 machine.boomJoint.anchorPosition);
             float correctionSign = GetHeightImprovingRotationSign(
                 boomAxis, cutter.TipWorldPosition - boomPivot);
+            float verticalDegrees = Vector3.Cross(boomAxis, cutter.TipWorldPosition - boomPivot).y *
+                Mathf.Deg2Rad * correctionSign;
+            float neededDegrees = (requiredHeight - cutter.TipWorldPosition.y) /
+                Mathf.Max(.02f, verticalDegrees);
             float nextBoom = Zx200DigController.ClampTarget(
-                actual.boom + correctionSign * 5f,
+                actual.boom + correctionSign * Mathf.Clamp(neededDegrees, 1f, 30f),
                 boomDrive.lowerLimit,
                 boomDrive.upperLimit);
             if (Mathf.Approximately(correctionSign, 0f) || Mathf.Approximately(nextBoom, actual.boom))
@@ -931,7 +1009,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
             Zx200JointPose waypoint = actual;
             waypoint.boom = nextBoom;
-            waypoint.duration = Mathf.Max(1f, machine.swingToDumpPose.duration);
+            waypoint.duration = Mathf.Max(1.8f, machine.swingToDumpPose.duration);
             yield return MoveToPose(waypoint, timeoutReason, 2f);
             if (!IsRunning || !stageSucceeded) yield break;
         }
@@ -1064,6 +1142,37 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         return IsBucketOverReceiver() &&
             cutter.TipWorldPosition.y >= GetTruckClearanceY() + dumpClearanceMarginMeters;
+    }
+
+    private bool IsProjectedDumpApproachSafe()
+    {
+        return IsProjectedDumpCentered() &&
+            cutter.TipWorldPosition.y >= GetTruckClearanceY() + dumpClearanceMarginMeters;
+    }
+
+    private bool IsProjectedDumpCentered()
+    {
+        if (!IsProjectedDumpOverReceiver()) return false;
+        Vector3 local = receiver.transform.InverseTransformPoint(GetPredictedOpenTip());
+        float safeHalfWidth = receiver.size.x * .5f - cutter.innerMouthHalfWidth - .08f;
+        return safeHalfWidth > 0f && Mathf.Abs(local.x) <= Mathf.Min(.08f, safeHalfWidth) &&
+            Mathf.Abs(local.z) <= receiver.size.y * .5f - .35f;
+    }
+
+    private bool IsProjectedDumpOverReceiver()
+    {
+        return receiver != null &&
+            receiver.TryGetLanding(GetPredictedOpenTip(), MaximumDumpDropMeters, out _);
+    }
+
+    private Vector3 GetPredictedOpenTip()
+    {
+        Zx200JointPose actual = machine.ReadActualPose();
+        ArticulationBody joint = machine.bucketJoint;
+        Vector3 axis = joint.transform.TransformDirection(joint.anchorRotation * Vector3.right).normalized;
+        Vector3 pivot = joint.transform.TransformPoint(joint.anchorPosition);
+        return pivot + Quaternion.AngleAxis(machine.dumpPose.bucket - actual.bucket, axis) *
+            (cutter.TipWorldPosition - pivot);
     }
 
     private bool CanContinueMotion(bool allowDuringReset)
@@ -1352,6 +1461,13 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         dumpOwnsUnloaderEnabledState = false;
     }
 
+    private void RestoreJobUnloaderEnabledState()
+    {
+        if (!jobOwnsUnloaderEnabledState) return;
+        if (unloader != null) unloader.enabled = unloaderEnabledBeforeJob;
+        jobOwnsUnloaderEnabledState = false;
+    }
+
     private string GetMotionAxisLabel()
     {
         return CurrentMotionAxis switch
@@ -1411,7 +1527,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         return Mathf.Max(minimumTransferVolumeM3, BucketResidualToleranceM3);
     }
 
-    private float ComputeDumpSwingTarget()
+    private float ComputeDumpSwingTarget(bool forOpenBucket = false)
     {
         Zx200JointPose actual = machine.ReadActualPose();
         ArticulationBody joint = machine.swingJoint;
@@ -1419,7 +1535,29 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
         Vector3 axis = joint.transform.TransformDirection(joint.anchorRotation * Vector3.right).normalized;
         Vector3 pivot = joint.transform.TransformPoint(joint.anchorPosition);
-        Vector3 currentRadial = Vector3.ProjectOnPlane(cutter.TipWorldPosition - pivot, axis);
+        Vector3 landingTip = forOpenBucket ? GetPredictedOpenTip() : cutter.TipWorldPosition;
+        if (forOpenBucket)
+        {
+            float bestOpenScore = float.PositiveInfinity;
+            float bestAngle = 0f;
+            ArticulationDrive drive = joint.xDrive;
+            for (int step = -70; step <= 70; step++)
+            {
+                float delta = step * .5f;
+                float candidateAngle = actual.swing + delta;
+                if (candidateAngle < drive.lowerLimit || candidateAngle > drive.upperLimit) continue;
+                Vector3 tip = pivot + Quaternion.AngleAxis(delta, axis) * (landingTip - pivot);
+                Vector3 local = receiver.transform.InverseTransformPoint(tip);
+                float score = local.x * local.x + .1f * local.z * local.z + .0001f * delta * delta;
+                if (Mathf.Abs(local.x) > receiver.size.x * .5f - cutter.innerMouthHalfWidth - .08f ||
+                    Mathf.Abs(local.z) > receiver.size.y * .5f - .35f) score += 100f;
+                if (score >= bestOpenScore) continue;
+                bestOpenScore = score;
+                bestAngle = candidateAngle;
+            }
+            return bestAngle;
+        }
+        Vector3 currentRadial = Vector3.ProjectOnPlane(landingTip - pivot, axis);
         if (currentRadial.sqrMagnitude < .0001f)
             return machine.swingToDumpPose.swing;
 
@@ -1469,6 +1607,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private void Finish(AutonomousExcavationState terminalState, string message)
     {
         IsRunning = false;
+        RestoreUnloaderEnabledState();
+        RestoreJobUnloaderEnabledState();
         RestoreCuttingSuppression();
         if (machine != null) machine.StopAutomaticMotion();
         if (keyboard != null) keyboard.SetAutomaticControl(false);

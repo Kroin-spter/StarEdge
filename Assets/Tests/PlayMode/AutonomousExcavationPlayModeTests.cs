@@ -35,7 +35,7 @@ namespace ExcavatorControls.Tests
                 Assert.That(machine, Is.Not.Null);
                 Assert.That(cutter, Is.Not.Null);
                 Assert.That(receiver, Is.Not.Null);
-                Assert.That(receiver.size, Is.EqualTo(new Vector2(3.6f, 4.5f)),
+                Assert.That(receiver.size, Is.EqualTo(new Vector2(1.7f, 4.4f)),
                     "The serialized truck bed must match the verified loading-bed geometry.");
 
                 double receiverBefore = receiver.VolumeM3;
@@ -50,9 +50,14 @@ namespace ExcavatorControls.Tests
                 for (int i = 0; i < 100; i++) yield return new WaitForFixedUpdate();
                 Vector3 trackBaseAtStart = trackBase.transform.position;
                 Debug.Log($"TRACK BASE IDLE spawn={trackBaseAtSpawn}, settled={trackBaseAtStart}, " +
-                    $"delta={trackBaseAtStart - trackBaseAtSpawn}, velocity={trackBase.velocity}");
+                    $"delta={trackBaseAtStart - trackBaseAtSpawn}, velocity={trackBase.linearVelocity}");
                 double maximumObservedBucketLoad = cutter.VolumeM3;
                 float maximumTrackBaseDrift = 0f;
+                float maximumSwingAfterDumpOpens = 0f;
+                float swingAtOpenBucket = 0f;
+                bool bucketOpeningObserved = false;
+                int openedBucketCycles = 0;
+                float maximumCutBucketAngle = float.NegativeInfinity;
                 Vector3 trackBaseAtMaximumDrift = trackBaseAtStart;
                 AutonomousExcavationState stateAtMaximumTrackBaseDrift = autonomy.State;
                 Assert.That(autonomy.StartAutonomousJob(.32), Is.True);
@@ -61,6 +66,32 @@ namespace ExcavatorControls.Tests
                 while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
                     maximumObservedBucketLoad = System.Math.Max(maximumObservedBucketLoad, cutter.VolumeM3);
+                    if (autonomy.State == AutonomousExcavationState.LowerAndEnter ||
+                        autonomy.State == AutonomousExcavationState.FillBucket ||
+                        autonomy.State == AutonomousExcavationState.Lift ||
+                        autonomy.State == AutonomousExcavationState.SwingToTruck ||
+                        autonomy.State == AutonomousExcavationState.ReturnToDig)
+                        Assert.That(cutter.GetComponent<BucketSoilUnloader>().enabled, Is.False,
+                            "Soil must stay in the bucket until it opens over the truck.");
+                    if (autonomy.State == AutonomousExcavationState.FillBucket)
+                        maximumCutBucketAngle = Mathf.Max(maximumCutBucketAngle, machine.ReadActualPose().bucket);
+                    if (autonomy.State == AutonomousExcavationState.Dump)
+                    {
+                        Zx200JointPose dumpMotion = machine.ReadActualPose();
+                        if (autonomy.CurrentMotionAxis == AutonomousMotionAxis.Bucket ||
+                            bucketOpeningObserved)
+                        {
+                            if (!bucketOpeningObserved)
+                            {
+                                swingAtOpenBucket = dumpMotion.swing;
+                                bucketOpeningObserved = true;
+                                openedBucketCycles++;
+                            }
+                            maximumSwingAfterDumpOpens = Mathf.Max(maximumSwingAfterDumpOpens,
+                                Mathf.Abs(Mathf.DeltaAngle(swingAtOpenBucket, dumpMotion.swing)));
+                        }
+                    }
+                    else bucketOpeningObserved = false;
                     float trackBaseDrift = Vector3.Distance(trackBaseAtStart, trackBase.transform.position);
                     if (trackBaseDrift > maximumTrackBaseDrift)
                     {
@@ -84,7 +115,7 @@ namespace ExcavatorControls.Tests
                 Debug.Log($"TRACK BASE ACTIVE start={trackBaseAtStart}, max={trackBaseAtMaximumDrift} " +
                     $"({maximumTrackBaseDrift:F3}m during {stateAtMaximumTrackBaseDrift}), " +
                     $"final={trackBase.transform.position} ({finalTrackBaseDrift:F3}m), " +
-                    $"velocity={trackBase.velocity}");
+                    $"velocity={trackBase.linearVelocity}");
                 observedStates.Clear();
                 observedStates.AddRange(autonomy.StateHistory);
                 Zx200JointPose actualPose = machine.ReadActualPose();
@@ -98,6 +129,11 @@ namespace ExcavatorControls.Tests
                     $"bucket={cutter.VolumeM3:F6}, cycles={autonomy.CompletedCycles}");
                 Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
                 Assert.That(autonomy.CompletedCycles, Is.GreaterThanOrEqualTo(2));
+                Assert.That(openedBucketCycles, Is.GreaterThanOrEqualTo(2));
+                Assert.That(maximumCutBucketAngle, Is.GreaterThan(70f),
+                    "The bucket must curl through most of its scoop stroke before the loaded swing.");
+                Assert.That(maximumSwingAfterDumpOpens, Is.LessThan(2f),
+                    "The upper structure must finish aligning before the bucket opens over the truck.");
                 Assert.That(maximumObservedBucketLoad, Is.GreaterThanOrEqualTo(.12),
                     "A successful cut must continue beyond the empty-cut validity threshold and collect a substantial part of the 0.304 m³ bucket.");
                 Assert.That(Vector3.Distance(trackBaseAtStart, trackBase.transform.position), Is.LessThan(.2f),
@@ -403,6 +439,75 @@ namespace ExcavatorControls.Tests
                 Assert.That(cutter.VolumeM3, Is.Zero.Within(1e-8));
                 Assert.That(receiver.VolumeM3, Is.Zero.Within(1e-8));
                 Assert.That(cutter.soil.RecalculateRemovedVolumeM3(), Is.Zero.Within(.0005));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Disabling autonomy mid-job must release its owned unloading and keyboard states.</summary>
+        /// <returns>Scene setup, an interrupted job, state checks and scene cleanup.</returns>
+        [UnityTest]
+        public IEnumerator DisablingAutonomyRestoresOwnedControls()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
+                ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var unloader = FindInScene<BucketSoilUnloader>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                Assert.That(unloader.enabled, Is.True);
+                Assert.That(autonomy.StartAutonomousJob(.32), Is.True);
+                Assert.That(unloader.enabled, Is.False);
+                Assert.That(keyboard.AutomaticControlActive, Is.True);
+                autonomy.enabled = false;
+                yield return null;
+                Assert.That(autonomy.IsRunning, Is.False);
+                Assert.That(unloader.enabled, Is.True);
+                Assert.That(keyboard.AutomaticControlActive, Is.False);
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>A timed-out cut must not advance to loaded lift with an uncurled bucket.</summary>
+        /// <returns>Scene setup, a shortened cut, fault checks and scene cleanup.</returns>
+        [UnityTest]
+        public IEnumerator ShortCutTimeoutDoesNotLiftHalfOpenBucket()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
+                ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var machine = FindInScene<Zx200DigController>(scene);
+                autonomy.cutTimeoutSeconds = 1.5f;
+                Assert.That(autonomy.StartAutonomousJob(.32), Is.True);
+                yield return WaitForJob(autonomy, 45f);
+                Assert.That(autonomy.IsRunning, Is.False, autonomy.Status);
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Fault),
+                    "A shortened cut with material must stop rather than carry an open bucket.");
+                Assert.That(autonomy.Status, Does.Contain("未完成收斗"));
+                Assert.That(autonomy.StateHistory, Has.None.EqualTo(AutonomousExcavationState.Lift));
+                Assert.That(machine.IsBusy, Is.False);
             }
             finally
             {

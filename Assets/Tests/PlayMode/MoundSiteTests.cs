@@ -154,6 +154,16 @@ namespace ExcavatorControls.Tests
                 float faceRise = soil.GetFloorWorldY(faceCrest) - soil.GetFloorWorldY(faceFoot);
                 Assert.That(faceRise, Is.InRange(2.5f, 8f),
                     "The machine must stand on the lower bench and face a clearly raised, continuous cuttable slope.");
+                Vector3 slopedBand = trackBase.position + trackBase.forward * 9f;
+                float slopeSoilThickness = soil.Terrain.SampleHeight(slopedBand) + soil.transform.position.y -
+                    soil.GetFloorWorldY(slopedBand);
+                Vector3 flatApron = trackBase.position + trackBase.forward * 6.5f;
+                float flatApronThickness = soil.Terrain.SampleHeight(flatApron) + soil.transform.position.y -
+                    soil.GetFloorWorldY(flatApron);
+                Assert.That(slopeSoilThickness, Is.GreaterThan(.35f),
+                    "The cuttable soil must coat the rising side face, not sit on the lower flat apron.");
+                Assert.That(flatApronThickness, Is.LessThan(.1f),
+                    "The lower flat apron should remain largely free of the work-face soil strip.");
                 float benchDrop = (float)site.GetType().GetProperty("BenchDropMeters").GetValue(site);
                 Assert.That(benchDrop, Is.GreaterThanOrEqualTo(2f),
                     "The selected track platform must be at least 2 m below the original upper platform.");

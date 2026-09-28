@@ -32,6 +32,13 @@ namespace ExcavatorControls.Tests
                 Assert.That(site.workFaceAnchor.z, Is.EqualTo(354.27f).Within(.01f));
                 AssertPosition(site.truck.position, new Vector3(299.4038f, -2.847f, 349.9085f), "dump truck");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(site.truck.eulerAngles.y, 112.5f)), Is.LessThan(.1f));
+                SoilReceivingZone receiver = site.truck.GetComponentInChildren<SoilReceivingZone>();
+                BoxCollider bedFloor = site.truck.GetComponentsInChildren<BoxCollider>()
+                    .Single(collider => collider.name == "Bed floor");
+                Assert.That(receiver.size.x, Is.LessThanOrEqualTo(2f),
+                    "The visible soil surface must fit within the imported dump-box width.");
+                Assert.That(bedFloor.size.x, Is.LessThanOrEqualTo(2.2f),
+                    "The physical bed floor must follow the visible dump-box width.");
             }
             finally
             {
