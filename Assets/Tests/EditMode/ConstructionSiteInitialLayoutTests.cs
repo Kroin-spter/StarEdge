@@ -22,10 +22,14 @@ namespace ExcavatorControls.Tests
                 CesiumMoundSite site = behaviours.OfType<CesiumMoundSite>().Single();
                 Zx200KeyboardController keyboard = behaviours.OfType<Zx200KeyboardController>().Single();
                 keyboard.ResolveArticulationRoot();
+                Assert.That(site.siteMode, Is.EqualTo(CesiumMoundSite.SitePreparationMode.Baked));
+                Assert.That(site.bakedSite, Is.Not.Null);
 
                 Transform trackBase = keyboard.articulationRoot.transform;
-                AssertPosition(trackBase.position, new Vector3(281.0765f, -2.74f, 359.2318f), "excavator track base");
+                AssertPosition(trackBase.position, site.bakedSite.machinePosition, "excavator track base");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.1f));
+                Assert.That(Vector2.Distance(new Vector2(trackBase.position.x, trackBase.position.z),
+                    new Vector2(281.0765f, 359.2318f)), Is.LessThan(3f));
                 Assert.That(site.useExplicitWorkFaceAnchor, Is.False,
                     "The authored point should seed a small terrain-validated search rather than pinning one failing point.");
                 Assert.That(site.usePrepositionedEquipment, Is.True);
@@ -42,8 +46,15 @@ namespace ExcavatorControls.Tests
                     "The truck should park closer to the excavator while keeping its side clearance.");
                 Assert.That(site.soilStripHalfWidth, Is.EqualTo(6f).Within(.01f));
                 Assert.That(site.soilStripHalfDepth, Is.EqualTo(2f).Within(.01f));
-                AssertPosition(site.truck.position, new Vector3(286.9159f, -2.847f, 355.0999f), "dump truck");
+                AssertPosition(site.truck.position, site.bakedSite.truckPosition, "dump truck");
                 Assert.That(Mathf.Abs(Mathf.DeltaAngle(site.truck.eulerAngles.y, 112.5f)), Is.LessThan(.1f));
+                Terrain terrain = site.soil.GetComponent<Terrain>();
+                Assert.That(terrain.enabled, Is.True, "The baked slope must be visible before Play.");
+                Assert.That(terrain.terrainData, Is.SameAs(site.bakedSite.terrainData));
+                ConstructionSiteMapClip clip = behaviours.OfType<ConstructionSiteMapClip>().SingleOrDefault();
+                Assert.That(clip, Is.Not.Null, "The editor and runtime must share one map clipping boundary.");
+                Assert.That(clip.workArea.center.x, Is.EqualTo(site.bakedSite.terrainOrigin.x +
+                    site.bakedSite.terrainData.size.x * .5f).Within(.01f));
                 SoilReceivingZone receiver = site.truck.GetComponentInChildren<SoilReceivingZone>();
                 BoxCollider bedFloor = site.truck.GetComponentsInChildren<BoxCollider>()
                     .Single(collider => collider.name == "Bed floor");

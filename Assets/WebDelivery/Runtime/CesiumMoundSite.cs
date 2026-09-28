@@ -8,6 +8,7 @@ using UnityEngine;
 [DefaultExecutionOrder(-13000)]
 public sealed class CesiumMoundSite : MonoBehaviour
 {
+    public enum SitePreparationMode { Baked = 0, DynamicDeveloper = 1 }
     /// <summary>Convert a constant surface-normal soil thickness into a vertical height-field offset.</summary>
     /// <param name="thicknessMeters">Requested thickness measured perpendicular to the source surface.</param>
     /// <param name="surfaceNormal">Source surface normal; it is normalized before conversion.</param>
@@ -36,6 +37,10 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public DeformableSoilTerrain soil;
     public Zx200DigController machine;
     public Transform truck;
+    [Header("Construction site source")]
+    [Tooltip("Baked is the delivery path. DynamicDeveloper surveys Cesium at Play time for authoring only.")]
+    public SitePreparationMode siteMode = SitePreparationMode.Baked;
+    public BakedConstructionSiteData bakedSite;
     [Tooltip("Cesium local tileset directory name. The directory is resolved through CESIUM_TILESET_DIR or the project sibling tilesets folder.")]
     public string mapName = "osgb_small_005_004";
     [Header("Slope work-face layout")]
@@ -112,6 +117,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
     private float originalSupportY = float.NaN;
     private int lastSearchMapRevision = int.MinValue;
     private WorkFaceCandidate selectedWorkFace;
+    private float[,] preparedSoilMask;
     private CesiumCameraManager cameraManager;
     private Camera surveyCamera;
     private bool originalSceneViewCameraInEditor;
@@ -129,7 +135,12 @@ public sealed class CesiumMoundSite : MonoBehaviour
         keyboard = machine.GetComponent<Zx200KeyboardController>();
         keyboard.ResolveArticulationRoot(); root = keyboard.articulationRoot;
         originalRootPosition = root.transform.position;
-        InstallSurveyCamera();
+        if (siteMode == SitePreparationMode.DynamicDeveloper) InstallSurveyCamera();
+        else if (bakedSite != null && bakedSite.terrainData != null)
+        {
+            soil.GetComponent<Terrain>().terrainData = bakedSite.terrainData;
+            soil.SoilCollider.terrainData = bakedSite.terrainData;
+        }
         Collider[] truckColliders = truck.GetComponentsInChildren<Collider>()
             .Where(c => c.enabled && !c.isTrigger).ToArray();
         if (truckColliders.Length == 0)
@@ -243,6 +254,11 @@ public sealed class CesiumMoundSite : MonoBehaviour
 
     private IEnumerator Start()
     {
+        if (siteMode == SitePreparationMode.Baked)
+        {
+            yield return LoadBakedSite();
+            yield break;
+        }
         float deadline = Time.realtimeSinceStartup + loadingTimeout;
         float previousGround = float.NaN;
         int stable = 0;
@@ -343,6 +359,159 @@ public sealed class CesiumMoundSite : MonoBehaviour
             Status = "Map support unavailable; machine held for safety. Reload scene to retry.";
         ReleaseSurveyCamera();
         Debug.LogWarning(Status, this);
+    }
+
+    /// <summary>Validate a baked configuration without silently selecting the dynamic Cesium survey.</summary>
+    /// <param name="data">Referenced persistent site snapshot; may be null.</param>
+    /// <param name="mapName">Configured source map identifier.</param>
+    /// <param name="latitude">Current georeference latitude.</param>
+    /// <param name="longitude">Current georeference longitude.</param>
+    /// <param name="height">Current georeference height.</param>
+    /// <param name="reason">Actionable failure reason or empty on success.</param>
+    /// <returns>True only when the baked snapshot is present and valid.</returns>
+    public static bool TryValidateBakedConfiguration(BakedConstructionSiteData data, string mapName,
+        double latitude, double longitude, double height, out string reason)
+    {
+        if (data == null)
+        {
+            reason = "缺少烘焙施工区资源；请在动态开发模式完成一次现场烘焙，然后应用到 sence_test。";
+            return false;
+        }
+        return data.TryValidate(mapName, latitude, longitude, height, out reason);
+    }
+
+    private IEnumerator LoadBakedSite()
+    {
+        CesiumGeoreference georeference = tileset.GetComponentInParent<CesiumGeoreference>();
+        if (georeference == null)
+        {
+            Status = "缺少 Cesium 地理参考；无法校验烘焙施工区。";
+            Debug.LogError(Status, this);
+            yield break;
+        }
+        if (!TryValidateBakedConfiguration(bakedSite, mapName, georeference.latitude,
+                georeference.longitude, georeference.height, out string reason))
+        {
+            Status = reason;
+            Debug.LogError(Status, this);
+            yield break;
+        }
+        bool loaded = false;
+        try
+        {
+            bakedSite.ApplyTo(soil);
+            originalSupportY = bakedSite.originalSupportY;
+            selectedSupportY = bakedSite.selectedSupportY;
+            selectedTruckGroundY = bakedSite.selectedTruckGroundY;
+            ReadyTipClearanceMeters = bakedSite.readyTipClearanceMeters;
+            SelectedSurfaceNormalY = bakedSite.selectedSurfaceNormalY;
+            root.TeleportRoot(bakedSite.machinePosition, bakedSite.machineRotation);
+            root.linearVelocity = Vector3.zero;
+            root.angularVelocity = Vector3.zero;
+            truck.SetPositionAndRotation(bakedSite.truckPosition, bakedSite.truckRotation);
+            Physics.SyncTransforms();
+            MapSurfacePrepared = true;
+            ConstructionSiteMapClip clip = tileset.GetComponent<ConstructionSiteMapClip>();
+            if (clip == null) clip = tileset.gameObject.AddComponent<ConstructionSiteMapClip>();
+            clip.workArea = WorkAreaBounds;
+            clip.RefreshLoadedTiles();
+            soil.GetComponent<Terrain>().enabled = true;
+            soil.SoilCollider.enabled = true;
+            cutter.enabled = originalCutter;
+            if (resistance != null) resistance.enabled = originalResistance;
+            keyboard.fixedBase = originalFixed;
+            root.immovable = originalFixed;
+            root.useGravity = !originalFixed;
+            machine.enabled = originalMachine;
+            keyboard.enabled = originalKeyboard;
+            loaded = true;
+        }
+        catch (Exception exception)
+        {
+            MapSurfacePrepared = false;
+            soil.GetComponent<Terrain>().enabled = false;
+            soil.SoilCollider.enabled = false;
+            cutter.enabled = false;
+            if (resistance != null) resistance.enabled = false;
+            machine.enabled = false;
+            keyboard.enabled = false;
+            root.immovable = true;
+            Status = "烘焙施工区加载失败，请重新烘焙：" + exception.Message;
+            Debug.LogError(Status, this);
+        }
+        if (!loaded) yield break;
+        yield return new WaitForFixedUpdate();
+        Physics.SyncTransforms();
+        IsReady = true;
+        Status = "本地烘焙施工区已就绪";
+        Debug.Log($"[ZX200] {Status}；初始土量={bakedSite.initialSoilVolumeM3:F3}m³", this);
+    }
+
+    /// <summary>Capture a ready, untouched dynamic work face into a persistent snapshot being assembled by the editor.</summary>
+    /// <param name="target">Snapshot with its TerrainData copy already assigned.</param>
+    /// <param name="reason">Failure reason when the dynamic site is not safe to bake.</param>
+    /// <returns>True after geometry, georeference, equipment layout and soil baseline have been copied.</returns>
+    public bool TryCaptureBakedData(BakedConstructionSiteData target, out string reason)
+    {
+        reason = string.Empty;
+        if (siteMode != SitePreparationMode.DynamicDeveloper || !IsReady || target == null || target.terrainData == null ||
+            Math.Abs(soil.RecalculateRemovedVolumeM3()) > 1e-5)
+        { reason = "仅能在动态开发模式施工区就绪且土层尚未挖动时烘焙。"; return false; }
+        float[,] floor = soil.GetPreparedGroundCopy();
+        if (floor == null || preparedSoilMask == null)
+        { reason = "缺少基础地面或土带掩码，不能保存不完整的施工区。"; return false; }
+        CesiumGeoreference reference = tileset.GetComponentInParent<CesiumGeoreference>();
+        if (reference == null) { reason = "缺少 Cesium 地理参考。"; return false; }
+        int n = target.terrainData.heightmapResolution;
+        if (floor.GetLength(0) != n || floor.GetLength(1) != n ||
+            preparedSoilMask.GetLength(0) != n || preparedSoilMask.GetLength(1) != n)
+        { reason = "烘焙地形分辨率与已测基础地面不一致。"; return false; }
+        target.formatVersion = BakedConstructionSiteData.CurrentVersion;
+        target.sourceMapName = mapName;
+        target.georeferenceLatitude = reference.latitude;
+        target.georeferenceLongitude = reference.longitude;
+        target.georeferenceHeight = reference.height;
+        target.terrainOrigin = soil.transform.position;
+        target.machinePosition = root.transform.position;
+        target.machineRotation = root.transform.rotation;
+        target.truckPosition = truck.position;
+        target.truckRotation = truck.rotation;
+        target.originalSupportY = originalSupportY;
+        target.selectedSupportY = selectedSupportY;
+        target.selectedTruckGroundY = selectedTruckGroundY;
+        target.readyTipClearanceMeters = ReadyTipClearanceMeters;
+        target.selectedSurfaceNormalY = SelectedSurfaceNormalY;
+        target.maximumCutDepth = soil.maximumCutDepth;
+        target.terrainMaterial = soil.GetComponent<Terrain>().materialTemplate;
+        target.groundHeights = new float[n * n];
+        target.soilMask = new float[n * n];
+        float[,] top = target.terrainData.GetHeights(0, 0, n, n);
+        double cell = (double)target.terrainData.size.x * target.terrainData.size.y *
+            target.terrainData.size.z / ((n - 1) * (n - 1));
+        double volume = 0;
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                int index = z * n + x;
+                float mask = preparedSoilMask[z, x];
+                float sampledFloor = floor[z, x];
+                float surface = top[z, x];
+                // TerrainData quantizes heights. Outside the authored band, top and floor describe
+                // the same source map surface; make the persistent floor match the read-back top.
+                // Inside the band, tolerate only one sample of quantization, never a real inversion.
+                if (mask > .001f && sampledFloor - surface > 2f / 65535f)
+                {
+                    reason = $"采样地面高于土层超过高度图量化误差（x={x}, z={z}）。";
+                    return false;
+                }
+                float storedFloor = mask <= .001f ? surface : Mathf.Min(sampledFloor, surface);
+                target.groundHeights[index] = storedFloor;
+                target.soilMask[index] = mask;
+                volume += (surface - storedFloor) * cell *
+                    (x == 0 || x == n - 1 ? .5 : 1) * (z == 0 || z == n - 1 ? .5 : 1);
+            }
+        target.initialSoilVolumeM3 = volume;
+        return target.TryValidate(mapName, reference.latitude, reference.longitude, reference.height, out reason);
     }
 
     private MeshCollider[] GetLoadedMapColliders()
@@ -583,6 +752,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         if (appearance == null) appearance = gameObject.AddComponent<ConstructionSiteSurfaceAppearance>();
         if (!appearance.ApplySlopeBand(tileset.gameObject, soil, WorkAreaBounds, stripMask))
             Debug.Log("Cesium map image unavailable for slope texture; retaining the existing soil TerrainLayer.", this);
+        preparedSoilMask = (float[,])stripMask.Clone();
         Status = "坡脚、坡面和矿车支撑均已通过验证，贴坡土带已生成。";
         moundPreparationSucceeded = true;
     }

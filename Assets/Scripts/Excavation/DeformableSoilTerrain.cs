@@ -11,6 +11,8 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
     [Min(.01f)] public float maximumCutDepth = .8f;
     [Min(.001f)] public float minimumCutDepth = .015f;
     public Terrain Terrain { get; private set; }
+    /// <summary>Persistent source TerrainData; the runtime excavation copy is kept separate.</summary>
+    public TerrainData SourceTerrainData => source;
     public TerrainCollider SoilCollider => GetComponent<TerrainCollider>();
     public float FloorWorldY => transform.position.y + floorHeight;
     private TerrainData source;
@@ -27,6 +29,18 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
     /// <param name="terrain">本物体的无旋转、单位缩放Terrain；源数据永不改写。</param>
     public void Initialize(Terrain terrain)
     {
+        InitializeCore(terrain, false);
+    }
+
+    /// <summary>Rebuild the baked height field into a separate runtime TerrainData without cloning its native splat subassets.</summary>
+    /// <param name="terrain">This object's Terrain bearing the persistent baked source.</param>
+    public void InitializeBaked(Terrain terrain)
+    {
+        InitializeCore(terrain, true);
+    }
+
+    private void InitializeCore(Terrain terrain, bool rebuildBakedData)
+    {
         if (runtime != null) return;
         if (terrain == null || terrain.gameObject != gameObject || terrain.terrainData == null)
             throw new ArgumentException("必须指定当前物体上具有数据的Terrain。", nameof(terrain));
@@ -35,7 +49,39 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
             throw new InvalidOperationException("可挖Terrain必须保持世界旋转为零且缩放为1。");
         Terrain = terrain;
         source = terrain.terrainData;
-        runtime = Instantiate(source);
+        if (rebuildBakedData)
+        {
+            // The editor-authored TerrainData contains TerrainLayer subassets. Unity 6 can
+            // crash natively when Instantiate clones that entire splat object island in batch mode.
+            // Rebuild only the height, holes and appearance data that this cuttable site uses.
+            runtime = new TerrainData
+            {
+                heightmapResolution = source.heightmapResolution,
+                size = source.size,
+                alphamapResolution = source.alphamapResolution
+            };
+            runtime.SetHeights(0, 0, source.GetHeights(0, 0,
+                source.heightmapResolution, source.heightmapResolution));
+            int holes = source.holesResolution;
+            if (holes != runtime.holesResolution)
+                throw new InvalidOperationException("烘焙地形的孔洞分辨率与运行副本不一致。");
+            runtime.SetHoles(0, 0, source.GetHoles(0, 0, holes, holes));
+            runtime.terrainLayers = source.terrainLayers;
+            if (runtime.terrainLayers.Length == 1)
+            {
+                // Headless map baking retains the single soil layer; Unity may serialize
+                // no splat texture for that trivial case. Assign explicit full coverage.
+                int resolution = runtime.alphamapResolution;
+                var weights = new float[resolution, resolution, 1];
+                for (int z = 0; z < resolution; z++)
+                    for (int x = 0; x < resolution; x++) weights[z, x, 0] = 1f;
+                runtime.SetAlphamaps(0, 0, weights);
+            }
+            else if (runtime.terrainLayers.Length > 1)
+                runtime.SetAlphamaps(0, 0, source.GetAlphamaps(0, 0,
+                    source.alphamapResolution, source.alphamapResolution));
+        }
+        else runtime = Instantiate(source);
         runtime.name = source.name + " (runtime excavation copy)";
         initial = runtime.GetHeights(0, 0, runtime.heightmapResolution, runtime.heightmapResolution);
         terrain.terrainData = runtime;
@@ -341,6 +387,10 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
         SetPreparedSurface(normalizedHeights);
         groundFloor = (float[,])normalizedGround.Clone();
     }
+
+    /// <summary>Return an independent copy of the prepared map-ground height field for editor baking.</summary>
+    /// <returns>Normalized ground elevations, or null before the site has prepared a mound.</returns>
+    public float[,] GetPreparedGroundCopy() => groundFloor == null ? null : (float[,])groundFloor.Clone();
 
     /// <summary>Sample the mound's effective cutting floor using bilinear interpolation in world coordinates.</summary>
     /// <param name="worldPoint">Finite query position; horizontal coordinates outside the Terrain clamp to its edge.</param>

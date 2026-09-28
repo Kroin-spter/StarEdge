@@ -7,6 +7,7 @@ using UnityEngine.Rendering;
 /// <summary>Remove the work-area footprint from streamed Cesium rendering and collision meshes.</summary>
 [DisallowMultipleComponent]
 [DefaultExecutionOrder(-12000)]
+[ExecuteAlways]
 public sealed class ConstructionSiteMapClip : MonoBehaviour
 {
     [Tooltip("World-space replacement footprint. Only the part of each map triangle inside this rectangle is removed.")]
@@ -57,18 +58,18 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
 
     private void OnEnable()
     {
-        if (!Application.isPlaying) return;
         tileset = GetComponent<Cesium3DTileset>();
         if (tileset == null) return;
         moundSite = FindObjectsByType<CesiumMoundSite>(FindObjectsSortMode.None)
             .FirstOrDefault(candidate => candidate.tileset == tileset);
         if (moundSite != null)
         {
-            workArea = moundSite.WorkAreaBounds;
+            workArea = ReplacementBounds();
             tileset.OnTileGameObjectCreated += ClipTile;
-            if (moundSite.MapSurfacePrepared) ClipTile(gameObject);
+            if (MoundSurfaceAvailable()) ClipTile(gameObject);
             return;
         }
+        if (!Application.isPlaying) return;
         conformer = FindObjectsByType<CesiumTerrainConformer>(FindObjectsSortMode.None)
             .FirstOrDefault(candidate => candidate.tileset == null || candidate.tileset == tileset);
         if (conformer == null)
@@ -94,8 +95,8 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
                 .FirstOrDefault(candidate => candidate.tileset == tileset);
         if (moundSite != null)
         {
-            workArea = moundSite.WorkAreaBounds;
-            if (moundSite.MapSurfacePrepared) ClipTile(tileset.gameObject);
+            workArea = ReplacementBounds();
+            if (MoundSurfaceAvailable()) ClipTile(tileset.gameObject);
             return;
         }
         if (conformer == null || conformer.SurfaceReady) ClipTile(tileset.gameObject);
@@ -103,6 +104,17 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
 
     private void Update()
     {
+        if (!Application.isPlaying && moundSite == null && tileset != null)
+        {
+            moundSite = FindObjectsByType<CesiumMoundSite>(FindObjectsSortMode.None)
+                .FirstOrDefault(candidate => candidate.tileset == tileset);
+            if (moundSite != null)
+            {
+                workArea = ReplacementBounds();
+                tileset.OnTileGameObjectCreated += ClipTile;
+                if (MoundSurfaceAvailable()) ClipTile(tileset.gameObject);
+            }
+        }
         if (conformer != null && !conformer.SurfaceReady) return;
         // Cesium can evict an individual tile while this component remains enabled for the session.
         for (int i = replacements.Count - 1; i >= 0; i--)
@@ -121,7 +133,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
     /// <param name="tile">Tile root; its child meshes are inspected without modifying their source assets.</param>
     public void ClipTile(GameObject tile)
     {
-        if (tile == null || (moundSite != null && !moundSite.MapSurfacePrepared)) return;
+        if (tile == null || (moundSite != null && !MoundSurfaceAvailable())) return;
         if (conformer != null && !conformer.SurfaceReady) return;
 
         foreach (MeshFilter filter in tile.GetComponentsInChildren<MeshFilter>(true))
@@ -159,6 +171,22 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
                 colliderMeshCleared = !hasRetainedTriangles
             });
         }
+    }
+
+    private bool MoundSurfaceAvailable() => moundSite != null &&
+        (moundSite.MapSurfacePrepared || (!Application.isPlaying &&
+            moundSite.siteMode == CesiumMoundSite.SitePreparationMode.Baked &&
+            moundSite.bakedSite != null && moundSite.bakedSite.terrainData != null));
+
+    private Bounds ReplacementBounds()
+    {
+        if (!Application.isPlaying && moundSite.bakedSite != null && moundSite.bakedSite.terrainData != null)
+        {
+            BakedConstructionSiteData baked = moundSite.bakedSite;
+            Vector3 size = baked.terrainData.size;
+            return new Bounds(baked.terrainOrigin + size * .5f, size);
+        }
+        return moundSite.WorkAreaBounds;
     }
 
     private Mesh CreateClippedMesh(Mesh source, Transform meshTransform)
