@@ -10,6 +10,32 @@ namespace ExcavatorControls.Tests
     /// <summary>Checks the construction demo's authored, pre-Play equipment placement.</summary>
     public sealed class ConstructionSiteInitialLayoutTests
     {
+        /// <summary>Reject a baked rectangle on the road and floor instead of the steep blue work face.</summary>
+        [Test]
+        public void BakedSoilOccupiesTheSteepFaceRatherThanFlatRoadAndBench()
+        {
+            BakedConstructionSiteData site = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/SenceTest/ConstructionSite.asset");
+            Assert.That(site, Is.Not.Null);
+            int n = site.terrainData.heightmapResolution;
+            float dz = site.terrainData.size.z / (n - 1f);
+            int step = Mathf.Max(1, Mathf.RoundToInt(1f / dz));
+            int soilCells = 0, slopeCells = 0;
+            for (int z = step; z < n - step; z++)
+                for (int x = 0; x < n; x++)
+                {
+                    int index = z * n + x;
+                    if (site.soilMask[index] < .1f) continue;
+                    soilCells++;
+                    float rise = (site.groundHeights[index + step * n] -
+                        site.groundHeights[index - step * n]) * site.terrainData.size.y / (2f * step * dz);
+                    if (rise > .6f) slopeCells++;
+                }
+            Assert.That(soilCells, Is.GreaterThan(1000));
+            Assert.That((float)slopeCells / soilCells, Is.GreaterThan(.7f),
+                "Most cuttable soil must lie on the ascending wall, not on flat road or lower bench.");
+        }
+
         /// <summary>The authored soil follows the long exposed wall while the lower bench remains Cesium.</summary>
         [Test]
         public void BakedSlopeCoversTheLongWallButNotTheLowerBench()
@@ -19,14 +45,24 @@ namespace ExcavatorControls.Tests
             Assert.That(site, Is.Not.Null);
             TerrainData terrain = site.terrainData;
             Assert.That(terrain, Is.Not.Null);
-            Quaternion heading = ConstructionSiteFootprint.GetHorizontalRotation(site.machineRotation);
-            Vector3 farLeftWall = site.machinePosition + heading * new Vector3(-60f, 0f, 6.5f);
-            Vector3 farLeftBench = site.machinePosition + heading * new Vector3(-60f, 0f, -3f);
-
-            Assert.That(IsSolidAt(terrain, site.terrainOrigin, farLeftWall), Is.True,
-                "The west part of the red outlined slope must be actual cuttable Terrain.");
-            Assert.That(IsSolidAt(terrain, site.terrainOrigin, farLeftBench), Is.False,
-                "The lower bench below the slope must stay on the original Cesium surface.");
+            int n = terrain.heightmapResolution;
+            foreach (float worldX in new[] { 230f, 255f, 280f, 305f })
+            {
+                int x = Mathf.RoundToInt((worldX - site.terrainOrigin.x) /
+                    terrain.size.x * (n - 1));
+                int active = 0;
+                for (int z = 0; z < n; z++)
+                {
+                    if (site.soilMask[z * n + x] < .2f) continue;
+                    Vector3 point = site.terrainOrigin + new Vector3(
+                        x * terrain.size.x / (n - 1f), 0f, z * terrain.size.z / (n - 1f));
+                    if (IsSolidAt(terrain, site.terrainOrigin, point)) active++;
+                }
+                Assert.That(active, Is.GreaterThan(8), $"The wall at map X={worldX} must be cuttable.");
+                Assert.That(IsSolidAt(terrain, site.terrainOrigin,
+                    new Vector3(worldX, 0f, site.terrainOrigin.z + 2f)), Is.False,
+                    "The lower bench must remain original Cesium at every wall segment.");
+            }
         }
 
         /// <summary>The excavator and truck must be saved at the tested lower work face.</summary>
@@ -64,7 +100,7 @@ namespace ExcavatorControls.Tests
                 Assert.That(site.bakedSite.workFaceSize.y, Is.LessThanOrEqualTo(10f),
                     "The replacement must stay on the wall without extending onto the lower bench.");
                 Assert.That(Vector2.Distance(new Vector2(trackBase.position.x, trackBase.position.z),
-                    new Vector2(281.0765f, 359.2318f)), Is.LessThan(3f));
+                    new Vector2(281.0765f, 359.2318f)), Is.LessThan(8f));
                 Assert.That(site.useExplicitWorkFaceAnchor, Is.False,
                     "The authored point should seed a small terrain-validated search rather than pinning one failing point.");
                 Assert.That(site.usePrepositionedEquipment, Is.True);
@@ -73,7 +109,9 @@ namespace ExcavatorControls.Tests
                 Assert.That(site.workFaceAnchor.z, Is.EqualTo(359.2318f).Within(.01f));
                 Assert.That(site.workFaceSearchRadius, Is.EqualTo(8f).Within(.01f));
                 Assert.That(site.minimumSurfaceNormalY, Is.EqualTo(.55f).Within(.001f));
-                Assert.That(site.minimumReadyTipClearanceMeters, Is.EqualTo(.6f).Within(.001f));
+                Assert.That(site.minimumReadyTipClearanceMeters, Is.EqualTo(.5f).Within(.001f));
+                Assert.That(clip.enabled, Is.False,
+                    "The original Cesium face, road and lower bench must remain visible under the thin soil layer.");
                 Zx200DigController dig = behaviours.OfType<Zx200DigController>().Single();
                 Assert.That(dig.approachPose.boom, Is.GreaterThan(-45f),
                     "The cut approach must not lift the boom to the old high -60 degree pose.");

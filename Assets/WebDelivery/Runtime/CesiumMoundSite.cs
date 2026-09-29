@@ -125,6 +125,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
         float minimumY = terrain.transform.position.y;
         float maximumY = minimumY + terrain.terrainData.size.y;
         clip.SetWorkFaceFootprint(WorkFaceCenter, WorkFaceRotation, WorkFaceSize, minimumY, maximumY);
+        // The terrain is a thin coating on the Cesium face, not a replacement of the
+        // vertical map column. Keep the map (and its road/bench collision) underneath.
+        clip.enabled = false;
     }
     private Zx200KeyboardController keyboard;
     private ArticulationBody root;
@@ -351,7 +354,6 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     ConstructionSiteMapClip clip = tileset.GetComponent<ConstructionSiteMapClip>();
                     if (clip == null) clip = tileset.gameObject.AddComponent<ConstructionSiteMapClip>();
                     ConfigureMapClip(clip);
-                    clip.RefreshLoadedTiles();
                     Physics.SyncTransforms();
 
                     // Move equipment only after the replacement terrain and all work-face checks are ready.
@@ -362,10 +364,11 @@ public sealed class CesiumMoundSite : MonoBehaviour
                         rootTarget = selectedRootPosition + Vector3.up * (selectedSupportY + .025f - bottom);
                         root.TeleportRoot(rootTarget, selectedRootRotation);
                         root.linearVelocity = Vector3.zero; root.angularVelocity = Vector3.zero;
-                        Vector3 truckXZ = selectedRootPosition + selectedRootRotation * truckParkingOffsetLocal;
+                        Quaternion levelHeading = ConstructionSiteFootprint.GetHorizontalRotation(selectedRootRotation);
+                        Vector3 truckXZ = selectedRootPosition + levelHeading * truckParkingOffsetLocal;
                         truck.position = new Vector3(truckXZ.x,
                             selectedTruckGroundY - originalTruckBottomOffset, truckXZ.z);
-                        truck.rotation = selectedRootRotation * Quaternion.Euler(0f, truckParkingYawDegrees, 0f);
+                        truck.rotation = levelHeading * Quaternion.Euler(0f, truckParkingYawDegrees, 0f);
                     }
                     Physics.SyncTransforms();
                     soil.GetComponent<Terrain>().enabled = true; soil.SoilCollider.enabled = true;
@@ -452,7 +455,6 @@ public sealed class CesiumMoundSite : MonoBehaviour
             ConstructionSiteMapClip clip = tileset.GetComponent<ConstructionSiteMapClip>();
             if (clip == null) clip = tileset.gameObject.AddComponent<ConstructionSiteMapClip>();
             ConfigureMapClip(clip);
-            clip.RefreshLoadedTiles();
             soil.GetComponent<Terrain>().enabled = true;
             soil.SoilCollider.enabled = true;
             cutter.enabled = originalCutter;
@@ -654,7 +656,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         data.size = size;
 
         var baseGround = new float[n, n];
-        var stripMask = new float[n, n];
+        float[,] stripMask;
         float minimum = float.PositiveInfinity, maximum = float.NegativeInfinity;
         for (int z = 0; z < n; z++)
         {
@@ -668,8 +670,6 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     yield break;
                 }
                 baseGround[z, x] = y + .008f;
-                Vector3 local = Quaternion.Inverse(selectedRootRotation) * (point - selectedRootPosition);
-                stripMask[z, x] = SoilStripMask(local);
                 minimum = Mathf.Min(minimum, baseGround[z, x]);
                 maximum = Mathf.Max(maximum, baseGround[z, x]);
             }
@@ -693,6 +693,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
             Status = $"{supportFailure}；设备保持原位。";
             yield break;
         }
+        stripMask = ConstructionSiteSlopeMask.Build(baseGround, size.z / (n - 1f), selectedSupportY);
 
         float dx = size.x / (n - 1f), dz = size.z / (n - 1f);
         int normalStepX = Mathf.Clamp(Mathf.RoundToInt(.75f / dx), 1, n / 8);
@@ -768,10 +769,15 @@ public sealed class CesiumMoundSite : MonoBehaviour
         Vector3 workFaceCenter = WorkFaceCenter;
         Vector2 workFaceSize = new Vector2(soilStripHalfWidth * 2f, soilStripHalfDepth * 2f);
         int holesResolution = data.holesResolution;
-        bool[,] holes = ConstructionSiteFootprint.BuildTerrainHoles(holesResolution,
-            origin, size, workFaceCenter, selectedRootRotation, workFaceSize);
+        var holes = new bool[holesResolution, holesResolution];
         for (int z = 0; z < holesResolution; z++)
         {
+            int sampleZ = Mathf.Clamp(Mathf.RoundToInt((z + .5f) * (n - 1f) / holesResolution), 0, n - 1);
+            for (int x = 0; x < holesResolution; x++)
+            {
+                int sampleX = Mathf.Clamp(Mathf.RoundToInt((x + .5f) * (n - 1f) / holesResolution), 0, n - 1);
+                holes[z, x] = stripMask[sampleZ, sampleX] > .05f;
+            }
             if ((z + 1) % 8 == 0)
             {
                 SurveyFrameYieldCount++;
@@ -846,7 +852,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
             }
         }
 
-        int candidateStride = Mathf.Max(1, Mathf.RoundToInt(2f / spacing));
+        int candidateStride = usePrepositionedEquipment ? 1 : Mathf.Max(1, Mathf.RoundToInt(2f / spacing));
         int first = paddingCells;
         int last = paddingCells + searchCells * 2;
         float bestScore = float.PositiveInfinity;
@@ -854,6 +860,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
         int[] rejected = new int[10];
         int directionCount = usePrepositionedEquipment ? 1 : 16;
         selectedWorkFace = default;
+        float bestRejectedClearance = float.NegativeInfinity;
+        Vector2 bestRejectedPosition = default;
         int firstX = useExplicitWorkFaceAnchor
             ? Mathf.RoundToInt((workFaceAnchor.x - gridOrigin.x) / spacing) : first;
         int lastX = useExplicitWorkFaceAnchor ? firstX : last;
@@ -894,6 +902,11 @@ public sealed class CesiumMoundSite : MonoBehaviour
                         direction, supportY, out float readyTipClearance) ||
                         readyTipClearance < minimumReadyTipClearanceMeters)
                     {
+                        if (readyTipClearance > bestRejectedClearance)
+                        {
+                            bestRejectedClearance = readyTipClearance;
+                            bestRejectedPosition = rootXZ;
+                        }
                         rejected[9]++;
                         continue;
                     }
@@ -926,7 +939,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
         candidateDiagnostics = $"[坡面搜索采样={validSamples}/{resolution * resolution}，" +
             $"位置={testedPositions}，替换范围完整={coveredPositions}，通过筛选={validFaces}，" +
             $"失败类别(地图/履带不平/矿车地图/矿车不平/坡面地图/坡形/坡度/平台低差/斗尖净空)=" +
-            $"{rejected[1]}/{rejected[2]}/{rejected[3]}/{rejected[4]}/{rejected[5]}/{rejected[6]}/{rejected[7]}/{rejected[8]}/{rejected[9]}]";
+            $"{rejected[1]}/{rejected[2]}/{rejected[3]}/{rejected[4]}/{rejected[5]}/{rejected[6]}/{rejected[7]}/{rejected[8]}/{rejected[9]}，" +
+            $"被拒最大斗尖净空={bestRejectedClearance:F2}@{bestRejectedPosition}]";
         workFaceCoverageIncomplete = ShouldRetryWorkFaceSearch(
             coveredPositions, validFaces, validSamples, resolution * resolution);
         workFaceSearchSucceeded = float.IsFinite(bestScore);

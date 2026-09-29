@@ -1738,8 +1738,10 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 Mathf.Deg2Rad * correctionSign;
             float neededDegrees = (requiredHeight - cutter.TipWorldPosition.y) /
                 Mathf.Max(.02f, verticalDegrees);
+            // Near the rim, a one-degree drive change settles before the physical tip clears;
+            // command a small recoverable step and remeasure the tip after each step.
             float nextBoom = Zx200DigController.ClampTarget(
-                actual.boom + correctionSign * Mathf.Clamp(neededDegrees, 1f, 30f),
+                actual.boom + correctionSign * Mathf.Clamp(neededDegrees, 3f, 30f),
                 boomDrive.lowerLimit,
                 boomDrive.upperLimit);
             if (Mathf.Approximately(correctionSign, 0f) || Mathf.Approximately(nextBoom, actual.boom))
@@ -1748,7 +1750,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             Zx200JointPose waypoint = actual;
             waypoint.boom = nextBoom;
             waypoint.duration = Mathf.Max(1.8f, machine.swingToDumpPose.duration);
-            yield return MoveToPose(waypoint, timeoutReason, 2f);
+            // A sub-two-degree correction still matters at the truck rim; do not skip it
+            // using the normal coarse joint tolerance.
+            yield return MoveToPose(waypoint, timeoutReason, .25f);
             if (!IsRunning || !stageSucceeded) yield break;
         }
 

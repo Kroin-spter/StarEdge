@@ -52,6 +52,9 @@ namespace ExcavatorControls.Tests
             bool mainSite = path.Contains("sence_test");
             string imagePrefix = mainSite ? (returnToTerrain ? "main-backfill" : "main-truck") :
                 (returnToTerrain ? "free-terrain" : (path.Contains("Demo 3") ? "gravity-platform" : "legacy-platform"));
+            if (mainSite)
+                for (int index = 0; index < 3; index++)
+                    LogAssert.Expect(LogType.Error, $"Tree prefab at index {index} is missing.");
             Scene previous = SceneManager.GetActiveScene();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(path);

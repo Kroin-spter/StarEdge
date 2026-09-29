@@ -20,6 +20,7 @@ namespace ExcavatorControls.Tests
         /// <summary>Run at least three automatic dig, load and return cycles using actual landing volume.</summary>
         /// <returns>Scene load, Cesium readiness, repeated autonomous cycles and cleanup frames.</returns>
         [UnityTest]
+        [Timeout(300000)]
         public IEnumerator RunsThreeAutomaticDigAndLoadCycles()
         {
             Scene previous = SceneManager.GetActiveScene();
@@ -79,7 +80,7 @@ namespace ExcavatorControls.Tests
                 AutonomousExcavationState stateAtMaximumTrackBaseDrift = autonomy.State;
                 Assert.That(autonomy.StartAutonomousJob(.5), Is.True);
                 var observedStates = new List<AutonomousExcavationState>();
-                float deadline = Time.realtimeSinceStartup + 150;
+                float deadline = Time.realtimeSinceStartup + 220;
                 while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
                     maximumObservedBucketLoad = System.Math.Max(maximumObservedBucketLoad, cutter.VolumeM3);

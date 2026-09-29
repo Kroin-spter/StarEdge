@@ -172,7 +172,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1605801095713466271, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: workReadyPose.boom
-      value: -29
+      value: -34
       objectReference: {fileID: 0}
     - target: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
@@ -332,31 +332,31 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.32873863
+      value: 7.1717844
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.37301517
+      value: 0.11584473
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -2.8321197
+      value: -1.1246886
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.99414825
+      value: 0.9979602
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.09600305
+      value: 0.039981537
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.04928121
+      value: 0.04974358
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0.0049013924
+      value: -0.0015900551
       objectReference: {fileID: 0}
     - target: {fileID: 6884757412742726499, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: counterweightMass
@@ -525,31 +525,31 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 286.96146
+      value: 292.26212
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -2.706894
+      value: -2.61129
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 353.419
+      value: 351.42337
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.55139506
+      value: 0.5134469
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.04370582
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.8325957
+      value: 0.85812134
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.z
-      value: 0.028944628
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -1068,26 +1068,26 @@ MonoBehaviour:
   machine: {fileID: 10072338}
   truck: {fileID: 91113228}
   siteMode: 0
-  bakedSite: {fileID: 11400000, guid: cb03bfd4851bc0163a81d2e1fda5eeae, type: 2}
+  bakedSite: {fileID: 11400000, guid: 76a2c7ec5b484f8a98cf747bfeb08dc2, type: 2}
   mapName: osgb_small_005_004
-  replacementAreaSize: {x: 150, y: 50}
+  replacementAreaSize: {x: 150, y: 60}
   useExplicitWorkFaceAnchor: 0
   workFaceAnchor: {x: 281.0765, y: 0, z: 359.2318}
   usePrepositionedEquipment: 1
   relocateEquipmentToSelectedWorkFace: 1
   prepositionedUpperBenchSupportY: 7.512
   workFaceSearchRadius: 8
-  workFaceSearchSpacing: 2
+  workFaceSearchSpacing: 1
   minimumWorkFaceRise: 2.5
   minimumBenchDropMeters: 2
   minimumSurfaceNormalY: 0.55
-  minimumReadyTipClearanceMeters: 0.6
+  minimumReadyTipClearanceMeters: 0.5
   soilStripHalfWidth: 65
   soilStripCenterLocalX: -30
   soilStripCenterLocalZ: 6.5
   soilStripHalfDepth: 5
   soilStripHeight: 0.55
-  truckParkingOffsetLocal: {x: 6.9, y: 0, z: -1.2}
+  truckParkingOffsetLocal: {x: 6.3, y: 0, z: -1.2}
   truckParkingYawDegrees: 90
   loadingTimeout: 30
 --- !u!114 &471781302
@@ -1116,7 +1116,7 @@ MonoBehaviour:
   cutTimeoutSeconds: 8
   dumpTimeoutSeconds: 12
   soilFloorMargin: 0.04
-  cutEntryDepthMeters: 0.01
+  cutEntryDepthMeters: 0.2
   dumpClearanceMarginMeters: 0.25
   bucketCloseDeltaDegrees: 35
   boomEntryStepDegrees: 7
@@ -1358,7 +1358,7 @@ Transform:
   m_GameObject: {fileID: 1186474629}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 180.97575, y: -3.7751126, z: 349.86978}
+  m_LocalPosition: {x: 188.89423, y: -3.8562005, z: 345.33102}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1399,7 +1399,7 @@ TerrainCollider:
   m_ProvidesContacts: 0
   m_Enabled: 0
   serializedVersion: 2
-  m_TerrainData: {fileID: 15600000, guid: baa82e2cbe1dde8c799b46e2970d28f6, type: 2}
+  m_TerrainData: {fileID: 15600000, guid: 443b11c53959a8af9a8460b0ddafe83f, type: 2}
   m_EnableTreeColliders: 1
 --- !u!218 &1186474633
 Terrain:
@@ -1410,7 +1410,7 @@ Terrain:
   m_GameObject: {fileID: 1186474629}
   m_Enabled: 1
   serializedVersion: 6
-  m_TerrainData: {fileID: 15600000, guid: baa82e2cbe1dde8c799b46e2970d28f6, type: 2}
+  m_TerrainData: {fileID: 15600000, guid: 443b11c53959a8af9a8460b0ddafe83f, type: 2}
   m_TreeDistance: 5000
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
@@ -1638,17 +1638,17 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1601958133}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f8d76b31e8eb0d375b158e9de6233cb2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: WebDelivery.Runtime::ConstructionSiteMapClip
   workArea:
-    m_Center: {x: 255.97575, y: 2.674878, z: 374.86978}
-    m_Extent: {x: 61.797287, y: 6.4499903, z: 29.96988}
+    m_Center: {x: 263.89423, y: 2.6369605, z: 375.33102}
+    m_Extent: {x: 59.641693, y: 6.4931607, z: 35.13437}
   useOrientedWorkArea: 1
-  workAreaCenter: {x: 255.97575, y: -3.5453577, z: 374.86978}
-  workAreaRotation: {x: 0.051371627, y: 0.19883889, z: -0.01043774, w: 0.97862923}
+  workAreaCenter: {x: 263.89423, y: -3.3076713, z: 375.33102}
+  workAreaRotation: {x: 0.056009557, y: 0.24331477, z: -0.014075168, w: 0.9682266}
   workAreaSize: {x: 130, y: 10}
 --- !u!1 &1633613320
 GameObject:

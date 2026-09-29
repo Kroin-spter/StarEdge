@@ -165,6 +165,7 @@ public static class ConstructionSiteBaker
         if (clip == null) clip = Undo.AddComponent<ConstructionSiteMapClip>(site.tileset.gameObject);
         clip.SetWorkFaceFootprint(data.workFaceCenter, data.workFaceRotation, data.workFaceSize,
             data.terrainOrigin.y, data.terrainOrigin.y + data.terrainData.size.y);
+        clip.enabled = false;
         machineRoot.SetPositionAndRotation(data.machinePosition, data.machineRotation);
         site.truck.SetPositionAndRotation(data.truckPosition, data.truckRotation);
         PrefabUtility.RecordPrefabInstancePropertyModifications(machineRoot);
