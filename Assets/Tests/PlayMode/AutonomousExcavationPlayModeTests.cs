@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -12,13 +13,17 @@ namespace ExcavatorControls.Tests
     public class AutonomousExcavationPlayModeTests
     {
         private const string ScenePath = "Assets/Scenes/sence_test.unity";
+        private const string CesiumTilesetMissingHint =
+            " Set CESIUM_TILESET_DIR or place the map beside the project.";
+        private static bool expectedInitialSceneWarnings;
 
-        /// <summary>Run multiple automatic dig, load and return cycles using actual landing volume.</summary>
+        /// <summary>Run at least three automatic dig, load and return cycles using actual landing volume.</summary>
         /// <returns>Scene load, Cesium readiness, repeated autonomous cycles and cleanup frames.</returns>
         [UnityTest]
-        public IEnumerator RunsOneAutomaticDigAndLoadCycle()
+        public IEnumerator RunsThreeAutomaticDigAndLoadCycles()
         {
             Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
                 ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(ScenePath);
@@ -69,9 +74,10 @@ namespace ExcavatorControls.Tests
                 float carriedBoomAngle = float.NaN;
                 float carriedBucketAngle = float.NaN;
                 float carriedMouthUpDot = float.NaN;
+                float bucketAngleAtFillStart = float.NaN;
                 Vector3 trackBaseAtMaximumDrift = trackBaseAtStart;
                 AutonomousExcavationState stateAtMaximumTrackBaseDrift = autonomy.State;
-                Assert.That(autonomy.StartAutonomousJob(.32), Is.True);
+                Assert.That(autonomy.StartAutonomousJob(.5), Is.True);
                 var observedStates = new List<AutonomousExcavationState>();
                 float deadline = Time.realtimeSinceStartup + 150;
                 while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
@@ -86,31 +92,37 @@ namespace ExcavatorControls.Tests
                             "Soil must stay in the bucket until it opens over the truck.");
                     if (autonomy.State == AutonomousExcavationState.FillBucket)
                     {
-                        maximumCutBucketAngle = Mathf.Max(maximumCutBucketAngle, machine.ReadActualPose().bucket);
-                        if (cutter.VolumeM3 >= cutter.EffectiveCapacityM3 * .8f)
+                        Zx200JointPose cuttingPose = machine.ReadActualPose();
+                        maximumCutBucketAngle = Mathf.Max(maximumCutBucketAngle, cuttingPose.bucket);
+                        if (float.IsNaN(bucketAngleAtFillStart))
+                            bucketAngleAtFillStart = cuttingPose.bucket;
+                        float fillFraction = cutter.EffectiveCapacityM3 > .0001
+                            ? (float)(cutter.VolumeM3 / cutter.EffectiveCapacityM3) : 0f;
+                        if (fillFraction >= .55f)
                         {
                             if (float.IsNaN(nearFullStartTime))
                             {
                                 nearFullStartTime = Time.realtimeSinceStartup;
-                                bucketAngleAtNearFull = machine.ReadActualPose().bucket;
+                                bucketAngleAtNearFull = cuttingPose.bucket;
                                 lastNearFullMotionTime = nearFullStartTime;
                                 lastNearFullTip = cutter.TipWorldPosition;
-                                lastNearFullPose = machine.ReadActualPose();
+                                lastNearFullPose = cuttingPose;
+                                if (cuttingPose.bucket >= bucketAngleAtFillStart + 5f)
+                                    nearFullCurlDelay = 0f;
                             }
                             else if (float.IsNaN(nearFullCurlDelay) &&
-                                machine.ReadActualPose().bucket >= bucketAngleAtNearFull + 5f)
+                                cuttingPose.bucket >= bucketAngleAtNearFull + 5f)
                                 nearFullCurlDelay = Time.realtimeSinceStartup - nearFullStartTime;
-                            Zx200JointPose nearFullPose = machine.ReadActualPose();
                             Vector3 nearFullTip = cutter.TipWorldPosition;
                             bool progressed = Vector3.Distance(nearFullTip, lastNearFullTip) > .04f ||
-                                Mathf.Abs(nearFullPose.boom - lastNearFullPose.boom) > 1f ||
-                                Mathf.Abs(nearFullPose.arm - lastNearFullPose.arm) > 1f ||
-                                Mathf.Abs(nearFullPose.bucket - lastNearFullPose.bucket) > 1f;
+                                Mathf.Abs(cuttingPose.boom - lastNearFullPose.boom) > 1f ||
+                                Mathf.Abs(cuttingPose.arm - lastNearFullPose.arm) > 1f ||
+                                Mathf.Abs(cuttingPose.bucket - lastNearFullPose.bucket) > 1f;
                             if (progressed)
                             {
                                 lastNearFullMotionTime = Time.realtimeSinceStartup;
                                 lastNearFullTip = nearFullTip;
-                                lastNearFullPose = nearFullPose;
+                                lastNearFullPose = cuttingPose;
                             }
                             longestNearFullPause = Mathf.Max(longestNearFullPause,
                                 Time.realtimeSinceStartup - lastNearFullMotionTime);
@@ -179,8 +191,10 @@ namespace ExcavatorControls.Tests
                     $"delivered={autonomy.DeliveredVolumeM3:F6}, receiver={receiver.VolumeM3:F6}, " +
                     $"bucket={cutter.VolumeM3:F6}, cycles={autonomy.CompletedCycles}");
                 Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
-                Assert.That(autonomy.CompletedCycles, Is.GreaterThanOrEqualTo(2));
-                Assert.That(openedBucketCycles, Is.GreaterThanOrEqualTo(2));
+                Assert.That(autonomy.CompletedCycles, Is.GreaterThanOrEqualTo(3));
+                Assert.That(openedBucketCycles, Is.GreaterThanOrEqualTo(3));
+                Assert.That(autonomy.FullBucketRecoveryCount, Is.Zero,
+                    "The first three normal bucket cycles must close from live feedback, not the full-bucket lift-then-close fallback.");
                 Assert.That(maximumCutBucketAngle, Is.GreaterThan(70f),
                     "The bucket must curl through most of its scoop stroke before the loaded swing.");
                 Debug.Log($"NEAR FULL motion angle={bucketAngleAtNearFull:F1}, " +
@@ -189,19 +203,19 @@ namespace ExcavatorControls.Tests
                     $"carry boom/arm/bucket=({carriedBoomAngle:F1},{carriedArmAngle:F1},{carriedBucketAngle:F1}), " +
                     $"mouth up dot={carriedMouthUpDot:F2}");
                 Assert.That(float.IsNaN(nearFullCurlDelay), Is.False,
-                    "The near-full bucket must continue curling before the machine leaves the cut state.");
+                    "By 55% fill the bucket must already be curling, or advance another 5 degrees without waiting for capacity.");
                 Assert.That(nearFullCurlDelay, Is.LessThan(4f),
                     "The near-full bucket must not remain stationary waiting for the cut timeout.");
                 Assert.That(longestNearFullPause, Is.LessThan(1.5f),
                     "The near-full digging phase must not pause with every working joint stationary.");
-                Assert.That(carriedArmAngle, Is.GreaterThan(75f),
-                    "The loaded arm should retract visibly before the swing to the truck.");
+                Assert.That(carriedArmAngle, Is.GreaterThan(85f),
+                    "The loaded arm should tuck farther in than the previous fixed 80-degree carry target.");
                 Assert.That(carriedBoomAngle, Is.LessThan(-32f),
                     "The loaded boom should rise to a useful, but not excessive, carry height.");
-                Assert.That(carriedBucketAngle, Is.InRange(88f, 102f),
-                    "The bucket joint must settle near its level carrying angle before slewing.");
-                Assert.That(carriedMouthUpDot, Is.GreaterThan(.6f),
-                    "The full bucket mouth must face mostly upward during the carry swing.");
+                Assert.That(float.IsNaN(carriedBucketAngle), Is.False,
+                    "The bucket pose must be resolved before the carry swing starts.");
+                Assert.That(carriedMouthUpDot, Is.GreaterThan(Mathf.Cos(20f * Mathf.Deg2Rad)),
+                    "The full bucket mouth must stay within 20 degrees of upward during the carry swing.");
                 Assert.That(maximumSwingAfterDumpOpens, Is.LessThan(2f),
                     "The upper structure must finish aligning before the bucket opens over the truck.");
                 Assert.That(maximumObservedBucketLoad, Is.GreaterThanOrEqualTo(.12),
@@ -238,6 +252,7 @@ namespace ExcavatorControls.Tests
         public IEnumerator FirstAutomaticBucketCollectsMoreThanTheEmptyCutThreshold()
         {
             Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
                 ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(ScenePath);
@@ -334,12 +349,121 @@ namespace ExcavatorControls.Tests
             if (unload != null) yield return unload;
         }
 
+        /// <summary>Finish a thin, finite soil layer with its real partial volume while preserving the local floor.</summary>
+        /// <returns>A 26 cm prepared soil layer, floor-clearance monitoring, actual transfer and soil-ledger checks.</returns>
+        [UnityTest]
+        public IEnumerator ThinSoilLayerCompletesWithARealPartialBucket()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
+                ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                AutonomousExcavationController autonomy = FindInScene<AutonomousExcavationController>(scene);
+                BucketSoilCutter cutter = FindInScene<BucketSoilCutter>(scene);
+                BucketSoilUnloader unloader = cutter.GetComponent<BucketSoilUnloader>();
+                DeformableSoilTerrain soil = cutter.soil;
+                BucketSoilResistance resistance = autonomy.machine.bucketJoint.GetComponent<BucketSoilResistance>();
+                autonomy.cutEntryDepthMeters = .12f;
+                float[,] ground = soil.GetPreparedGroundCopy();
+                Assert.That(ground, Is.Not.Null, "The baked site must preserve a separate cutting floor.");
+                TerrainData terrain = soil.Terrain.terrainData;
+                float[,] thinLayer = new float[ground.GetLength(0), ground.GetLength(1)];
+                float normalizedThickness = .26f / terrain.size.y;
+                for (int z = 0; z < thinLayer.GetLength(0); z++)
+                    for (int x = 0; x < thinLayer.GetLength(1); x++)
+                        thinLayer[z, x] = Mathf.Min(1f, ground[z, x] + normalizedThickness);
+                soil.PrepareMoundSurface(thinLayer, ground);
+                Physics.SyncTransforms();
+                yield return new WaitForFixedUpdate();
+
+                double initialPileVolume = ManualSoilTestMotion.GroundPileVolumeFor(cutter);
+                Assert.That(autonomy.StartAutonomousJob(.005), Is.True);
+                float deadline = Time.realtimeSinceStartup + 90f;
+                float minimumScoopFloorClearance = float.PositiveInfinity;
+                AutonomousExcavationState minimumClearanceState = autonomy.State;
+                Vector3 minimumClearanceTip = cutter.TipWorldPosition;
+                Vector3 minimumClearanceTipVelocity = resistance.TipVelocity;
+                Zx200JointPose minimumClearancePose = autonomy.machine.ReadActualPose();
+                int floorBrakeCountAtMinimumClearance = resistance.VelocityFloorBrakeCount;
+                bool dumpPreparationObserved = false;
+                bool unloaderStayedClosedDuringPreparation = true;
+                float armAtBucketOpening = float.NaN;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    if (autonomy.State == AutonomousExcavationState.PrepareDump)
+                    {
+                        dumpPreparationObserved = true;
+                        unloaderStayedClosedDuringPreparation &= !unloader.enabled;
+                    }
+                    if (autonomy.State == AutonomousExcavationState.Dump && unloader.enabled &&
+                        float.IsNaN(armAtBucketOpening))
+                        armAtBucketOpening = autonomy.machine.ReadActualPose().arm;
+
+                    Vector3 tip = cutter.TipWorldPosition;
+                    float floorClearance = tip.y - soil.GetFloorWorldY(tip);
+                    if (floorClearance < minimumScoopFloorClearance)
+                    {
+                        minimumScoopFloorClearance = floorClearance;
+                        minimumClearanceState = autonomy.State;
+                        minimumClearanceTip = tip;
+                        minimumClearanceTipVelocity = resistance.TipVelocity;
+                        minimumClearancePose = autonomy.machine.ReadActualPose();
+                        floorBrakeCountAtMinimumClearance = resistance.VelocityFloorBrakeCount;
+                    }
+                    yield return new WaitForFixedUpdate();
+                }
+
+                Assert.That(autonomy.IsRunning, Is.False, autonomy.Status);
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(autonomy.DeliveredVolumeM3, Is.GreaterThanOrEqualTo(.005));
+                Assert.That(dumpPreparationObserved, Is.True,
+                    "The workflow must enter a visible truck-bed deployment and alignment phase before opening the bucket.");
+                Assert.That(unloaderStayedClosedDuringPreparation, Is.True,
+                    "The bucket must retain its soil while extending and re-centering over the truck.");
+                Assert.That(ContainsStateInOrder(
+                    autonomy.StateHistory,
+                    AutonomousExcavationState.PrepareDump,
+                    AutonomousExcavationState.Dump), Is.True,
+                    "The truck-side deployment phase must precede actual unloading.");
+                Assert.That(armAtBucketOpening,
+                    Is.EqualTo(autonomy.machine.dumpPreparePose.arm).Within(3f),
+                    "The arm must reach the configured truck-side deployment pose before the bucket opens.");
+                Assert.That(resistance.VelocityFloorBrakeCount, Is.GreaterThan(0),
+                    "The thin-layer dig must invoke the per-physics-step floor momentum brake before reaching the cut floor.");
+                Assert.That(minimumScoopFloorClearance, Is.GreaterThanOrEqualTo(-.005f),
+                    $"Adaptive cutting must brake before the baked local floor; state={minimumClearanceState}, " +
+                    $"tip={minimumClearanceTip}, pose=({minimumClearancePose.boom:F1}," +
+                    $"{minimumClearancePose.arm:F1},{minimumClearancePose.bucket:F1}), " +
+                    $"toothVelocity={minimumClearanceTipVelocity}, " +
+                    $"brakeStepsAtMinimum={floorBrakeCountAtMinimumClearance}.");
+                Assert.That(autonomy.LastCutEntryDepthMeters, Is.GreaterThanOrEqualTo(soil.minimumCutDepth));
+                Assert.That(autonomy.LastCutEntryDepthMeters, Is.EqualTo(autonomy.cutEntryDepthMeters).Within(.001f),
+                    "This thin layer must retain the configured shallow plunge; local reduction is covered separately by helper tests.");
+                Assert.That(autonomy.FullBucketRecoveryCount, Is.Zero,
+                    "A thin layer must complete with a safe partial bucket, without invoking the full-bucket fallback.");
+                ManualSoilTestMotion.AssertBalanceIncludingPiles(cutter, initialPileVolume, .003);
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
         /// <summary>Verify the production motion monitor stops automatically when a truck collider is obstructed.</summary>
         /// <returns>Scene loading, collision injection during truck approach, fault handling and cleanup frames.</returns>
         [UnityTest]
         public IEnumerator StopsAutomaticMotionWhenMachineOverlapsTruckCollider()
         {
             Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
                 ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(ScenePath);
@@ -394,6 +518,7 @@ namespace ExcavatorControls.Tests
         public IEnumerator ResetRestoresSoilAndReceiverLedgers()
         {
             Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
                 ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(ScenePath);
@@ -464,6 +589,7 @@ namespace ExcavatorControls.Tests
         public IEnumerator ResetDuringActiveSoilFlowClearsFlightAndRestoresUnloader()
         {
             Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
                 ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(ScenePath);
@@ -526,6 +652,7 @@ namespace ExcavatorControls.Tests
         public IEnumerator DisablingAutonomyRestoresOwnedControls()
         {
             Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
                 ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(ScenePath);
@@ -561,6 +688,7 @@ namespace ExcavatorControls.Tests
         public IEnumerator ManualTakeoverDuringEmptyCutRestoresCutting()
         {
             Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
                 ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(ScenePath);
@@ -601,6 +729,7 @@ namespace ExcavatorControls.Tests
         public IEnumerator ShortCutTimeoutDoesNotLiftHalfOpenBucket()
         {
             Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
                 ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(ScenePath);
@@ -617,7 +746,7 @@ namespace ExcavatorControls.Tests
                 Assert.That(autonomy.IsRunning, Is.False, autonomy.Status);
                 Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Fault),
                     "A shortened cut with material must stop rather than carry an open bucket.");
-                Assert.That(autonomy.Status, Does.Contain("未完成收斗"));
+                Assert.That(autonomy.Status, Does.Contain("未完成安全收斗"));
                 Assert.That(autonomy.StateHistory, Has.None.EqualTo(AutonomousExcavationState.Lift));
                 Assert.That(machine.IsBusy, Is.False);
             }
@@ -636,6 +765,30 @@ namespace ExcavatorControls.Tests
                 yield return null;
             Assert.That(autonomy.IsRunning, Is.False,
                 $"Autonomous job timed out in {autonomy.State}: {autonomy.Status}");
+        }
+
+        private static void ExpectFirstSceneLoadMessages()
+        {
+            if (expectedInitialSceneWarnings) return;
+            expectedInitialSceneWarnings = true;
+
+            LogAssert.Expect(LogType.Error, "Tree prefab at index 0 is missing.");
+            LogAssert.Expect(LogType.Error, "Tree prefab at index 1 is missing.");
+            LogAssert.Expect(LogType.Error, "Tree prefab at index 2 is missing.");
+            LogAssert.Expect(LogType.Warning,
+                "Couldn't create a Convex Mesh from source mesh, within the maximum polygons limit (256). " +
+                "The partial hull will be used. Consider simplifying your mesh. Source mesh name: body");
+
+            string configuredDirectory = System.Environment.GetEnvironmentVariable("CESIUM_TILESET_DIR");
+            string tilesetDirectory = string.IsNullOrWhiteSpace(configuredDirectory)
+                ? Path.GetFullPath(Path.Combine(Application.dataPath, "../../tilesets/osgb_small_005_004"))
+                : Path.GetFullPath(configuredDirectory);
+            string tilesetPath = Path.Combine(tilesetDirectory, "tileset.json");
+            if (!File.Exists(tilesetPath))
+            {
+                string expected = $"Cesium local map is missing: {tilesetPath}.{CesiumTilesetMissingHint}";
+                for (int i = 0; i < 3; i++) LogAssert.Expect(LogType.Warning, expected);
+            }
         }
 
         private static T FindInScene<T>(Scene scene) where T : Component
@@ -666,6 +819,21 @@ namespace ExcavatorControls.Tests
             foreach (AutonomousExcavationState state in states)
                 if (state == required[next] && ++next == required.Length)
                     return true;
+            return false;
+        }
+
+        private static bool ContainsStateInOrder(
+            IReadOnlyList<AutonomousExcavationState> states,
+            AutonomousExcavationState firstState,
+            AutonomousExcavationState secondState)
+        {
+            bool firstSeen = false;
+            for (int i = 0; i < states.Count; i++)
+            {
+                AutonomousExcavationState current = states[i];
+                if (!firstSeen && current == firstState) firstSeen = true;
+                else if (firstSeen && current == secondState) return true;
+            }
             return false;
         }
 

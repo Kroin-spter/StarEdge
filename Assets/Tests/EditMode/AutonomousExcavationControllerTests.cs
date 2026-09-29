@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using System.Reflection;
 using UnityEngine;
 
 namespace ExcavatorControls.Tests
@@ -51,6 +52,27 @@ namespace ExcavatorControls.Tests
                 var controller = root.AddComponent<AutonomousExcavationController>();
 
                 Assert.That(controller.DumpClearanceMarginMeters, Is.EqualTo(.25f).Within(.0001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        /// <summary>Expose whether normal cycles fall back to the full-bucket lift-then-close recovery.</summary>
+        [Test]
+        public void NewController_TracksFullBucketRecoveryCount()
+        {
+            PropertyInfo recoveryCount = typeof(AutonomousExcavationController).GetProperty(
+                "FullBucketRecoveryCount", BindingFlags.Public | BindingFlags.Instance);
+            Assert.That(recoveryCount, Is.Not.Null,
+                "The HMI test diagnostics must reveal when a cycle uses the exceptional full-bucket recovery.");
+
+            GameObject root = new GameObject("autonomous");
+            try
+            {
+                var controller = root.AddComponent<AutonomousExcavationController>();
+                Assert.That((int)recoveryCount.GetValue(controller), Is.Zero);
             }
             finally
             {
@@ -165,6 +187,129 @@ namespace ExcavatorControls.Tests
             Assert.That(approach.arm, Is.EqualTo(configuredDump.arm));
             Assert.That(approach.bucket, Is.EqualTo(108.6f));
             Assert.That(approach.duration, Is.EqualTo(configuredDump.duration));
+        }
+
+        /// <summary>预测当前土量在铲斗安全收拢前按实测进料速率继续增长的比例。</summary>
+        [Test]
+        public void PredictScoopFillFraction_IncludesMaterialCollectedDuringCurl()
+        {
+            MethodInfo predict = typeof(AutonomousExcavationController).GetMethod(
+                "PredictScoopFillFraction", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(predict, Is.Not.Null,
+                "The scoop controller must expose its bounded close-time fill prediction.");
+
+            object result = predict.Invoke(null, new object[]
+            {
+                .12, .30, .06, 30f, 30f, 30f
+            });
+
+            Assert.That((float)result, Is.EqualTo(.60f).Within(.001f));
+        }
+
+        /// <summary>限制预测收斗速度并忽略异常负进料速率，避免闭斗时间发散。</summary>
+        [Test]
+        public void PredictScoopFillFraction_BoundsCurlSpeedAndIgnoresNegativeInflow()
+        {
+            MethodInfo predict = typeof(AutonomousExcavationController).GetMethod(
+                "PredictScoopFillFraction", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(predict, Is.Not.Null);
+
+            float bounded = (float)predict.Invoke(null, new object[]
+                { .10, .30, .10, 30f, 100f, 40f });
+            float decreasing = (float)predict.Invoke(null, new object[]
+                { .20, .30, -.10, 30f, 20f, 40f });
+
+            Assert.That(bounded, Is.EqualTo(.583333f).Within(.001f));
+            Assert.That(decreasing, Is.EqualTo(2f / 3f).Within(.001f));
+        }
+
+        /// <summary>土量采样窗口内体积下降或时间异常时，不会制造负向进料速度。</summary>
+        [Test]
+        public void EstimateScoopInflowRate_ClampsNegativeAndInvalidSamples()
+        {
+            MethodInfo estimate = typeof(AutonomousExcavationController).GetMethod(
+                "EstimateScoopInflowRate", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(estimate, Is.Not.Null);
+
+            double increasing = (double)estimate.Invoke(null, new object[] { .04, .10, .30f });
+            double decreasing = (double)estimate.Invoke(null, new object[] { .10, .04, .30f });
+            double invalidWindow = (double)estimate.Invoke(null, new object[] { .04, .10, 0f });
+
+            Assert.That(increasing, Is.EqualTo(.2).Within(.0001));
+            Assert.That(decreasing, Is.Zero);
+            Assert.That(invalidWindow, Is.Zero);
+        }
+
+        /// <summary>Thin local soil reduces entry depth to preserve the effective floor and contact margins.</summary>
+        [Test]
+        public void CalculateAdaptiveCutEntryDepth_RespectsLocalLayerAndFloorClearance()
+        {
+            MethodInfo calculate = typeof(AutonomousExcavationController).GetMethod(
+                "CalculateAdaptiveCutEntryDepth", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(calculate, Is.Not.Null,
+                "Cut entry must be bounded by measured local soil thickness, not only a fixed plunge depth.");
+
+            float thick = (float)calculate.Invoke(null, new object[] { .12f, .5f, .045f });
+            float thin = (float)calculate.Invoke(null, new object[] { .12f, .15f, .045f });
+            float insufficient = (float)calculate.Invoke(null, new object[] { .12f, .04f, .045f });
+
+            Assert.That(thick, Is.EqualTo(.12f).Within(.0001f));
+            Assert.That(thin, Is.EqualTo(.105f).Within(.0001f));
+            Assert.That(insufficient, Is.Zero);
+        }
+
+        /// <summary>满度或闭斗前预测满度增加时，提升收斗权重并减少斗杆推进。</summary>
+        [Test]
+        public void CalculateAdaptiveScoopMotionCommand_CurlsEarlierAsProjectedLoadRises()
+        {
+            MethodInfo calculate = typeof(AutonomousExcavationController).GetMethod(
+                "CalculateAdaptiveScoopMotionCommand", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(calculate, Is.Not.Null,
+                "The controller must compute continuous arm, curl and lift weights from fill feedback.");
+
+            object early = calculate.Invoke(null, new object[] { .10f, .10f });
+            object predicted = calculate.Invoke(null, new object[] { .30f, .60f });
+            object nearFull = calculate.Invoke(null, new object[] { .78f, .88f });
+            float earlyArm = ReadCommandScale(early, "armAdvanceScale");
+            float earlyCurl = ReadCommandScale(early, "bucketCurlScale");
+            float predictedArm = ReadCommandScale(predicted, "armAdvanceScale");
+            float predictedCurl = ReadCommandScale(predicted, "bucketCurlScale");
+            float nearFullArm = ReadCommandScale(nearFull, "armAdvanceScale");
+            float nearFullCurl = ReadCommandScale(nearFull, "bucketCurlScale");
+
+            Assert.That(earlyArm, Is.GreaterThan(predictedArm));
+            Assert.That(predictedArm, Is.GreaterThan(nearFullArm));
+            Assert.That(earlyCurl, Is.LessThan(predictedCurl));
+            Assert.That(predictedCurl, Is.LessThanOrEqualTo(nearFullCurl));
+            Assert.That(nearFullArm, Is.Zero);
+            Assert.That(nearFullCurl, Is.InRange(1f, 1.25f));
+        }
+
+        /// <summary>Choose a bucket joint angle that points the real mouth normal upward.</summary>
+        [Test]
+        public void CalculateBucketAngleForUpwardMouth_UsesWorldAxisAndJointLimits()
+        {
+            MethodInfo calculate = typeof(AutonomousExcavationController).GetMethod(
+                "CalculateBucketAngleForUpwardMouth", BindingFlags.Public | BindingFlags.Static);
+            Assert.That(calculate, Is.Not.Null,
+                "Carry angle must be solved from the current world mouth direction, not a fixed curl-pose offset.");
+
+            float angle = (float)calculate.Invoke(null, new object[]
+            {
+                Vector3.forward, Vector3.right, 0f, -120f, 120f
+            });
+            Vector3 resultingMouth = Quaternion.AngleAxis(angle, Vector3.right) * Vector3.forward;
+
+            Assert.That(angle, Is.EqualTo(-90f).Within(1f));
+            Assert.That(Vector3.Dot(resultingMouth.normalized, Vector3.up), Is.GreaterThan(.99f));
+            Assert.That(angle, Is.InRange(-120f, 120f));
+        }
+
+        private static float ReadCommandScale(object command, string fieldName)
+        {
+            FieldInfo field = command.GetType().GetField(fieldName);
+            Assert.That(field, Is.Not.Null, $"Adaptive scoop command is missing {fieldName}.");
+            return (float)field.GetValue(command);
         }
 
         [TestCase(1f, -1f)]

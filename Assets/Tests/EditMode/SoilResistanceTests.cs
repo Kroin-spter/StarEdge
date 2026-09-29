@@ -5,6 +5,23 @@ namespace ExcavatorControls.Tests
 {
     public class SoilResistanceTests
     {
+        /// <summary>Faster measured closing motion must move the floor-braking trigger farther from the floor.</summary>
+        [Test]
+        public void VelocityBrakeTriggerClearance_IncreasesWithMeasuredTipClosingSpeed()
+        {
+            var calculate = typeof(BucketSoilResistance).GetMethod(
+                "CalculateVelocityBrakeTriggerClearance");
+            Assert.That(calculate, Is.Not.Null,
+                "The floor brake must include measured tooth stopping distance in its activation threshold.");
+
+            float stationary = (float)calculate.Invoke(null, new object[] { .075f, 0f, .1f });
+            float closing = (float)calculate.Invoke(null, new object[] { .075f, .5f, .1f });
+
+            Assert.That(stationary, Is.EqualTo(.075f).Within(.0001f));
+            Assert.That(closing, Is.EqualTo(.125f).Within(.0001f));
+            Assert.That(closing, Is.GreaterThan(stationary));
+        }
+
         [TestCase(.808f, false, 0f)]
         [TestCase(.808f, false, .2f)]
         [TestCase(.808f, false, 1.25f)]

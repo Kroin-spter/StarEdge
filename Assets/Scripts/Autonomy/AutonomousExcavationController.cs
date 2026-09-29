@@ -23,7 +23,8 @@ public enum AutonomousExcavationState
     EmptyCut,
     ManualTakeover,
     Fault,
-    Resetting
+    Resetting,
+    PrepareDump
 }
 
 /// <summary>Identifies the single articulation axis currently commanded by the autonomous sequencer.</summary>
@@ -53,6 +54,37 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private const float TruckCollisionSlopToleranceMeters = .01f;
     private const float TruckClearanceRecoveryToleranceMeters = .03f;
     private const float BucketResidualToleranceM3 = .01f;
+    private const float ScoopRateWindowSeconds = .4f;
+    private const float MinimumScoopRateWindowSeconds = .2f;
+    private const float ScoopNoProgressTimeoutSeconds = .45f;
+    private const float MinimumPredictedCurlSpeedDegreesPerSecond = 8f;
+    private const float MaximumPredictedCurlTimeSeconds = 2.5f;
+    private const float MaximumAdaptiveBoomLiftDegrees = 4f;
+
+    private struct ScoopVolumeSample
+    {
+        public float time;
+        public double volume;
+
+        public ScoopVolumeSample(float time, double volume)
+        {
+            this.time = time;
+            this.volume = volume;
+        }
+    }
+
+    /// <summary>Continuous articulation weights derived from measured and predicted bucket fill.</summary>
+    public struct AdaptiveScoopMotionCommand
+    {
+        /// <summary>Fraction of the configured arm-scoop rate that may continue cutting.</summary>
+        public float armAdvanceScale;
+        /// <summary>Multiplier applied to the configured bucket-curl rate.</summary>
+        public float bucketCurlScale;
+        /// <summary>Fraction of the bounded auxiliary boom-lift rate.</summary>
+        public float boomLiftScale;
+        /// <summary>Greater of current and predicted fill fractions, before output clamping.</summary>
+        public float projectedFillFraction;
+    }
 
     [Header("References")]
     public Zx200DigController machine;
@@ -109,6 +141,15 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     /// <summary>获取当前任务已完成的斗数。</summary>
     public int CompletedCycles { get; private set; }
 
+    /// <summary>获取当前任务触发“满斗先脱坡、再补收斗”异常恢复的次数。</summary>
+    public int FullBucketRecoveryCount { get; private set; }
+
+    /// <summary>获取当前任务在底面限制处先脱坡、再收拢有效部分土量的恢复次数。</summary>
+    public int PartialBucketRecoveryCount { get; private set; }
+
+    /// <summary>获取最近挖点依据局部土层计算出的安全切入深度。</summary>
+    public float LastCutEntryDepthMeters { get; private set; }
+
     /// <summary>获取卸料时斗尖相对车厢最高实体保留的最小安全高度。</summary>
     public float DumpClearanceMarginMeters => dumpClearanceMarginMeters;
 
@@ -153,6 +194,139 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             dumpPose.arm,
             closedBucketAngle,
             dumpPose.duration);
+    }
+
+    /// <summary>Estimate nonnegative incoming soil volume per second from a bounded sample window.</summary>
+    /// <param name="previousVolumeM3">Earlier measured bucket volume in cubic metres.</param>
+    /// <param name="currentVolumeM3">Latest measured bucket volume in cubic metres.</param>
+    /// <param name="elapsedSeconds">Elapsed sample time in seconds.</param>
+    /// <returns>A finite nonnegative inflow rate in cubic metres per second.</returns>
+    public static double EstimateScoopInflowRate(
+        double previousVolumeM3,
+        double currentVolumeM3,
+        float elapsedSeconds)
+    {
+        if (!IsFinite(previousVolumeM3) || !IsFinite(currentVolumeM3) ||
+            !IsFinite(elapsedSeconds) || elapsedSeconds <= .0001f)
+            return 0;
+
+        return Math.Max(0, currentVolumeM3 - previousVolumeM3) / elapsedSeconds;
+    }
+
+    /// <summary>Predict the fill fraction expected before the bucket reaches a safe closed angle.</summary>
+    /// <param name="currentVolumeM3">Measured soil currently retained by the bucket.</param>
+    /// <param name="capacityM3">Effective measured bucket capacity.</param>
+    /// <param name="inflowRateM3PerSecond">Nonnegative soil inflow estimated over the recent sample window.</param>
+    /// <param name="remainingCurlDegrees">Absolute angle remaining to the configured closed-bucket target.</param>
+    /// <param name="actualCurlSpeedDegreesPerSecond">Measured bucket angular speed in degrees per second.</param>
+    /// <param name="maximumCurlSpeedDegreesPerSecond">Upper bound for the predicted closing speed.</param>
+    /// <returns>A bounded projected fill fraction; values above one indicate predicted over-capacity.</returns>
+    public static float PredictScoopFillFraction(
+        double currentVolumeM3,
+        double capacityM3,
+        double inflowRateM3PerSecond,
+        float remainingCurlDegrees,
+        float actualCurlSpeedDegreesPerSecond,
+        float maximumCurlSpeedDegreesPerSecond)
+    {
+        if (!IsFinite(capacityM3) || capacityM3 <= .000001) return 1f;
+
+        double currentVolume = IsFinite(currentVolumeM3)
+            ? Math.Max(0, Math.Min(capacityM3, currentVolumeM3)) : 0;
+        double inflowRate = IsFinite(inflowRateM3PerSecond)
+            ? Math.Max(0, inflowRateM3PerSecond) : 0;
+        float maximumSpeed = IsFinite(maximumCurlSpeedDegreesPerSecond)
+            ? Mathf.Max(MinimumPredictedCurlSpeedDegreesPerSecond, maximumCurlSpeedDegreesPerSecond)
+            : MinimumPredictedCurlSpeedDegreesPerSecond;
+        float actualSpeed = IsFinite(actualCurlSpeedDegreesPerSecond)
+            ? Mathf.Abs(actualCurlSpeedDegreesPerSecond) : 0f;
+        float boundedSpeed = Mathf.Clamp(actualSpeed,
+            MinimumPredictedCurlSpeedDegreesPerSecond, maximumSpeed);
+        float remaining = IsFinite(remainingCurlDegrees) ? Mathf.Max(0f, remainingCurlDegrees) : 0f;
+        float closeTime = Mathf.Min(MaximumPredictedCurlTimeSeconds, remaining / boundedSpeed);
+        double projectedVolume = currentVolume + inflowRate * closeTime;
+        return Mathf.Clamp((float)(projectedVolume / capacityM3), 0f, 1.5f);
+    }
+
+    /// <summary>Convert current and projected fill into monotone arm, bucket-curl and boom-assist weights.</summary>
+    /// <param name="currentFillFraction">Measured bucket fraction, clamped to the valid capacity range.</param>
+    /// <param name="predictedFillFraction">Projected fraction at safe closure, possibly above capacity.</param>
+    /// <returns>A bounded continuous motion command that progressively prioritizes bucket closure.</returns>
+    public static AdaptiveScoopMotionCommand CalculateAdaptiveScoopMotionCommand(
+        float currentFillFraction,
+        float predictedFillFraction)
+    {
+        float current = IsFinite(currentFillFraction) ? Mathf.Clamp01(currentFillFraction) : 0f;
+        float predicted = IsFinite(predictedFillFraction) ? Mathf.Clamp(predictedFillFraction, 0f, 1.5f) : current;
+        float projected = Mathf.Max(current, predicted);
+        float armProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.35f, .88f, projected));
+        float curlProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.15f, .88f, projected));
+        float liftProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.55f, .88f, projected));
+        return new AdaptiveScoopMotionCommand
+        {
+            armAdvanceScale = 1f - armProgress,
+            bucketCurlScale = Mathf.Lerp(.2f, 1.2f, curlProgress),
+            boomLiftScale = liftProgress * .35f,
+            projectedFillFraction = projected
+        };
+    }
+
+    /// <summary>Find the allowed bucket angle that points its current world-space mouth normal upward.</summary>
+    /// <param name="mouthNormalWorld">The measured mouth normal before changing the bucket joint.</param>
+    /// <param name="bucketAxisWorld">The bucket articulation axis in world coordinates.</param>
+    /// <param name="currentBucketAngle">The measured current bucket angle in degrees.</param>
+    /// <param name="lowerLimit">The articulation drive lower limit in degrees.</param>
+    /// <param name="upperLimit">The articulation drive upper limit in degrees.</param>
+    /// <returns>The in-limit joint angle producing the most upward-facing mouth, preferring smaller changes on ties.</returns>
+    public static float CalculateBucketAngleForUpwardMouth(
+        Vector3 mouthNormalWorld,
+        Vector3 bucketAxisWorld,
+        float currentBucketAngle,
+        float lowerLimit,
+        float upperLimit)
+    {
+        float lower = Mathf.Min(lowerLimit, upperLimit);
+        float upper = Mathf.Max(lowerLimit, upperLimit);
+        float current = Zx200DigController.ClampTarget(currentBucketAngle, lower, upper);
+        if (mouthNormalWorld.sqrMagnitude < 1e-8f || bucketAxisWorld.sqrMagnitude < 1e-8f ||
+            !IsFinite(current) || !IsFinite(lower) || !IsFinite(upper))
+            return current;
+
+        Vector3 mouth = mouthNormalWorld.normalized;
+        Vector3 axis = bucketAxisWorld.normalized;
+        int steps = Mathf.Max(1, Mathf.CeilToInt(upper - lower));
+        float bestAngle = current;
+        float bestScore = float.NegativeInfinity;
+        for (int i = 0; i <= steps; i++)
+        {
+            float candidate = Mathf.Lerp(lower, upper, i / (float)steps);
+            Vector3 candidateMouth = Quaternion.AngleAxis(candidate - current, axis) * mouth;
+            float score = Vector3.Dot(candidateMouth.normalized, Vector3.up) -
+                Mathf.Abs(candidate - current) * .00005f;
+            if (score <= bestScore) continue;
+            bestScore = score;
+            bestAngle = candidate;
+        }
+        return bestAngle;
+    }
+
+    /// <summary>Limit the configured plunge depth to the locally available soil above the protected floor.</summary>
+    /// <param name="configuredDepthMeters">Nominal cut-entry depth requested by the job.</param>
+    /// <param name="availableLayerThicknessMeters">Measured surface-to-floor soil thickness at the dig point.</param>
+    /// <param name="floorClearanceMeters">Required vertical clearance above the non-cuttable ground.</param>
+    /// <returns>A nonnegative entry depth that leaves the requested floor clearance.</returns>
+    public static float CalculateAdaptiveCutEntryDepth(
+        float configuredDepthMeters,
+        float availableLayerThicknessMeters,
+        float floorClearanceMeters)
+    {
+        if (!IsFinite(configuredDepthMeters) || !IsFinite(availableLayerThicknessMeters) ||
+            !IsFinite(floorClearanceMeters) || configuredDepthMeters <= 0 ||
+            availableLayerThicknessMeters <= 0 || floorClearanceMeters < 0)
+            return 0f;
+
+        return Mathf.Min(configuredDepthMeters,
+            Mathf.Max(0f, availableLayerThicknessMeters - floorClearanceMeters));
     }
 
     /// <summary>Choose the joint rotation direction that increases a point's world-space height.</summary>
@@ -254,6 +428,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         cycleReceiverStartVolumeM3 = receiver.VolumeM3;
         DeliveredVolumeM3 = 0;
         CompletedCycles = 0;
+        FullBucketRecoveryCount = 0;
+        PartialBucketRecoveryCount = 0;
+        LastCutEntryDepthMeters = 0f;
         nextDigPointIndex = 0;
         stateHistory.Clear();
         FaultReason = string.Empty;
@@ -307,6 +484,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (cutter != null) cutter.ResetExcavation();
         DeliveredVolumeM3 = 0;
         CompletedCycles = 0;
+        FullBucketRecoveryCount = 0;
+        PartialBucketRecoveryCount = 0;
+        LastCutEntryDepthMeters = 0f;
         FaultReason = string.Empty;
         SetState(AutonomousExcavationState.Resetting, "正在复位土区与设备");
         if (!Application.isPlaying)
@@ -419,18 +599,40 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 yield break;
             }
 
-            SetState(AutonomousExcavationState.Dump, "打开铲斗并等待土流落入车厢");
-            cycleReceiverStartVolumeM3 = receiver.VolumeM3;
-            Zx200JointPose dump = machine.dumpPose;
-            Zx200JointPose actualBeforeDump = machine.ReadActualPose();
-            dump.swing = actualBeforeDump.swing;
-            dump.boom = actualBeforeDump.boom;
-            dump.arm = actualBeforeDump.arm;
             unloaderEnabledBeforeDump = unloader.enabled;
             dumpOwnsUnloaderEnabledState = true;
             unloader.enabled = false;
             try
             {
+                SetState(AutonomousExcavationState.PrepareDump, "向车厢侧展开斗杆并重新校准卸料落点");
+                Zx200JointPose actualBeforeDump = machine.ReadActualPose();
+                Zx200JointPose deployForDump = CreatePreSwingApproachPose(
+                    actualBeforeDump, machine.dumpPreparePose, actualBeforeDump.bucket);
+                deployForDump.duration = Mathf.Max(1.4f, machine.dumpPreparePose.duration);
+                yield return MoveCoordinatedPose(
+                    deployForDump, "车厢侧展开定位超时", AutonomousMotionAxis.Arm);
+                if (!IsRunning || !stageSucceeded) yield break;
+
+                // The open-tip projection changes as the arm extends. Recenter with the bucket
+                // still closed, then validate the final open position before enabling soil flow.
+                yield return AlignCurrentSwing(false);
+                if (!IsRunning) yield break;
+                if (!stageSucceeded || !IsProjectedDumpApproachSafe())
+                {
+                    Zx200JointPose unsafePose = machine.ReadActualPose();
+                    EnterFault($"车厢侧展开后无法安全校位，尚未打开铲斗；姿态=" +
+                        $"({unsafePose.swing:F1},{unsafePose.boom:F1},{unsafePose.arm:F1},{unsafePose.bucket:F1})，" +
+                        $"预计开斗斗尖={GetPredictedOpenTip()}，接收区判定={IsProjectedDumpCentered()}");
+                    yield break;
+                }
+
+                SetState(AutonomousExcavationState.Dump, "打开铲斗并等待土流落入车厢");
+                cycleReceiverStartVolumeM3 = receiver.VolumeM3;
+                Zx200JointPose dump = machine.dumpPose;
+                Zx200JointPose actualDumpPose = machine.ReadActualPose();
+                dump.swing = actualDumpPose.swing;
+                dump.boom = actualDumpPose.boom;
+                dump.arm = actualDumpPose.arm;
                 bool safeDumpPose = false;
                 ArticulationDrive boomDrive = machine.boomJoint.xDrive;
                 for (int attempt = 0; IsRunning && attempt < 9; attempt++)
@@ -476,9 +678,13 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 unloader.enabled = true;
                 yield return MoveToPose(dump, "卸料姿态超时");
                 if (!IsRunning || !stageSucceeded) yield break;
-                if (!IsDumpApproachSafe())
+                if (!IsBucketOverReceiver())
                 {
-                    EnterFault("铲斗打开后斗口偏离车厢安全接收区，未释放土方");
+                    Vector3 openedTip = cutter.TipWorldPosition;
+                    Vector3 openedTipInBed = receiver.transform.InverseTransformPoint(openedTip);
+                    EnterFault($"铲斗打开后斗尖未处于车厢有效接收范围，未释放土方；" +
+                        $"斗尖={openedTip}，车厢局部坐标={openedTipInBed}，" +
+                        $"接收面高={receiver.SurfaceY:F2}m，最大落差={MaximumDumpDropMeters:F2}m");
                     yield break;
                 }
                 yield return WaitForDump();
@@ -652,95 +858,222 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         stageSucceeded = false;
         double before = cutter.VolumeM3;
+        double capacity = cutter.EffectiveCapacityM3;
         Zx200JointPose actual = machine.ReadActualPose();
-        double targetLoad = Math.Max(before, cutter.EffectiveCapacityM3 * targetBucketFillFraction);
-        // Let the teeth curl into the face before the arm sweeps a bucket-full of soil.
-        float earlyArmTarget = Mathf.MoveTowards(actual.arm, machine.curlPose.arm, 1f);
-        Zx200JointPose earlyTarget = new Zx200JointPose(
-            actual.swing, actual.boom, earlyArmTarget,
-            Mathf.MoveTowards(actual.bucket, machine.curlPose.bucket, 45f), 2.5f);
+        double targetLoad = Math.Max(before, capacity * targetBucketFillFraction);
         Zx200JointPose target = new Zx200JointPose(
             actual.swing, actual.boom, machine.curlPose.arm,
-            machine.curlPose.bucket, Mathf.Max(machine.curlPose.duration, cutTimeoutSeconds * .75f));
+            machine.curlPose.bucket, 0f);
         float minimumCurlDegrees = Mathf.Lerp(actual.bucket, target.bucket, .8f);
         CurrentMotionAxis = AutonomousMotionAxis.ArmAndBucket;
+        var volumeSamples = new List<ScoopVolumeSample>(24)
+        {
+            new ScoopVolumeSample(Time.fixedTime, before)
+        };
+        Zx200JointPose continuousTarget = actual;
+        continuousTarget.duration = 0f;
+        Zx200JointPose previousActual = actual;
+        Zx200JointPose lastProgressPose = actual;
+        double lastProgressVolume = before;
+        float previousActualTime = Time.fixedTime;
+        float lastProgressTime = Time.fixedTime;
+        float startTime = Time.fixedTime;
+        float deadline = startTime + cutTimeoutSeconds;
+        float armRate = Mathf.Max(1f, armScoopStepDegrees / Mathf.Max(.5f, machine.curlPose.duration));
+        float bucketRate = Mathf.Max(6f, bucketCloseDeltaDegrees / Mathf.Max(.5f, machine.curlPose.duration));
+        float boomRate = Mathf.Max(1f, boomEntryStepDegrees / Mathf.Max(.5f, machine.curlPose.duration));
+        BucketSoilResistance floorGuard = machine.bucketJoint.GetComponent<BucketSoilResistance>();
+        float originalCuttingSpeed = floorGuard != null ? floorGuard.cuttingSpeedDegrees : 0f;
+        float floorStopClearance = Mathf.Max(soilFloorMargin,
+            floorGuard != null ? floorGuard.contactMargin : 0f) + .005f;
+
+        if (!machine.StartContinuousPoseControl(continuousTarget))
+        {
+            EnterFault("无法启动按土量反馈的连续切削控制");
+            CurrentMotionAxis = AutonomousMotionAxis.None;
+            yield break;
+        }
+
         try
         {
-            if (cutTimeoutSeconds >= 3f && !machine.StartAutomaticPose(earlyTarget))
-            {
-                EnterFault("无法启动斗齿先行收斗姿态");
-                yield break;
-            }
-            float earlyDeadline = Time.realtimeSinceStartup + Mathf.Min(3f, cutTimeoutSeconds * .4f);
-            while (cutTimeoutSeconds >= 3f && IsRunning && machine.IsBusy &&
-                Time.realtimeSinceStartup < earlyDeadline)
+            while (IsRunning && Time.fixedTime < deadline)
             {
                 HandleManualInput();
                 if (!IsRunning) yield break;
-                Zx200JointPose moving = machine.ReadActualPose();
-                if (cuttingSuppressionPending &&
-                    Mathf.Abs(moving.arm - actual.arm) >= .1f &&
-                    Mathf.Abs(moving.bucket - actual.bucket) >= .1f)
-                    RestoreCuttingSuppression();
-                if (Mathf.Abs(moving.bucket - actual.bucket) >= 40f) break;
-                yield return new WaitForFixedUpdate();
-            }
-            if (!IsRunning) yield break;
-            if (machine.IsBusy) machine.StopAutomaticMotion();
-            if (!machine.StartAutomaticPose(target))
-            {
-                EnterFault("无法启动斗杆推进与持续收斗姿态");
-                yield break;
-            }
-            float deadline = Time.realtimeSinceStartup + cutTimeoutSeconds;
-            while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
-            {
-                HandleManualInput();
-                if (!IsRunning) yield break;
-                if (cuttingSuppressionPending)
+                float now = Time.fixedTime;
+                actual = machine.ReadActualPose();
+                double currentVolume = cutter.VolumeM3;
+                Vector3 currentTip = cutter.TipWorldPosition;
+                float currentFloorClearance = currentTip.y - cutter.soil.GetFloorWorldY(currentTip);
+                if (currentFloorClearance <= floorStopClearance)
                 {
-                    Zx200JointPose moving = machine.ReadActualPose();
-                    const float minimumCoordinatedStartAngle = .1f;
-                    bool armStarted = Mathf.Abs(moving.arm - actual.arm) >= minimumCoordinatedStartAngle;
-                    bool bucketStarted = Mathf.Abs(moving.bucket - actual.bucket) >= minimumCoordinatedStartAngle;
-                    if (armStarted && bucketStarted) RestoreCuttingSuppression();
-                }
-                Zx200JointPose stroke = machine.ReadActualPose();
-                bool bucketMostlyCurled = target.bucket >= actual.bucket
-                    ? stroke.bucket >= minimumCurlDegrees
-                    : stroke.bucket <= minimumCurlDegrees;
-                if (!bucketMostlyCurled && cutter.VolumeM3 >= cutter.EffectiveCapacityM3 - .0001f)
-                {
-                    machine.StopAutomaticMotion();
-                    yield return FinishFullBucketCurl(minimumCurlDegrees, target.bucket);
+                    machine.StopContinuousPoseControl(false);
+                    if (currentVolume - before >= minimumLoadVolumeM3)
+                        yield return FinishPartialBucketCurl(minimumCurlDegrees, target.bucket);
+                    else
+                    {
+                        SetState(AutonomousExcavationState.EmptyCut,
+                            $"斗尖到达底面安全净空；局部净空={currentFloorClearance:F3}m，当前斗量不足，检查下一个挖点");
+                        stageSucceeded = true;
+                    }
                     yield break;
                 }
-                if (cutter.VolumeM3 >= targetLoad && bucketMostlyCurled)
+                volumeSamples.Add(new ScoopVolumeSample(now, currentVolume));
+                while (volumeSamples.Count > 2 &&
+                    now - volumeSamples[1].time > ScoopRateWindowSeconds)
+                    volumeSamples.RemoveAt(0);
+
+                ScoopVolumeSample oldestSample = volumeSamples[0];
+                float sampleWindow = now - oldestSample.time;
+                double inflowRate = sampleWindow >= MinimumScoopRateWindowSeconds
+                    ? EstimateScoopInflowRate(oldestSample.volume, currentVolume, sampleWindow)
+                    : 0;
+                float actualSampleDelta = now - previousActualTime;
+                float actualCurlSpeed = actualSampleDelta > .0001f
+                    ? Mathf.Abs(actual.bucket - previousActual.bucket) / actualSampleDelta
+                    : 0f;
+                previousActual = actual;
+                previousActualTime = now;
+
+                float currentFill = capacity > .000001 ? (float)(currentVolume / capacity) : 1f;
+                float remainingCurl = Mathf.Abs(target.bucket - actual.bucket);
+                float predictedFill = PredictScoopFillFraction(
+                    currentVolume,
+                    capacity,
+                    inflowRate,
+                    remainingCurl,
+                    actualCurlSpeed,
+                    bucketRate * 1.1f);
+                AdaptiveScoopMotionCommand command = CalculateAdaptiveScoopMotionCommand(
+                    currentFill, predictedFill);
+                if (currentVolume >= targetLoad) command.armAdvanceScale = 0f;
+
+                // Ease both joints as the tooth approaches the prepared floor. A thin layer
+                // has little vertical travel left, so the same nominal scoop rate would coast
+                // through the bottom before feedback can close the bucket.
+                float floorMotionScale = Mathf.Clamp01(
+                    (currentFloorClearance - floorStopClearance) / .5f);
+                if (floorGuard != null)
+                    floorGuard.cuttingSpeedDegrees = Mathf.Lerp(
+                        2f, Mathf.Min(18f, originalCuttingSpeed), floorMotionScale);
+                command.armAdvanceScale *= Mathf.Lerp(.05f, 1f, floorMotionScale);
+                // Near the protected floor, stop pushing the arm forward but keep the
+                // bucket curling; throttling both together recreated the late-close stall.
+                command.bucketCurlScale *= Mathf.Lerp(.65f, 1f, floorMotionScale);
+
+                float stepSeconds = Time.fixedDeltaTime;
+                continuousTarget.arm = Mathf.MoveTowards(
+                    continuousTarget.arm,
+                    target.arm,
+                    armRate * command.armAdvanceScale * stepSeconds);
+                continuousTarget.bucket = Mathf.MoveTowards(
+                    continuousTarget.bucket,
+                    target.bucket,
+                    bucketRate * command.bucketCurlScale * stepSeconds);
+                if (command.boomLiftScale > 0f)
                 {
-                    machine.StopAutomaticMotion();
+                    Vector3 axis = machine.boomJoint.transform.TransformDirection(
+                        machine.boomJoint.anchorRotation * Vector3.right).normalized;
+                    Vector3 pivot = machine.boomJoint.transform.TransformPoint(machine.boomJoint.anchorPosition);
+                    float liftSign = GetHeightImprovingRotationSign(axis, cutter.TipWorldPosition - pivot);
+                    if (liftSign != 0f)
+                    {
+                        float maximumAssist = Zx200DigController.ClampTarget(
+                            actual.boom + liftSign * MaximumAdaptiveBoomLiftDegrees,
+                            machine.boomJoint.xDrive.lowerLimit,
+                            machine.boomJoint.xDrive.upperLimit);
+                        continuousTarget.boom = Mathf.MoveTowards(
+                            continuousTarget.boom,
+                            maximumAssist,
+                            boomRate * command.boomLiftScale * stepSeconds);
+                    }
+                }
+
+                continuousTarget.duration = 0f;
+                if (!machine.UpdateContinuousPoseTarget(continuousTarget))
+                {
+                    machine.StopContinuousPoseControl(false);
+                    EnterFault("按土量更新连续切削目标失败");
+                    yield break;
+                }
+
+                if (cuttingSuppressionPending)
+                {
+                    const float minimumCoordinatedStartAngle = .05f;
+                    bool armStarted = Mathf.Abs(actual.arm - lastProgressPose.arm) >= minimumCoordinatedStartAngle ||
+                        Mathf.Abs(continuousTarget.arm - actual.arm) >= minimumCoordinatedStartAngle;
+                    bool bucketStarted = Mathf.Abs(actual.bucket - lastProgressPose.bucket) >= minimumCoordinatedStartAngle ||
+                        Mathf.Abs(continuousTarget.bucket - actual.bucket) >= minimumCoordinatedStartAngle;
+                    if (armStarted && bucketStarted) RestoreCuttingSuppression();
+                }
+
+                bool bucketMostlyCurled = target.bucket >= actual.bucket
+                    ? actual.bucket >= minimumCurlDegrees
+                    : actual.bucket <= minimumCurlDegrees;
+                if (currentVolume >= targetLoad && bucketMostlyCurled)
+                {
+                    machine.StopContinuousPoseControl(true);
                     stageSucceeded = true;
                     yield break;
                 }
+
+                bool poseProgressed = Mathf.Abs(actual.boom - lastProgressPose.boom) >= .15f ||
+                    Mathf.Abs(actual.arm - lastProgressPose.arm) >= .15f ||
+                    Mathf.Abs(actual.bucket - lastProgressPose.bucket) >= .15f;
+                bool soilProgressed = currentVolume - lastProgressVolume >= .00002;
+                if (poseProgressed || soilProgressed)
+                {
+                    lastProgressTime = now;
+                    lastProgressPose = actual;
+                    lastProgressVolume = currentVolume;
+                }
+
+                if (now - lastProgressTime >= ScoopNoProgressTimeoutSeconds &&
+                    now - startTime >= ScoopNoProgressTimeoutSeconds)
+                {
+                    machine.StopContinuousPoseControl(false);
+                    if (!bucketMostlyCurled && currentVolume >= capacity - .0001)
+                    {
+                        yield return FinishFullBucketCurl(minimumCurlDegrees, target.bucket);
+                        yield break;
+                    }
+                    if (currentVolume - before >= minimumLoadVolumeM3 && bucketMostlyCurled)
+                    {
+                        stageSucceeded = true;
+                        yield break;
+                    }
+                    if (currentVolume - before >= minimumLoadVolumeM3)
+                    {
+                        yield return FinishPartialBucketCurl(minimumCurlDegrees, target.bucket);
+                        yield break;
+                    }
+                    SetState(AutonomousExcavationState.EmptyCut,
+                        $"切削停滞 {ScoopNoProgressTimeoutSeconds:F2}s，当前斗量不足；阻力状态={GetCutResistanceStatus()}");
+                    stageSucceeded = true;
+                    yield break;
+                }
+
                 yield return new WaitForFixedUpdate();
             }
+
             if (!IsRunning) yield break;
-            if (machine.IsBusy) machine.StopAutomaticMotion();
+            if (machine.IsBusy) machine.StopContinuousPoseControl(false);
             Zx200JointPose cutEnd = machine.ReadActualPose();
             bool curlComplete = target.bucket >= actual.bucket
                 ? cutEnd.bucket >= minimumCurlDegrees
                 : cutEnd.bucket <= minimumCurlDegrees;
-            if (!curlComplete && cutter.VolumeM3 >= cutter.EffectiveCapacityM3 - .0001f)
+            double finalLoad = cutter.VolumeM3;
+            if (!curlComplete && finalLoad >= capacity - .0001)
             {
                 yield return FinishFullBucketCurl(minimumCurlDegrees, target.bucket);
                 yield break;
             }
-            if (!curlComplete && cutter.VolumeM3 - before >= minimumLoadVolumeM3)
+            if (!curlComplete && finalLoad - before >= minimumLoadVolumeM3)
             {
-                EnterFault($"铲斗未完成收斗，不能带半开斗抬升；实际={cutEnd.bucket:F1}°，" +
-                    $"最低收斗目标={minimumCurlDegrees:F1}°");
+                yield return FinishPartialBucketCurl(minimumCurlDegrees, target.bucket);
                 yield break;
             }
-            if (cutter.VolumeM3 - before >= minimumLoadVolumeM3)
+            if (finalLoad - before >= minimumLoadVolumeM3)
             {
                 stageSucceeded = true;
                 yield break;
@@ -749,19 +1082,49 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             bool atFloor = cutter.TipWorldPosition.y <=
                 cutter.soil.GetFloorWorldY(cutter.TipWorldPosition) + soilFloorMargin;
             SetState(AutonomousExcavationState.EmptyCut,
-                atFloor ? "当前挖点已到土层底部，继续检查下一个可达挖点" : "当前挖点切削无效，继续检查下一个可达挖点");
+                atFloor ? "当前挖点已到土层底部，继续检查下一个可达挖点" :
+                $"当前挖点切削无效或进度停滞，阻力状态={GetCutResistanceStatus()}");
             stageSucceeded = true;
         }
         finally
         {
+            machine.StopContinuousPoseControl(false);
+            if (floorGuard != null) floorGuard.cuttingSpeedDegrees = originalCuttingSpeed;
             CurrentMotionAxis = AutonomousMotionAxis.None;
         }
     }
 
+    private string GetCutResistanceStatus()
+    {
+        BucketSoilResistance resistance = machine != null && machine.bucketJoint != null
+            ? machine.bucketJoint.GetComponent<BucketSoilResistance>() : null;
+        string reason = resistance != null ? resistance.BlockReason : "未配置切削阻力组件";
+        if (cutter == null || cutter.soil == null || cutter.soil.Terrain == null) return reason;
+
+        Vector3 tip = cutter.TipWorldPosition;
+        float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+        float floor = cutter.soil.GetFloorWorldY(tip);
+        return $"{reason}；土层厚={Mathf.Max(0f, surface - floor):F3}m，" +
+            $"斗尖离地={tip.y - floor:F3}m，刃口埋深={surface - tip.y:F3}m";
+    }
+
     private IEnumerator FinishFullBucketCurl(float minimumCurlDegrees, float targetBucketDegrees)
     {
-        // A full bucket may stop its own downward-moving tooth at the penetration guard.
-        // Withdraw only far enough to clear the cut face, then close it before the loaded lift.
+        FullBucketRecoveryCount++;
+        yield return FinishBucketCurlRecovery(minimumCurlDegrees, targetBucketDegrees, "满斗");
+    }
+
+    private IEnumerator FinishPartialBucketCurl(float minimumCurlDegrees, float targetBucketDegrees)
+    {
+        PartialBucketRecoveryCount++;
+        yield return FinishBucketCurlRecovery(minimumCurlDegrees, targetBucketDegrees, "部分装土");
+    }
+
+    private IEnumerator FinishBucketCurlRecovery(
+        float minimumCurlDegrees, float targetBucketDegrees, string loadDescription)
+    {
+        // A floor-limited scoop cannot safely finish curling while the tooth is embedded.
+        // Withdraw the loaded bucket above the face first, then complete containment.
         ArticulationDrive boomDrive = machine.boomJoint.xDrive;
         for (int attempt = 0; IsRunning && attempt < 8; attempt++)
         {
@@ -777,7 +1140,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 boomDrive.lowerLimit, boomDrive.upperLimit);
             if (Mathf.Abs(withdrawal.boom - machine.ReadActualPose().boom) < .5f) break;
             withdrawal.duration = 1.2f;
-            yield return MoveToPose(withdrawal, "满斗小幅脱离切削面超时");
+            yield return MoveToPose(withdrawal, $"{loadDescription}小幅脱离切削面超时");
             if (!IsRunning || !stageSucceeded) yield break;
         }
 
@@ -785,7 +1148,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         float clearedSurface = cutter.soil.Terrain.SampleHeight(clearedTip) + cutter.soil.transform.position.y;
         if (clearedTip.y < clearedSurface + .12f)
         {
-            EnterFault($"满斗收斗前无法脱离坡面；斗尖={clearedTip.y:F2}m，土面={clearedSurface:F2}m");
+            EnterFault($"{loadDescription}收斗前无法脱离坡面；斗尖={clearedTip.y:F2}m，土面={clearedSurface:F2}m");
             yield break;
         }
 
@@ -799,9 +1162,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (resistanceWasEnabled) resistance.enabled = false;
         try
         {
-            // Once clear of the face, finish containing the already-full load. The cutting
+            // Once clear of the face, finish containing the measured load. The cutting
             // guard must not reinterpret this carry curl as a new downward cut.
-            yield return MoveCoordinatedPose(close, "满斗脱离土面后收斗超时",
+            yield return MoveCoordinatedPose(close, $"{loadDescription}脱离土面后收斗超时",
                 AutonomousMotionAxis.ArmAndBucket);
         }
         finally
@@ -812,7 +1175,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (!IsRunning || !stageSucceeded) yield break;
         float closed = machine.ReadActualPose().bucket;
         if (closed < minimumCurlDegrees)
-            EnterFault($"满斗脱离土面后仍未收斗；实际={closed:F1}°，目标至少={minimumCurlDegrees:F1}°");
+            EnterFault($"{loadDescription}脱离土面后仍未收斗；实际={closed:F1}°，目标至少={minimumCurlDegrees:F1}°");
     }
 
     private IEnumerator PrepareForCut()
@@ -864,36 +1227,171 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         }
 
         actual = machine.ReadActualPose();
-        Zx200JointPose target = new Zx200JointPose(
-            actual.swing, machine.workReadyPose.boom + boomEntryStepDegrees * maximumEntrySteps,
-            actual.arm, actual.bucket, Mathf.Max(1f, stageTimeoutSeconds * .5f));
-        if (!machine.StartAutomaticPose(target))
+        Vector3 entryTip = cutter.TipWorldPosition;
+        if (!cutter.soil.HasSurfaceAt(entryTip))
         {
-            EnterFault("无法启动进入土层姿态");
+            LastCutEntryDepthMeters = 0f;
+            SetState(AutonomousExcavationState.EmptyCut, "当前挖点没有可切削地表，转到下一个挖点");
+            stageSucceeded = true;
             yield break;
         }
-        float deadline = Time.realtimeSinceStartup + stageTimeoutSeconds;
-        while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
+        float entrySurface = cutter.soil.Terrain.SampleHeight(entryTip) + cutter.soil.transform.position.y;
+        float entryFloor = cutter.soil.GetFloorWorldY(entryTip);
+        float availableLayerThickness = Mathf.Max(0f, entrySurface - entryFloor);
+        BucketSoilResistance entryResistance = machine.bucketJoint.GetComponent<BucketSoilResistance>();
+        float contactClearance = entryResistance != null ? entryResistance.contactMargin : 0f;
+        // Reserve room for the articulation controller to brake before the discrete floor guard engages.
+        float floorClearance = Mathf.Max(soilFloorMargin, contactClearance) + .025f;
+        float adaptiveEntryDepth = CalculateAdaptiveCutEntryDepth(
+            cutEntryDepthMeters, availableLayerThickness, floorClearance);
+        LastCutEntryDepthMeters = adaptiveEntryDepth;
+        if (adaptiveEntryDepth <= .001f)
         {
-            HandleManualInput();
-            Vector3 tip = cutter.TipWorldPosition;
-            float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
-            if (tip.y <= surface - cutEntryDepthMeters)
+            SetState(AutonomousExcavationState.EmptyCut,
+                $"当前挖点安全土层不足；土层厚度={availableLayerThickness:F3}m，" +
+                $"安全切入深度={adaptiveEntryDepth:F3}m，底部净空要求={floorClearance:F3}m");
+            stageSucceeded = true;
+            yield break;
+        }
+
+        // The fixed approach pose can already put the tooth below a thin local cut floor.
+        // Retract to a small above-surface clearance before beginning this point's measured entry.
+        const float aboveSurfaceEntryClearance = .08f;
+        if (entryTip.y < entrySurface + aboveSurfaceEntryClearance)
+        {
+            Zx200JointPose retractTarget = machine.ReadActualPose();
+            retractTarget.duration = 0f;
+            if (!machine.StartContinuousPoseControl(retractTarget))
             {
-                machine.StopAutomaticMotion();
+                EnterFault("无法启动切入前斗尖脱土控制");
+                yield break;
+            }
+
+            float retractDeadline = Time.realtimeSinceStartup + stageTimeoutSeconds;
+            bool clearOfSurface = false;
+            while (IsRunning && Time.realtimeSinceStartup < retractDeadline)
+            {
+                HandleManualInput();
+                if (!IsRunning) yield break;
+                Vector3 tip = cutter.TipWorldPosition;
+                if (!cutter.soil.HasSurfaceAt(tip)) break;
+                float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+                if (tip.y >= surface + aboveSurfaceEntryClearance)
+                {
+                    clearOfSurface = true;
+                    break;
+                }
+
+                actual = machine.ReadActualPose();
+                Vector3 boomAxis = machine.boomJoint.transform.TransformDirection(
+                    machine.boomJoint.anchorRotation * Vector3.right).normalized;
+                Vector3 boomPivot = machine.boomJoint.transform.TransformPoint(machine.boomJoint.anchorPosition);
+                float raiseSign = GetHeightImprovingRotationSign(boomAxis, tip - boomPivot);
+                if (raiseSign == 0f)
+                {
+                    machine.StopContinuousPoseControl(false);
+                    EnterFault("切入前无法沿动臂方向抬升斗尖脱离土层");
+                    yield break;
+                }
+                retractTarget.boom = Zx200DigController.ClampTarget(
+                    retractTarget.boom + raiseSign * Mathf.Max(1f, boomEntryStepDegrees) * Time.fixedDeltaTime,
+                    machine.boomJoint.xDrive.lowerLimit, machine.boomJoint.xDrive.upperLimit);
+                retractTarget.duration = 0f;
+                if (!machine.UpdateContinuousPoseTarget(retractTarget))
+                {
+                    machine.StopContinuousPoseControl(false);
+                    EnterFault("切入前更新斗尖脱土目标失败");
+                    yield break;
+                }
+                yield return new WaitForFixedUpdate();
+            }
+
+            machine.StopContinuousPoseControl(clearOfSurface);
+            if (!IsRunning) yield break;
+            if (!clearOfSurface)
+            {
+                EnterFault("切入前斗尖未能退至土面上方安全位置");
+                yield break;
+            }
+
+            // Retraction may move the tooth across a sloping or irregular local face.
+            entryTip = cutter.TipWorldPosition;
+            if (!cutter.soil.HasSurfaceAt(entryTip))
+            {
+                SetState(AutonomousExcavationState.EmptyCut, "斗尖脱土后已离开当前挖点地表，检查下一个挖点");
                 stageSucceeded = true;
                 yield break;
             }
+            entrySurface = cutter.soil.Terrain.SampleHeight(entryTip) + cutter.soil.transform.position.y;
+            entryFloor = cutter.soil.GetFloorWorldY(entryTip);
+            availableLayerThickness = Mathf.Max(0f, entrySurface - entryFloor);
+            adaptiveEntryDepth = CalculateAdaptiveCutEntryDepth(
+                cutEntryDepthMeters, availableLayerThickness, floorClearance);
+            LastCutEntryDepthMeters = adaptiveEntryDepth;
+            if (adaptiveEntryDepth <= .001f)
+            {
+                SetState(AutonomousExcavationState.EmptyCut,
+                    $"斗尖脱土后局部安全土层不足；土层厚度={availableLayerThickness:F3}m，" +
+                    $"底部净空要求={floorClearance:F3}m");
+                stageSucceeded = true;
+                yield break;
+            }
+        }
+
+        // Lower under live floor feedback at a bounded angular rate. A single long boom target
+        // can carry the tooth through a thin layer before the next render/physics observation.
+        Zx200JointPose entryTarget = machine.ReadActualPose();
+        entryTarget.duration = 0f;
+        if (!machine.StartContinuousPoseControl(entryTarget))
+        {
+            EnterFault("无法启动按局部底面约束的切入控制");
+            yield break;
+        }
+        float entryDeadline = Time.realtimeSinceStartup + stageTimeoutSeconds;
+        bool reachedSafeEntry = false;
+        while (IsRunning && Time.realtimeSinceStartup < entryDeadline)
+        {
+            HandleManualInput();
+            if (!IsRunning) yield break;
+            Vector3 tip = cutter.TipWorldPosition;
+            if (!cutter.soil.HasSurfaceAt(tip)) break;
+            float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+            float floor = cutter.soil.GetFloorWorldY(tip);
+            float safeLowerBound = Mathf.Max(surface - adaptiveEntryDepth, floor + floorClearance);
+            if (tip.y <= safeLowerBound)
+            {
+                reachedSafeEntry = true;
+                break;
+            }
+
+            actual = machine.ReadActualPose();
+            Vector3 boomAxis = machine.boomJoint.transform.TransformDirection(
+                machine.boomJoint.anchorRotation * Vector3.right).normalized;
+            Vector3 boomPivot = machine.boomJoint.transform.TransformPoint(machine.boomJoint.anchorPosition);
+            float raiseSign = GetHeightImprovingRotationSign(boomAxis, tip - boomPivot);
+            if (raiseSign == 0f) break;
+            entryTarget.boom = Zx200DigController.ClampTarget(
+                entryTarget.boom - raiseSign * Mathf.Max(1f, boomEntryStepDegrees) * Time.fixedDeltaTime,
+                machine.boomJoint.xDrive.lowerLimit, machine.boomJoint.xDrive.upperLimit);
+            entryTarget.duration = 0f;
+            if (!machine.UpdateContinuousPoseTarget(entryTarget)) break;
             yield return new WaitForFixedUpdate();
         }
 
         if (!IsRunning) yield break;
-        machine.StopAutomaticMotion();
-        Zx200JointPose failedPose = machine.ReadActualPose();
-        float failedSurface = cutter.soil.Terrain.SampleHeight(cutter.TipWorldPosition) + cutter.soil.transform.position.y;
+        machine.StopContinuousPoseControl(reachedSafeEntry);
+        if (reachedSafeEntry)
+        {
+            stageSucceeded = true;
+            yield break;
+        }
+
+        Vector3 failedTip = cutter.TipWorldPosition;
+        float failedSurface = cutter.soil.Terrain.SampleHeight(failedTip) + cutter.soil.transform.position.y;
+        float failedFloor = cutter.soil.GetFloorWorldY(failedTip);
         SetState(AutonomousExcavationState.EmptyCut,
-            $"当前挖点下放无效，继续尝试下一挖点；姿态=({failedPose.swing:F1},{failedPose.boom:F1}," +
-            $"{failedPose.arm:F1},{failedPose.bucket:F1})，斗尖={cutter.TipWorldPosition}，土面={failedSurface:F2}");
+            $"当前挖点未能到达安全切深，检查下一个挖点；目标切深={adaptiveEntryDepth:F3}m，" +
+            $"斗尖={failedTip}，土面={failedSurface:F2}，底面={failedFloor:F2}");
         stageSucceeded = true;
     }
 
@@ -1007,7 +1505,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         for (int attempt = 0; IsRunning && attempt < 4; attempt++)
         {
             dumpSwingTarget = ComputeDumpSwingTarget(true);
-            if (State == AutonomousExcavationState.SwingToTruck &&
+            if ((State == AutonomousExcavationState.SwingToTruck ||
+                State == AutonomousExcavationState.PrepareDump) &&
                 !HasPredictedTruckSwingClearance(dumpSwingTarget))
             {
                 yield return RaiseBoomToTruckClearance(dumpSwingTarget);
@@ -1036,7 +1535,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             while (IsRunning && machine.IsBusy && Time.realtimeSinceStartup < deadline)
             {
                 HandleManualInput();
-                if (State == AutonomousExcavationState.SwingToTruck && !EnsureLoadedSwingClearance())
+                if ((State == AutonomousExcavationState.SwingToTruck ||
+                    State == AutonomousExcavationState.PrepareDump) && !EnsureLoadedSwingClearance())
                 {
                     machine.StopAutomaticMotion();
                     yield return RaiseBoomToTruckClearance(dumpSwingTarget);
@@ -1084,14 +1584,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         stageSucceeded = false;
         ArticulationDrive boomDrive = machine.boomJoint.xDrive;
-        ArticulationDrive armDrive = machine.armJoint.xDrive;
         ArticulationDrive bucketDrive = machine.bucketJoint.xDrive;
-        // The truck has moved closer: keep the loaded arm tucked and the bucket nearly level.
-        float retainedBucketAngle = Zx200DigController.ClampTarget(
-            machine.curlPose.bucket - 10f,
-            bucketDrive.lowerLimit, bucketDrive.upperLimit);
-        float carryArm = Zx200DigController.ClampTarget(80f,
-            armDrive.lowerLimit, armDrive.upperLimit);
         BucketSoilResistance resistance = machine.bucketJoint.GetComponent<BucketSoilResistance>();
         bool cutterWasEnabled = cutter != null && cutter.enabled;
         bool wasCuttingSuppressed = cutter != null && cutter.IsCuttingSuppressed;
@@ -1112,17 +1605,48 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             yield return MoveToPose(initialLift, "满斗离开切削面超时");
             if (!IsRunning || !stageSucceeded) yield break;
 
-            Zx200JointPose waypoint = machine.ReadActualPose();
-            waypoint.boom = Zx200DigController.ClampTarget(waypoint.boom + liftSign * 10f,
-                boomDrive.lowerLimit, boomDrive.upperLimit);
-            waypoint.arm = carryArm;
-            waypoint.bucket = retainedBucketAngle;
-            waypoint.duration = Mathf.Max(2.2f, machine.swingToDumpPose.duration);
+            Zx200JointPose waypoint = machine.carryPose;
+            waypoint.swing = machine.ReadActualPose().swing;
+            waypoint.boom = Zx200DigController.ClampTarget(
+                waypoint.boom, boomDrive.lowerLimit, boomDrive.upperLimit);
+            waypoint.arm = Zx200DigController.ClampTarget(
+                waypoint.arm, machine.armJoint.xDrive.lowerLimit, machine.armJoint.xDrive.upperLimit);
+            // Preserve the measured closed-bucket angle while tucking the arm and setting carry height.
+            waypoint.bucket = machine.ReadActualPose().bucket;
+            waypoint.duration = Mathf.Max(2.2f, waypoint.duration);
             yield return MoveCoordinatedPose(waypoint, "挖后携土姿态超时", AutonomousMotionAxis.BoomArmBucket);
             if (!IsRunning || !stageSucceeded) yield break;
 
             // The arm change can lower the tip; revalidate and raise again before slewing toward the bed.
             yield return RaiseBoomUntilTruckClearance("斗杆伸展后恢复车厢净空超时");
+            if (!IsRunning || !stageSucceeded) yield break;
+
+            BucketSoilUnloader mouth = cutter.GetComponent<BucketSoilUnloader>();
+            if (mouth != null)
+            {
+                Zx200JointPose actual = machine.ReadActualPose();
+                Vector3 worldMouth = mouth.transform.TransformDirection(mouth.openingNormalLocal).normalized;
+                Vector3 bucketAxis = machine.bucketJoint.transform.TransformDirection(
+                    machine.bucketJoint.anchorRotation * Vector3.right).normalized;
+                float carryBucketAngle = CalculateBucketAngleForUpwardMouth(
+                    worldMouth, bucketAxis, actual.bucket,
+                    bucketDrive.lowerLimit, bucketDrive.upperLimit);
+                if (Mathf.Abs(Mathf.DeltaAngle(actual.bucket, carryBucketAngle)) > .5f)
+                {
+                    actual.bucket = carryBucketAngle;
+                    actual.duration = 1.1f;
+                    yield return MoveCoordinatedPose(actual, "携土斗口校平超时", AutonomousMotionAxis.Bucket);
+                    if (!IsRunning || !stageSucceeded) yield break;
+                }
+
+                float mouthUpDot = Vector3.Dot(
+                    mouth.transform.TransformDirection(mouth.openingNormalLocal).normalized, Vector3.up);
+                if (mouthUpDot < Mathf.Cos(20f * Mathf.Deg2Rad))
+                {
+                    EnterFault($"携土姿态无法把斗口收至水平保土范围；斗口上向度={mouthUpDot:F2}");
+                    yield break;
+                }
+            }
         }
         finally
         {

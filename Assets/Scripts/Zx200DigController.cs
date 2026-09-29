@@ -62,6 +62,7 @@ public class Zx200DigController : MonoBehaviour
     private BucketSoilResistance soilResistance;
     private Coroutine automaticPoseRoutine;
     private bool automaticMotionCancellationRequested;
+    private bool continuousPoseControlActive;
 
     [Header("Parked Pose")]
     public Zx200JointPose parkedPose = new Zx200JointPose(0f, -42f, 88f, 42f, 0.8f);
@@ -74,6 +75,9 @@ public class Zx200DigController : MonoBehaviour
     public Zx200JointPose curlPose = new Zx200JointPose(0f, -62f, 92f, 105f, 1.1f);
     [Min(0f)] public float curlHoldDuration = 0.25f;
     public Zx200JointPose liftPose = new Zx200JointPose(0f, -25f, 100f, 110f, 1.3f);
+    [Header("Loaded Carry Pose")]
+    [Tooltip("独立携土目标；铲斗角度会再根据实际斗口世界方向校平。")]
+    public Zx200JointPose carryPose = new Zx200JointPose(0f, -35f, 88f, 95f, 2.4f);
     public Zx200JointPose swingToDumpPose = new Zx200JointPose(60f, -25f, 100f, 110f, 1.4f);
     public Zx200JointPose dumpPreparePose = new Zx200JointPose(60f, -32f, 78f, 80f, 0.6f);
     public Zx200JointPose dumpPose = new Zx200JointPose(60f, -32f, 78f, -25f, 0.9f);
@@ -240,6 +244,49 @@ public class Zx200DigController : MonoBehaviour
         return automaticPoseRoutine != null;
     }
 
+    /// <summary>Start a smoothly retargetable pose controller for feedback-driven articulation motion.</summary>
+    /// <param name="initialTarget">The initial four-joint target; use the measured pose to avoid a startup jump.</param>
+    /// <returns>True when continuous control starts; false when another motion owns the joints or inputs are invalid.</returns>
+    public bool StartContinuousPoseControl(Zx200JointPose initialTarget)
+    {
+        if (!Application.isPlaying || !enabled || IsBusy || !ResolveJoints()) return false;
+        if (!ValidatePose(initialTarget, "continuousPose", out _)) return false;
+
+        LastAutomaticMotionSucceeded = false;
+        automaticMotionCancellationRequested = false;
+        automaticPoseRoutine = null;
+        continuousPoseControlActive = true;
+        IsBusy = true;
+        requestedPose = ClampPoseToDriveLimits(initialTarget);
+        targetVelocities = Vector4.zero;
+        return true;
+    }
+
+    /// <summary>Update the requested target while preserving the current continuous motion and smoothing velocity.</summary>
+    /// <param name="target">The latest four-joint feedback target in degrees.</param>
+    /// <returns>True when the active continuous controller accepted the target.</returns>
+    public bool UpdateContinuousPoseTarget(Zx200JointPose target)
+    {
+        if (!continuousPoseControlActive || !IsBusy || !ResolveJoints()) return false;
+        if (!ValidatePose(target, "continuousPoseTarget", out _)) return false;
+
+        requestedPose = ClampPoseToDriveLimits(target);
+        return true;
+    }
+
+    /// <summary>Finish feedback-driven pose control while retaining the actual articulation pose.</summary>
+    /// <param name="succeeded">Whether the owner reached its required motion condition.</param>
+    public void StopContinuousPoseControl(bool succeeded)
+    {
+        if (!continuousPoseControlActive) return;
+
+        continuousPoseControlActive = false;
+        automaticMotionCancellationRequested = false;
+        LastAutomaticMotionSucceeded = succeeded;
+        IsBusy = false;
+        HoldActualPose();
+    }
+
     /// <summary>
     /// 取消当前自动姿态阶段，保留当前物理解算姿态和土量，不回滚现场状态。
     /// </summary>
@@ -250,9 +297,35 @@ public class Zx200DigController : MonoBehaviour
             StopCoroutine(automaticPoseRoutine);
             automaticPoseRoutine = null;
         }
+        continuousPoseControlActive = false;
         automaticMotionCancellationRequested = true;
         LastAutomaticMotionSucceeded = false;
         IsBusy = false;
+        HoldActualPose();
+    }
+
+    private void HoldActualPose()
+    {
+        if (!ResolveJoints()) return;
+        requestedPose = ClampPoseToDriveLimits(ReadActualPose());
+        targetVelocities = Vector4.zero;
+        SetTarget(swingJoint, requestedPose.swing);
+        SetTarget(boomJoint, requestedPose.boom);
+        SetTarget(armJoint, requestedPose.arm);
+        SetTarget(bucketJoint, requestedPose.bucket);
+        // A cut-depth stop happens before the next pose stage. Cancel the residual joint
+        // velocity as well as the target; otherwise the heavy linkage coasts past the sampled
+        // floor boundary while the following coroutine initializes its target.
+        StopJointVelocity(swingJoint);
+        StopJointVelocity(boomJoint);
+        StopJointVelocity(armJoint);
+        StopJointVelocity(bucketJoint);
+    }
+
+    private static void StopJointVelocity(ArticulationBody joint)
+    {
+        if (joint != null && joint.jointVelocity.dofCount > 0)
+            joint.jointVelocity = new ArticulationReducedSpace(0f);
     }
 
     /// <summary>
@@ -547,6 +620,7 @@ public class Zx200DigController : MonoBehaviour
             !ValidatePose(approachPose, "approachPose", out error) ||
             !ValidatePose(curlPose, "curlPose", out error) ||
             !ValidatePose(liftPose, "liftPose", out error) ||
+            !ValidatePose(carryPose, "carryPose", out error) ||
             !ValidatePose(swingToDumpPose, "swingToDumpPose", out error) ||
             !ValidatePose(dumpPreparePose, "dumpPreparePose", out error) ||
             !ValidatePose(dumpPose, "dumpPose", out error) ||

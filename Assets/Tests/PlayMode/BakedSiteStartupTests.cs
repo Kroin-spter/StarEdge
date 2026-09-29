@@ -138,13 +138,22 @@ namespace ExcavatorControls.Tests
                     while (autonomy.State != AutonomousExcavationState.Idle &&
                         Time.realtimeSinceStartup < resetDeadline) yield return new WaitForFixedUpdate();
                     Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Idle), autonomy.Status);
-                    // The crawler is intentionally unlocked on reset; allow its small gravity-settling offset.
+                    // Reset deliberately unlocks the crawler before returning Idle. Wait through physical settling,
+                    // then verify both the parked envelope and that the arm is no longer drifting.
+                    for (int settleStep = 0; settleStep < 10; settleStep++) yield return new WaitForFixedUpdate();
+                    Zx200JointPose settledPose = machine.ReadActualPose();
+                    for (int settleStep = 0; settleStep < 10; settleStep++) yield return new WaitForFixedUpdate();
+                    Zx200JointPose stablePose = machine.ReadActualPose();
                     Assert.That(machine.IsPoseWithinTolerance(machine.parkedPose, 3f), Is.True,
                         $"Backspace reset must return to parked pose; actual=" +
-                        $"{machine.ReadActualPose().swing:F1}/{machine.ReadActualPose().boom:F1}/" +
-                        $"{machine.ReadActualPose().arm:F1}/{machine.ReadActualPose().bucket:F1}, " +
+                        $"{stablePose.swing:F1}/{stablePose.boom:F1}/" +
+                        $"{stablePose.arm:F1}/{stablePose.bucket:F1}, " +
                         $"target={machine.parkedPose.swing:F1}/{machine.parkedPose.boom:F1}/" +
                         $"{machine.parkedPose.arm:F1}/{machine.parkedPose.bucket:F1}");
+                    Assert.That(Mathf.Abs(Mathf.DeltaAngle(settledPose.swing, stablePose.swing)), Is.LessThan(1f));
+                    Assert.That(Mathf.Abs(settledPose.boom - stablePose.boom), Is.LessThan(1f));
+                    Assert.That(Mathf.Abs(settledPose.arm - stablePose.arm), Is.LessThan(1f));
+                    Assert.That(Mathf.Abs(settledPose.bucket - stablePose.bucket), Is.LessThan(1f));
                     Assert.That(keyboard.articulationRoot.immovable, Is.False,
                         "Reset must release the automatic base lock.");
                 }
