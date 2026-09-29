@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>Persistent snapshot of one surveyed Cesium construction footprint and its initial cuttable soil.</summary>
 public sealed class BakedConstructionSiteData : ScriptableObject
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     public int formatVersion = CurrentVersion;
     public string sourceMapName;
     public double georeferenceLatitude;
@@ -17,6 +17,9 @@ public sealed class BakedConstructionSiteData : ScriptableObject
     public Quaternion machineRotation = Quaternion.identity;
     public Vector3 truckPosition;
     public Quaternion truckRotation = Quaternion.identity;
+    public Vector3 workFaceCenter;
+    public Quaternion workFaceRotation = Quaternion.identity;
+    public Vector2 workFaceSize;
     public float originalSupportY;
     public float selectedSupportY;
     public float selectedTruckGroundY;
@@ -50,11 +53,18 @@ public sealed class BakedConstructionSiteData : ScriptableObject
             !Finite(machineRotation) || !Finite(truckRotation) || Quaternion.Dot(machineRotation, machineRotation) < .9f ||
             Quaternion.Dot(truckRotation, truckRotation) < .9f)
         { reason = "烘焙资源缺少地形/材质或设备布局损坏，需要重新烘焙。"; return false; }
+        if (!Finite(workFaceCenter) || !Finite(workFaceRotation) || Quaternion.Dot(workFaceRotation, workFaceRotation) < .9f ||
+            !float.IsFinite(workFaceSize.x) || !float.IsFinite(workFaceSize.y) ||
+            workFaceSize.x <= 0f || workFaceSize.y <= 0f)
+        { reason = "烘焙资源缺少坡面替换范围，需要重新烘焙。"; return false; }
         Vector3 size = terrainData.size;
         int n = terrainData.heightmapResolution;
         if (!Finite(size) || size.x <= 0 || size.y <= 0 || size.z <= 0 || n < 3 ||
             groundHeights == null || soilMask == null || groundHeights.Length != n * n || soilMask.Length != n * n)
         { reason = "烘焙资源的基础地面或土带掩码尺寸损坏，需要重新烘焙。"; return false; }
+        TerrainLayer[] layers = terrainData.terrainLayers;
+        if (layers == null || layers.Length < 2 || layers[1] == null || layers[1].diffuseTexture == null)
+        { reason = "烘焙资源缺少贴合地图的坡面影像材质，需要在图形模式下重新烘焙。"; return false; }
         if (!double.IsFinite(initialSoilVolumeM3) || initialSoilVolumeM3 <= 0)
         { reason = "烘焙资源的初始土量无效，需要重新烘焙。"; return false; }
         float[,] top;
@@ -88,6 +98,17 @@ public sealed class BakedConstructionSiteData : ScriptableObject
         return true;
     }
 
+    /// <summary>Get the world-axis-aligned bounds of the oriented slope replacement.</summary>
+    /// <returns>Bounds enclosing the slope footprint and the full vertical Terrain range.</returns>
+    public Bounds GetWorkFaceBounds()
+    {
+        if (terrainData == null) return default;
+        if (workFaceSize.x <= 0f || workFaceSize.y <= 0f)
+            return new Bounds(terrainOrigin + terrainData.size * .5f, terrainData.size);
+        return ConstructionSiteFootprint.CalculateBounds(workFaceCenter, workFaceRotation, workFaceSize,
+            terrainOrigin.y, terrainOrigin.y + terrainData.size.y);
+    }
+
     /// <summary>Prepare the soil component from this snapshot using its own mutable TerrainData copy.</summary>
     /// <param name="soil">Terrain-bearing soil component in the delivery scene.</param>
     /// <exception cref="InvalidOperationException">The target already uses a different source Terrain.</exception>
@@ -105,6 +126,7 @@ public sealed class BakedConstructionSiteData : ScriptableObject
             throw new InvalidOperationException("目标 Terrain 已从其他资源初始化；请重新加载场景。");
         soil.transform.position = terrainOrigin;
         soil.InitializeBaked(terrain);
+        soil.deferAutomaticInitialization = false;
         int n = terrainData.heightmapResolution;
         var ground = new float[n, n];
         for (int z = 0; z < n; z++)

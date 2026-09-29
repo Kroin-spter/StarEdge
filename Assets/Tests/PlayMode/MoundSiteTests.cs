@@ -129,9 +129,13 @@ namespace ExcavatorControls.Tests
                 Assert.That(clip, Is.Not.Null, "The site must install a bounded Cesium render/collision clip.");
                 Bounds workArea = (Bounds)clip.GetType().GetField("workArea").GetValue(clip);
                 Assert.That(soil.Terrain.terrainData.size.x, Is.GreaterThanOrEqualTo(20f));
-                Assert.That(trackBase.position.x, Is.InRange(workArea.min.x, workArea.max.x),
-                    "The excavator must stand inside the one-for-one Cesium replacement area.");
-                Assert.That(trackBase.position.z, Is.InRange(workArea.min.z, workArea.max.z));
+                Vector3 workFaceCenter = (Vector3)clip.GetType().GetField("workAreaCenter").GetValue(clip);
+                Quaternion workFaceRotation = (Quaternion)clip.GetType().GetField("workAreaRotation").GetValue(clip);
+                Vector2 workFaceSize = (Vector2)clip.GetType().GetField("workAreaSize").GetValue(clip);
+                Assert.That((bool)clip.GetType().GetField("useOrientedWorkArea").GetValue(clip), Is.True);
+                Assert.That(ConstructionSiteFootprint.ContainsHorizontal(trackBase.position,
+                    workFaceCenter, workFaceRotation, workFaceSize), Is.False,
+                    "The lower-bench track support must remain on the original Cesium surface.");
                 Assert.That(Vector2.Distance(new Vector2(trackBase.position.x, trackBase.position.z),
                     new Vector2(authoredLeftSeed.x, authoredLeftSeed.z)), Is.LessThanOrEqualTo(8.5f),
                     "The terrain-validated lower-bench placement must stay near the authored left-side target.");
@@ -139,11 +143,11 @@ namespace ExcavatorControls.Tests
                 float visibleRootOffset = Vector2.Distance(
                     new Vector2(trackBase.position.x, trackBase.position.z),
                     new Vector2(workArea.center.x, workArea.center.z));
-                Assert.That(visibleRootOffset, Is.LessThan(.1f),
-                    "The visible articulation root must move to the selected lower work-face, not leave the machine rendering on the upper platform.");
-                Assert.That(truck.position.x, Is.InRange(workArea.min.x, workArea.max.x),
-                    "The truck must stand on the same replaced lower work floor.");
-                Assert.That(truck.position.z, Is.InRange(workArea.min.z, workArea.max.z));
+                Assert.That(visibleRootOffset, Is.GreaterThan(3f),
+                    "The Cesium replacement must be centered on the face, not on the machine support pad.");
+                Assert.That(ConstructionSiteFootprint.ContainsHorizontal(truck.position,
+                    workFaceCenter, workFaceRotation, workFaceSize), Is.False,
+                    "The truck wheels must remain supported by the original Cesium surface.");
                 Vector3 truckOffset = (Vector3)site.GetType()
                     .GetField("truckParkingOffsetLocal").GetValue(site);
                 Vector3 expectedTruckXZ = trackBase.position + trackBase.rotation * truckOffset;
@@ -162,14 +166,17 @@ namespace ExcavatorControls.Tests
                 float faceRise = soil.GetFloorWorldY(faceCrest) - soil.GetFloorWorldY(faceFoot);
                 Assert.That(faceRise, Is.InRange(2.5f, 8f),
                     "The machine must stand on the lower bench and face a clearly raised, continuous cuttable slope.");
-                Vector3 slopedBand = trackBase.position + trackBase.forward * 9f;
-                float slopeSoilThickness = soil.Terrain.SampleHeight(slopedBand) + soil.transform.position.y -
-                    soil.GetFloorWorldY(slopedBand);
-                Vector3 flatApron = trackBase.position + trackBase.forward * 6.5f;
+                foreach (float faceOffset in new[] { 3f, 4.2f, 6.5f, 8.8f, 10f })
+                {
+                    Vector3 facePoint = trackBase.position + trackBase.forward * faceOffset;
+                    float faceSoilThickness = soil.Terrain.SampleHeight(facePoint) + soil.transform.position.y -
+                        soil.GetFloorWorldY(facePoint);
+                    Assert.That(faceSoilThickness, Is.GreaterThan(.35f),
+                        $"The cuttable soil should cover the whole slope face, including local forward offset {faceOffset:F1}m.");
+                }
+                Vector3 flatApron = trackBase.position + trackBase.forward * 1.5f;
                 float flatApronThickness = soil.Terrain.SampleHeight(flatApron) + soil.transform.position.y -
                     soil.GetFloorWorldY(flatApron);
-                Assert.That(slopeSoilThickness, Is.GreaterThan(.35f),
-                    "The cuttable soil must coat the rising side face, not sit on the lower flat apron.");
                 Assert.That(flatApronThickness, Is.LessThan(.1f),
                     "The lower flat apron should remain largely free of the work-face soil strip.");
                 float benchDrop = (float)site.GetType().GetProperty("BenchDropMeters").GetValue(site);
@@ -194,8 +201,8 @@ namespace ExcavatorControls.Tests
                 Assert.That(selectedNormalY, Is.GreaterThanOrEqualTo(minimumSurfaceNormalY),
                     "The selected work face should favor a less steep slope, not merely a cuttable wall.");
                 float normalThickness = (topCenterY - baseCenterY) * normalY;
-                Assert.That(stripHalfWidth, Is.EqualTo(6f).Within(.01f));
-                Assert.That(stripHalfDepth, Is.EqualTo(2f).Within(.01f));
+                Assert.That(stripHalfWidth, Is.EqualTo(12.5f).Within(.01f));
+                Assert.That(stripHalfDepth, Is.EqualTo(4f).Within(.01f));
                 Assert.That(normalThickness, Is.InRange(stripHeight * .75f, stripHeight * 1.25f),
                     "The soil band must follow the Cesium slope with approximately constant normal thickness.");
                 float besideBandY = soil.Terrain.SampleHeight(
@@ -219,7 +226,7 @@ namespace ExcavatorControls.Tests
                 Bounds truckBounds = truckColliders[0].bounds;
                 foreach (Collider collider in truckColliders) truckBounds.Encapsulate(collider.bounds);
                 Assert.That(truckBounds.min.y, Is.EqualTo(truckGroundY).Within(.25f),
-                    "The truck chassis must rest on the sampled replacement surface.");
+                    "The truck chassis must rest on the unchanged sampled Cesium surface.");
                 Assert.That(Vector3.Distance(new Vector3(truck.position.x, 0, truck.position.z),
                     new Vector3(stripCenter.x, 0, stripCenter.z)), Is.GreaterThan(7f),
                     "The side-parked truck must remain clear of the active slope strip.");
@@ -232,9 +239,12 @@ namespace ExcavatorControls.Tests
                     bool textureApplied = (bool)appearance.GetType().GetProperty("MapTextureApplied").GetValue(appearance);
                     Assert.That(textureApplied, Is.False,
                         "Headless runs must keep the established material fallback without fabricating a map capture.");
-                    Assert.That(soil.Terrain.terrainData.terrainLayers.Length, Is.EqualTo(1),
-                        "The graphics-free fallback must leave the source TerrainLayer untouched.");
+                    Assert.That((bool)site.GetType().GetProperty("IsReady").GetValue(site), Is.True,
+                        "Headless automation may validate geometry without capturing or saving a visual texture.");
                 }
+                else
+                    Assert.That((bool)appearance.GetType().GetProperty("MapTextureApplied").GetValue(appearance), Is.True,
+                        "A visible slope may only replace the map after Cesium imagery has been captured.");
                 keyboard.enabled = false;
                 for (int i = 0; i < 250; i++) yield return new WaitForFixedUpdate();
                 var map = all.First(c => c != null && c.GetType().Name == "Cesium3DTileset" && c.gameObject.activeInHierarchy);
@@ -261,8 +271,8 @@ namespace ExcavatorControls.Tests
                         {
                             Vector3 center = filter.transform.TransformPoint(
                                 (vertices[triangles[index]] + vertices[triangles[index + 1]] + vertices[triangles[index + 2]]) / 3f);
-                            bool strictlyInside = center.x > workArea.min.x + .001f && center.x < workArea.max.x - .001f &&
-                                center.z > workArea.min.z + .001f && center.z < workArea.max.z - .001f;
+                            bool strictlyInside = ConstructionSiteFootprint.ContainsHorizontal(center,
+                                workFaceCenter, workFaceRotation, workFaceSize);
                             Assert.That(strictlyInside, Is.False,
                                 "The actual rendered Cesium triangles must not cover the replacement work area.");
                         }
@@ -272,10 +282,10 @@ namespace ExcavatorControls.Tests
                     c.sharedMesh.name.Contains("work area clipped")), Is.True,
                     "The actual Cesium MeshCollider must receive a clipped mesh.");
                 var insideRay = new Ray(trackBase.position + Vector3.up * 20f, Vector3.down);
-                Assert.That(soil.SoilCollider.Raycast(insideRay, out _, 40), Is.True,
-                    "The replacement TerrainCollider must support the lower pit floor.");
-                Assert.That(colliders.Any(c => c.Raycast(insideRay, out _, 40)), Is.False,
-                    "The original Cesium floor must not remain as a second collider under the pit.");
+                Assert.That(soil.SoilCollider.Raycast(insideRay, out _, 40), Is.False,
+                    "Terrain holes must preserve the excavator's original support ground.");
+                Assert.That(colliders.Any(c => c.Raycast(insideRay, out _, 40)), Is.True,
+                    "The original Cesium collider must remain under the excavator tracks.");
                 var unsupportedBoundaryPoints = new System.Collections.Generic.List<Vector3>();
                 const float boundaryProbeOffset = .05f;
                 for (int sample = 1; sample < 8; sample++)
@@ -315,7 +325,7 @@ namespace ExcavatorControls.Tests
                 Bounds trackBounds = trackColliders[0].bounds;
                 foreach (Collider track in trackColliders) trackBounds.Encapsulate(track.bounds);
                 Assert.That(trackBounds.min.y, Is.EqualTo(lowerY).Within(.25f),
-                    "The track base must rest directly on the replacement pit-floor collider.");
+                    "The track base must rest directly on the unchanged Cesium pit-floor collider.");
                 Assert.That(soil.RecalculateRemovedVolumeM3(), Is.Zero.Within(1e-8));
             }
             finally { SceneManager.UnloadSceneAsync(scene); }

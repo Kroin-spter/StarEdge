@@ -51,6 +51,58 @@ namespace ExcavatorControls.Tests
             }
         }
 
+        /// <summary>Load the baked slope before digging and confirm map-layer blending and support-ground holes.</summary>
+        /// <returns>One startup, material/collision-boundary assertions and teardown.</returns>
+        [UnityTest]
+        public IEnumerator BakedSlopeLoadsWithMapBlendAndOriginalVehicleSupportGround()
+        {
+            ExpectKnownLegacySceneWarnings();
+            ExpectThreeMissingMapWarnings();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            loadedScene = SceneManager.GetSceneByPath(ScenePath);
+            Assert.That(loadedScene.IsValid(), Is.True);
+            SceneManager.SetActiveScene(loadedScene);
+
+            CesiumMoundSite site = loadedScene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<CesiumMoundSite>(true)).Single();
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (!site.IsReady && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(site.IsReady, Is.True, site.Status);
+
+            TerrainData source = site.bakedSite.terrainData;
+            Terrain terrain = site.soil.Terrain;
+            Assert.That(terrain, Is.Not.Null);
+            Assert.That(terrain.terrainData, Is.Not.SameAs(source));
+            Assert.That(terrain.enabled, Is.True);
+            Assert.That(site.soil.SoilCollider.enabled, Is.True);
+            Assert.That(site.soil.SourceTerrainData, Is.SameAs(source));
+            TerrainLayer[] layers = source.terrainLayers;
+            Assert.That(layers.Length, Is.EqualTo(2));
+            Assert.That(layers[1].diffuseTexture, Is.Not.Null);
+            float[,,] weights = source.GetAlphamaps(0, 0, source.alphamapResolution, source.alphamapResolution);
+            float maximumSoilWeight = 0f;
+            float maximumMapWeight = 0f;
+            for (int z = 0; z < weights.GetLength(0); z++)
+                for (int x = 0; x < weights.GetLength(1); x++)
+                {
+                    maximumSoilWeight = Mathf.Max(maximumSoilWeight, weights[z, x, 0]);
+                    maximumMapWeight = Mathf.Max(maximumMapWeight, weights[z, x, 1]);
+                }
+            Assert.That(maximumSoilWeight, Is.InRange(.3f, .45f));
+            Assert.That(maximumMapWeight, Is.GreaterThan(.9f));
+
+            Zx200KeyboardController keyboard = site.machine.GetComponent<Zx200KeyboardController>();
+            keyboard.ResolveArticulationRoot();
+            ConstructionSiteMapClip clip = site.tileset.GetComponent<ConstructionSiteMapClip>();
+            Assert.That(clip, Is.Not.Null);
+            Assert.That(clip.useOrientedWorkArea, Is.True);
+            Assert.That(ConstructionSiteFootprint.ContainsHorizontal(keyboard.articulationRoot.transform.position,
+                clip.workAreaCenter, clip.workAreaRotation, clip.workAreaSize), Is.False);
+            Assert.That(ConstructionSiteFootprint.ContainsHorizontal(site.truck.position,
+                clip.workAreaCenter, clip.workAreaRotation, clip.workAreaSize), Is.False);
+        }
+
         /// <summary>Five offline starts use independent mutable TerrainData and preserve the entire baked source.</summary>
         /// <returns>Five complete scene loads, source-integrity checks and unloads.</returns>
         [UnityTest]
@@ -114,8 +166,7 @@ namespace ExcavatorControls.Tests
                 if (attempt == 0)
                 {
                     AssertRuntimeHoleChangesAreDetected(soil.Terrain.terrainData, sourceSnapshot);
-                    Vector3 point = soil.transform.position + new Vector3(source.size.x * .5f, 0,
-                        source.size.z * .5f);
+                    Vector3 point = (Vector3)siteType.GetProperty("WorkFaceCenter").GetValue(site);
                     Assert.That(soil.Deposit(point, 1f, .05), Is.GreaterThan(0));
                     soil.ResetSoil();
                     AssertTerrainMatches(soil.Terrain.terrainData, sourceSnapshot,

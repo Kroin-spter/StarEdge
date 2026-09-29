@@ -40,6 +40,8 @@ namespace ExcavatorControls.Tests
                 while (!(bool)ready.GetValue(site) && Time.realtimeSinceStartup < deadline)
                     yield return null;
                 Assert.That((bool)ready.GetValue(site), Is.True, status.GetValue(site).ToString());
+                var liveSoil = (DeformableSoilTerrain)site.GetType().GetField("soil").GetValue(site);
+                Debug.Log("[ZX200 BAKE TEST] live " + DescribeLayers(liveSoil.Terrain.terrainData));
                 Type baker = AppDomain.CurrentDomain.GetAssemblies()
                     .Select(assembly => assembly.GetType("ConstructionSiteBaker"))
                     .First(type => type != null);
@@ -51,6 +53,12 @@ namespace ExcavatorControls.Tests
                 Assert.That(assetPath, Does.StartWith("Assets/ConstructionSite/Baked/SenceTest/"));
                 TerrainData terrain = (TerrainData)data.GetType().GetField("terrainData").GetValue(data);
                 Assert.That(AssetDatabase.Contains(terrain), Is.True);
+                Debug.Log("[ZX200 BAKE TEST] saved " + DescribeLayers(terrain));
+                float[] savedLayerMaxima = GetLayerMaximums(terrain);
+                Assert.That(savedLayerMaxima[0], Is.InRange(.3f, .45f),
+                    "The persistent TerrainData must keep the warm soil blend after its TerrainLayers are embedded.");
+                Assert.That(savedLayerMaxima[1], Is.GreaterThan(.9f),
+                    "The persistent TerrainData must retain Cesium imagery coverage.");
                 double volume = (double)data.GetType().GetField("initialSoilVolumeM3").GetValue(data);
                 Assert.That(volume, Is.GreaterThan(0));
                 Debug.Log($"[ZX200 BAKE TEST] asset={assetPath}, initial soil={volume:F3}m³");
@@ -59,6 +67,24 @@ namespace ExcavatorControls.Tests
             {
                 if (scene.IsValid()) SceneManager.UnloadSceneAsync(scene);
             }
+        }
+
+        private static string DescribeLayers(TerrainData terrain)
+        {
+            float[] maximum = GetLayerMaximums(terrain);
+            string layerNames = string.Join(" / ", System.Array.ConvertAll(terrain.terrainLayers, layer => layer != null ? layer.name : "<null>"));
+            return $"layers={layerNames}, resolution={terrain.alphamapResolution}, max={string.Join(",", maximum)}";
+        }
+
+        private static float[] GetLayerMaximums(TerrainData terrain)
+        {
+            float[,,] weights = terrain.GetAlphamaps(0, 0, terrain.alphamapResolution, terrain.alphamapResolution);
+            var maximum = new float[weights.GetLength(2)];
+            for (int z = 0; z < weights.GetLength(0); z++)
+                for (int x = 0; x < weights.GetLength(1); x++)
+                    for (int layer = 0; layer < maximum.Length; layer++)
+                        maximum[layer] = Mathf.Max(maximum[layer], weights[z, x, layer]);
+            return maximum;
         }
     }
 }

@@ -187,12 +187,12 @@ PrefabInstance:
       value: 1.8954
       objectReference: {fileID: 0}
     - target: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0.28248
-      objectReference: {fileID: 0}
-    - target: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.w
       value: 0.95927
+      objectReference: {fileID: 0}
+    - target: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.28248
       objectReference: {fileID: 0}
     - target: {fileID: 2267995629348204275, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
@@ -332,31 +332,31 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.7651795
+      value: 0.7714885
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.026129961
+      value: -0.12481809
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -1.8486625
+      value: -1.8682798
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.9999875
+      value: 0.9984805
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.x
-      value: -0.0049760784
+      value: 0.052482042
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.00035880506
+      value: 0.0032196343
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0.00040278555
+      value: 0.016490357
       objectReference: {fileID: 0}
     - target: {fileID: 6884757412742726499, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: counterweightMass
@@ -467,6 +467,10 @@ MonoBehaviour:
   maximumPenetration: 0.18
   contactMargin: 0.03
   cuttingSpeedDegrees: 18
+  floorBrakingLookAheadSeconds: 0.22
+  floorBrakingResponseSeconds: 0.1
+  maximumFloorBrakingSpeedMps: 1.5
+  floorBrakingCurlSpeedScale: 0.5
   specificResistancePa: 10000
   soilUnitWeightNPerM3: 17000
   cohesionPa: 3500
@@ -521,31 +525,31 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 452e1db841098bcc68a9d8997c728b23, type: 2}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 286.99207
+      value: 286.98514
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -2.7703915
+      value: -2.7595584
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 353.48264
+      value: 353.46887
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.55557024
+      value: 0.5548853
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 3.2267256e-14
+      value: 0.023872202
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.8314696
+      value: 0.8314316
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.z
-      value: 2.1560292e-14
+      value: 0.01593196
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -1064,9 +1068,9 @@ MonoBehaviour:
   machine: {fileID: 10072338}
   truck: {fileID: 91113228}
   siteMode: 0
-  bakedSite: {fileID: 11400000, guid: 203be0d0e456a44309b8f7f6812e0c4a, type: 2}
+  bakedSite: {fileID: 11400000, guid: abd9d4fea0b64e9f4b6a7c9dfea4d119, type: 2}
   mapName: osgb_small_005_004
-  replacementAreaSize: {x: 28, y: 28}
+  replacementAreaSize: {x: 30, y: 30}
   useExplicitWorkFaceAnchor: 0
   workFaceAnchor: {x: 281.0765, y: 0, z: 359.2318}
   usePrepositionedEquipment: 1
@@ -1078,9 +1082,9 @@ MonoBehaviour:
   minimumBenchDropMeters: 2
   minimumSurfaceNormalY: 0.55
   minimumReadyTipClearanceMeters: 0.6
-  soilStripHalfWidth: 6
-  soilStripCenterLocalZ: 9.1
-  soilStripHalfDepth: 2
+  soilStripHalfWidth: 12.5
+  soilStripCenterLocalZ: 6.5
+  soilStripHalfDepth: 4
   soilStripHeight: 0.55
   truckParkingOffsetLocal: {x: 6.9, y: 0, z: -1.2}
   truckParkingYawDegrees: 90
@@ -1353,7 +1357,7 @@ Transform:
   m_GameObject: {fileID: 1186474629}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 267.0765, y: -3.3733237, z: 343.2318}
+  m_LocalPosition: {x: 266.07294, y: -3.376839, z: 342.22272}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1375,6 +1379,7 @@ MonoBehaviour:
   floorHeight: 0.05
   maximumCutDepth: 0.55
   minimumCutDepth: 0.015
+  deferAutomaticInitialization: 0
 --- !u!154 &1186474632
 TerrainCollider:
   m_ObjectHideFlags: 0
@@ -1393,7 +1398,7 @@ TerrainCollider:
   m_ProvidesContacts: 0
   m_Enabled: 0
   serializedVersion: 2
-  m_TerrainData: {fileID: -5229329866076210426, guid: 203be0d0e456a44309b8f7f6812e0c4a, type: 2}
+  m_TerrainData: {fileID: 15600000, guid: 87da01a8222e69459a4f7b74c8021c4a, type: 2}
   m_EnableTreeColliders: 1
 --- !u!218 &1186474633
 Terrain:
@@ -1404,7 +1409,7 @@ Terrain:
   m_GameObject: {fileID: 1186474629}
   m_Enabled: 1
   serializedVersion: 6
-  m_TerrainData: {fileID: -5229329866076210426, guid: 203be0d0e456a44309b8f7f6812e0c4a, type: 2}
+  m_TerrainData: {fileID: 15600000, guid: 87da01a8222e69459a4f7b74c8021c4a, type: 2}
   m_TreeDistance: 5000
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
@@ -1638,8 +1643,12 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: WebDelivery.Runtime::ConstructionSiteMapClip
   workArea:
-    m_Center: {x: 281.0765, y: 1.6937473, z: 357.2318}
-    m_Extent: {x: 14, y: 5.067071, z: 14}
+    m_Center: {x: 283.56287, y: 1.7386378, z: 363.2153}
+    m_Extent: {x: 13.0755005, y: 5.1154766, z: 8.483948}
+  useOrientedWorkArea: 1
+  workAreaCenter: {x: 283.56287, y: -3.194383, z: 363.2153}
+  workAreaRotation: {x: 0.028145794, y: 0.19554773, z: -0.005614599, w: 0.98027414}
+  workAreaSize: {x: 25, y: 8}
 --- !u!1 &1633613320
 GameObject:
   m_ObjectHideFlags: 0

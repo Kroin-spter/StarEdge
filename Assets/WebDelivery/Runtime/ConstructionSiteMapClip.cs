@@ -10,8 +10,12 @@ using UnityEngine.Rendering;
 [ExecuteAlways]
 public sealed class ConstructionSiteMapClip : MonoBehaviour
 {
-    [Tooltip("World-space replacement footprint. Only the part of each map triangle inside this rectangle is removed.")]
+    [Tooltip("World-space broad-phase bounds for the slope-only Cesium replacement footprint.")]
     public Bounds workArea = new Bounds(Vector3.zero, new Vector3(20, 200, 20));
+    public bool useOrientedWorkArea;
+    public Vector3 workAreaCenter;
+    public Quaternion workAreaRotation = Quaternion.identity;
+    public Vector2 workAreaSize;
 
     private Cesium3DTileset tileset;
     private readonly List<Replacement> replacements = new List<Replacement>();
@@ -44,13 +48,13 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
 
     private struct ClipPlane
     {
-        internal bool useX;
+        internal Vector2 normal;
         internal float boundary;
         internal bool keepGreater;
 
-        internal ClipPlane(bool useX, float boundary, bool keepGreater)
+        internal ClipPlane(Vector2 normal, float boundary, bool keepGreater)
         {
-            this.useX = useX;
+            this.normal = normal;
             this.boundary = boundary;
             this.keepGreater = keepGreater;
         }
@@ -183,10 +187,40 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
         if (!Application.isPlaying && moundSite.bakedSite != null && moundSite.bakedSite.terrainData != null)
         {
             BakedConstructionSiteData baked = moundSite.bakedSite;
-            Vector3 size = baked.terrainData.size;
-            return new Bounds(baked.terrainOrigin + size * .5f, size);
+            if (baked.workFaceSize.x <= 0f || baked.workFaceSize.y <= 0f)
+            {
+                useOrientedWorkArea = false;
+                return workArea;
+            }
+            SetWorkFaceFootprint(baked.workFaceCenter, baked.workFaceRotation, baked.workFaceSize,
+                baked.terrainOrigin.y, baked.terrainOrigin.y + baked.terrainData.size.y);
+            return workArea;
+        }
+        if (moundSite != null && moundSite.MapSurfacePrepared)
+        {
+            Terrain terrain = moundSite.soil.GetComponent<Terrain>();
+            float minimumY = terrain.transform.position.y;
+            SetWorkFaceFootprint(moundSite.WorkFaceCenter, moundSite.WorkFaceRotation,
+                moundSite.WorkFaceSize, minimumY, minimumY + terrain.terrainData.size.y);
+            return workArea;
         }
         return moundSite.WorkAreaBounds;
+    }
+
+    /// <summary>Set the oriented slope-only footprint used to clip both Cesium rendering and collision.</summary>
+    /// <param name="center">World-space center of the cuttable slope face.</param>
+    /// <param name="rotation">World orientation whose horizontal axes define the face.</param>
+    /// <param name="size">Face width along local X and depth along local Z, in metres.</param>
+    /// <param name="minimumY">Bottom of the replacement Terrain's vertical range.</param>
+    /// <param name="maximumY">Top of the replacement Terrain's vertical range.</param>
+    public void SetWorkFaceFootprint(Vector3 center, Quaternion rotation, Vector2 size,
+        float minimumY, float maximumY)
+    {
+        workAreaCenter = center;
+        workAreaRotation = rotation;
+        workAreaSize = size;
+        useOrientedWorkArea = true;
+        workArea = ConstructionSiteFootprint.CalculateBounds(center, rotation, size, minimumY, maximumY);
     }
 
     private Mesh CreateClippedMesh(Mesh source, Transform meshTransform)
@@ -319,13 +353,32 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
         return result;
     }
 
-    private ClipPlane[] GetWorkAreaPlanes() => new[]
+    private ClipPlane[] GetWorkAreaPlanes()
     {
-        new ClipPlane(true, workArea.min.x, true),
-        new ClipPlane(true, workArea.max.x, false),
-        new ClipPlane(false, workArea.min.z, true),
-        new ClipPlane(false, workArea.max.z, false)
-    };
+        if (!useOrientedWorkArea)
+            return new[]
+            {
+                new ClipPlane(Vector2.right, workArea.min.x, true),
+                new ClipPlane(Vector2.right, workArea.max.x, false),
+                new ClipPlane(Vector2.up, workArea.min.z, true),
+                new ClipPlane(Vector2.up, workArea.max.z, false)
+            };
+
+        Quaternion horizontalRotation = ConstructionSiteFootprint.GetHorizontalRotation(workAreaRotation);
+        Vector3 right = horizontalRotation * Vector3.right;
+        Vector3 forward = horizontalRotation * Vector3.forward;
+        Vector2 rightNormal = new Vector2(right.x, right.z);
+        Vector2 forwardNormal = new Vector2(forward.x, forward.z);
+        float rightCenter = Vector2.Dot(new Vector2(workAreaCenter.x, workAreaCenter.z), rightNormal);
+        float forwardCenter = Vector2.Dot(new Vector2(workAreaCenter.x, workAreaCenter.z), forwardNormal);
+        return new[]
+        {
+            new ClipPlane(rightNormal, rightCenter - workAreaSize.x * .5f, true),
+            new ClipPlane(rightNormal, rightCenter + workAreaSize.x * .5f, false),
+            new ClipPlane(forwardNormal, forwardCenter - workAreaSize.y * .5f, true),
+            new ClipPlane(forwardNormal, forwardCenter + workAreaSize.y * .5f, false)
+        };
+    }
 
     private static List<ClipVertex> ClipPolygon(List<ClipVertex> polygon, ClipPlane plane, bool keepGreater)
     {
@@ -362,7 +415,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
     private static bool IsInside(float distance, bool keepGreater) => keepGreater ? distance >= 0f : distance <= 0f;
 
     private static float PlaneDistance(Vector3 point, ClipPlane plane) =>
-        (plane.useX ? point.x : point.z) - plane.boundary;
+        point.x * plane.normal.x + point.z * plane.normal.y - plane.boundary;
 
     private static void AddDistinct(List<ClipVertex> vertices, ClipVertex candidate)
     {

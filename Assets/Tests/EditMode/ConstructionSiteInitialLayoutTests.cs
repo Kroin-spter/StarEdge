@@ -27,7 +27,21 @@ namespace ExcavatorControls.Tests
 
                 Transform trackBase = keyboard.articulationRoot.transform;
                 AssertPosition(trackBase.position, site.bakedSite.machinePosition, "excavator track base");
-                Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.1f));
+                Assert.That(Quaternion.Angle(trackBase.rotation, site.bakedSite.machineRotation), Is.LessThan(.1f));
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.6f));
+                ConstructionSiteMapClip clip = behaviours.OfType<ConstructionSiteMapClip>().SingleOrDefault();
+                Assert.That(clip, Is.Not.Null, "The editor and runtime must share one map clipping boundary.");
+                Bounds slopeReplacement = clip.workArea;
+                Assert.That(clip.useOrientedWorkArea, Is.True,
+                    "Cesium clipping must follow the slope face orientation, not a large axis-aligned square.");
+                Assert.That(ConstructionSiteFootprint.ContainsHorizontal(trackBase.position, clip.workAreaCenter,
+                    clip.workAreaRotation, clip.workAreaSize), Is.False,
+                    "The cuttable replacement must be confined to the slope, not replace the excavator support ground.");
+                Assert.That(ConstructionSiteFootprint.ContainsHorizontal(site.truck.position, clip.workAreaCenter,
+                    clip.workAreaRotation, clip.workAreaSize), Is.False,
+                    "The dump truck must remain supported by the original Cesium ground.");
+                Assert.That(slopeReplacement.size.x, Is.LessThan(30f));
+                Assert.That(slopeReplacement.size.z, Is.LessThan(30f));
                 Assert.That(Vector2.Distance(new Vector2(trackBase.position.x, trackBase.position.z),
                     new Vector2(281.0765f, 359.2318f)), Is.LessThan(3f));
                 Assert.That(site.useExplicitWorkFaceAnchor, Is.False,
@@ -44,17 +58,36 @@ namespace ExcavatorControls.Tests
                     "The cut approach must not lift the boom to the old high -60 degree pose.");
                 Assert.That(site.truckParkingOffsetLocal.x, Is.LessThanOrEqualTo(6.9f),
                     "The truck should park closer to the excavator while keeping its side clearance.");
-                Assert.That(site.soilStripHalfWidth, Is.EqualTo(6f).Within(.01f));
-                Assert.That(site.soilStripHalfDepth, Is.EqualTo(2f).Within(.01f));
+                Assert.That(site.soilStripHalfWidth, Is.EqualTo(12.5f).Within(.01f));
+                Assert.That(site.soilStripCenterLocalZ, Is.EqualTo(6.5f).Within(.01f),
+                    "The cuttable soil should be centered across the complete slope face, not only near its crest.");
+                Assert.That(site.soilStripHalfDepth, Is.EqualTo(4f).Within(.01f));
                 AssertPosition(site.truck.position, site.bakedSite.truckPosition, "dump truck");
-                Assert.That(Mathf.Abs(Mathf.DeltaAngle(site.truck.eulerAngles.y, 112.5f)), Is.LessThan(.1f));
+                Assert.That(Quaternion.Angle(site.truck.rotation, site.bakedSite.truckRotation), Is.LessThan(.1f));
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(site.truck.eulerAngles.y, 112.5f)), Is.LessThan(.6f));
                 Terrain terrain = site.soil.GetComponent<Terrain>();
                 Assert.That(terrain.enabled, Is.True, "The baked slope must be visible before Play.");
                 Assert.That(terrain.terrainData, Is.SameAs(site.bakedSite.terrainData));
-                ConstructionSiteMapClip clip = behaviours.OfType<ConstructionSiteMapClip>().SingleOrDefault();
-                Assert.That(clip, Is.Not.Null, "The editor and runtime must share one map clipping boundary.");
-                Assert.That(clip.workArea.center.x, Is.EqualTo(site.bakedSite.terrainOrigin.x +
-                    site.bakedSite.terrainData.size.x * .5f).Within(.01f));
+                TerrainLayer[] layers = terrain.terrainData.terrainLayers;
+                Assert.That(layers.Length, Is.GreaterThanOrEqualTo(2),
+                    "The baked slope must retain its Cesium imagery layer instead of rendering as a solid brown Terrain.");
+                Assert.That(layers[1].diffuseTexture, Is.Not.Null,
+                    "The Cesium imagery texture must be embedded with the static construction-site asset.");
+                float[,,] surfaceWeights = terrain.terrainData.GetAlphamaps(0, 0,
+                    terrain.terrainData.alphamapResolution, terrain.terrainData.alphamapResolution);
+                float maximumSolidSoilWeight = 0f;
+                float maximumMapWeight = 0f;
+                for (int z = 0; z < surfaceWeights.GetLength(0); z++)
+                    for (int x = 0; x < surfaceWeights.GetLength(1); x++)
+                    {
+                        maximumSolidSoilWeight = Mathf.Max(maximumSolidSoilWeight, surfaceWeights[z, x, 0]);
+                        maximumMapWeight = Mathf.Max(maximumMapWeight, surfaceWeights[z, x, 1]);
+                    }
+                Assert.That(maximumSolidSoilWeight, Is.InRange(.3f, .45f),
+                    "Keep most Cesium aerial detail in the soil blend so the slope colour matches the surrounding map.");
+                Bounds expectedWorkArea = site.bakedSite.GetWorkFaceBounds();
+                Assert.That(Vector3.Distance(clip.workArea.center, expectedWorkArea.center), Is.LessThan(.01f));
+                Assert.That(Vector3.Distance(clip.workArea.size, expectedWorkArea.size), Is.LessThan(.01f));
                 SoilReceivingZone receiver = site.truck.GetComponentInChildren<SoilReceivingZone>();
                 BoxCollider bedFloor = site.truck.GetComponentsInChildren<BoxCollider>()
                     .Single(collider => collider.name == "Bed floor");
@@ -74,5 +107,6 @@ namespace ExcavatorControls.Tests
             Assert.That(Vector3.Distance(actual, expected), Is.LessThan(.05f),
                 $"{subject} must be authored on the lower bench before Play; actual={actual}, expected={expected}");
         }
+
     }
 }

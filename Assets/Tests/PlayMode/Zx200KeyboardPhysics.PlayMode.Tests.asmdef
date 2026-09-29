@@ -3,6 +3,8 @@
   "rootNamespace": "ExcavatorControls.Tests",
   "references": [
     "ExcavatorControls",
+    "WebDelivery.Runtime",
+    "CesiumForUnity",
     "UnityEngine.TestRunner"
   ],
   "includePlatforms": [],

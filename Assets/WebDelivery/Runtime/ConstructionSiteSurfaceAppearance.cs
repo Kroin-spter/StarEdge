@@ -4,6 +4,8 @@ using UnityEngine;
 /// <summary>Projects loaded Cesium imagery onto a local excavatable Terrain without adding collisions.</summary>
 public sealed class ConstructionSiteSurfaceAppearance : MonoBehaviour
 {
+    private const float MaximumSlopeSoilBlend = .38f;
+    private const float MinimumMapImageCoverage = .75f;
     private Texture2D image;
     private TerrainLayer layer;
     private Material material;
@@ -92,7 +94,9 @@ public sealed class ConstructionSiteSurfaceAppearance : MonoBehaviour
             float soilWeight;
             if (soilBandMask != null)
             {
-                soilWeight = SampleMask(soilBandMask, x / (n - 1f), z / (n - 1f));
+                // Keep the sampled Cesium imagery dominant so excavated soil follows the site's
+                // aerial colour and texture instead of becoming a featureless brown slab.
+                soilWeight = SampleMask(soilBandMask, x / (n - 1f), z / (n - 1f)) * MaximumSlopeSoilBlend;
             }
             else
             {
@@ -161,8 +165,14 @@ public sealed class ConstructionSiteSurfaceAppearance : MonoBehaviour
             { name = "Worksite captured Cesium surface", wrapMode = TextureWrapMode.Clamp };
             candidate.ReadPixels(new Rect(0, 0, 512, 512), 0, 0);
             candidate.Apply();
-            foreach (Color32 pixel in candidate.GetPixels32())
-                if (pixel.r > 240 && pixel.b > 240 && pixel.g < 20) return false;
+            Color32[] pixels = candidate.GetPixels32();
+            if (!FillUncoveredPixels(pixels, out float coverage) || coverage < MinimumMapImageCoverage)
+            {
+                Debug.LogWarning($"坡面影像覆盖率不足，已捕获 {coverage:P0}；拒绝保存纯棕色替代面。", this);
+                return false;
+            }
+            candidate.SetPixels32(pixels);
+            candidate.Apply(true, false);
             captured = candidate;
             candidate = null;
             return true;
@@ -176,6 +186,45 @@ public sealed class ConstructionSiteSurfaceAppearance : MonoBehaviour
             target.Release();
             Destroy(target);
             if (candidate != null) Destroy(candidate);
+        }
+    }
+
+    private static bool FillUncoveredPixels(Color32[] pixels, out float coverage)
+    {
+        int[] nearestSource = new int[pixels.Length];
+        int[] queue = new int[pixels.Length];
+        int tail = 0;
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            Color32 pixel = pixels[i];
+            bool uncovered = pixel.r > 240 && pixel.b > 240 && pixel.g < 20;
+            nearestSource[i] = uncovered ? -1 : i;
+            if (!uncovered) queue[tail++] = i;
+        }
+
+        coverage = tail / (float)pixels.Length;
+        if (tail == 0) return false;
+
+        // Flood valid pixels outward so small gaps at Cesium tile edges inherit their nearest map colour.
+        int head = 0;
+        while (head < tail)
+        {
+            int current = queue[head++];
+            int x = current % 512;
+            if (x > 0) Fill(current - 1, current);
+            if (x < 511) Fill(current + 1, current);
+            if (current >= 512) Fill(current - 512, current);
+            if (current < pixels.Length - 512) Fill(current + 512, current);
+        }
+        for (int i = 0; i < pixels.Length; i++)
+            if (nearestSource[i] != i) pixels[i] = pixels[nearestSource[i]];
+        return true;
+
+        void Fill(int destination, int source)
+        {
+            if (nearestSource[destination] >= 0) return;
+            nearestSource[destination] = nearestSource[source];
+            queue[tail++] = destination;
         }
     }
 

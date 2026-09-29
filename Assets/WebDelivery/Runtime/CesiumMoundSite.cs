@@ -83,15 +83,46 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public float SelectedSurfaceNormalY { get; private set; }
     /// <summary>Number of frame yields used while sampling the Cesium work area.</summary>
     public int SurveyFrameYieldCount { get; private set; }
-    /// <summary>World-space footprint where the authored terrain replaces Cesium rendering and collision.</summary>
+    /// <summary>World-space center of the face-only cuttable replacement.</summary>
+    public Vector3 WorkFaceCenter => siteMode == SitePreparationMode.Baked && bakedSite != null
+        ? bakedSite.workFaceCenter
+        : selectedRootPosition + selectedRootRotation * new Vector3(0f, 0f, soilStripCenterLocalZ);
+    /// <summary>World orientation of the cuttable slope face.</summary>
+    public Quaternion WorkFaceRotation => siteMode == SitePreparationMode.Baked && bakedSite != null
+        ? bakedSite.workFaceRotation : selectedRootRotation;
+    /// <summary>Width and depth of the cuttable slope face, in metres.</summary>
+    public Vector2 WorkFaceSize => siteMode == SitePreparationMode.Baked && bakedSite != null
+        ? bakedSite.workFaceSize : new Vector2(soilStripHalfWidth * 2f, soilStripHalfDepth * 2f);
+    /// <summary>World-axis-aligned bounds of the face-only Cesium replacement and its Terrain height range.</summary>
     public Bounds WorkAreaBounds
     {
         get
         {
-            if (soil == null || soil.Terrain == null || soil.Terrain.terrainData == null) return default;
-            Vector3 size = soil.Terrain.terrainData.size;
-            return new Bounds(soil.transform.position + size * .5f, size);
+            if (siteMode == SitePreparationMode.Baked && bakedSite != null && bakedSite.terrainData != null)
+                return bakedSite.GetWorkFaceBounds();
+            Terrain terrain = soil != null ? soil.GetComponent<Terrain>() : null;
+            if (terrain == null || terrain.terrainData == null) return default;
+            Vector3 size = terrain.terrainData.size;
+            Vector2 faceSize = WorkFaceSize;
+            Quaternion faceRotation = WorkFaceRotation;
+            Vector3 faceCenter = WorkFaceCenter;
+            if (!float.IsFinite(faceSize.x) || !float.IsFinite(faceSize.y) || faceSize.x <= 0f || faceSize.y <= 0f ||
+                !float.IsFinite(faceRotation.x) || !float.IsFinite(faceRotation.y) ||
+                !float.IsFinite(faceRotation.z) || !float.IsFinite(faceRotation.w) ||
+                Quaternion.Dot(faceRotation, faceRotation) < .9f ||
+                !float.IsFinite(faceCenter.x) || !float.IsFinite(faceCenter.y) || !float.IsFinite(faceCenter.z))
+                return new Bounds(terrain.transform.position + size * .5f, size);
+            return ConstructionSiteFootprint.CalculateBounds(faceCenter, faceRotation, faceSize,
+                terrain.transform.position.y, terrain.transform.position.y + size.y);
         }
+    }
+
+    private void ConfigureMapClip(ConstructionSiteMapClip clip)
+    {
+        Terrain terrain = soil.GetComponent<Terrain>();
+        float minimumY = terrain.transform.position.y;
+        float maximumY = minimumY + terrain.terrainData.size.y;
+        clip.SetWorkFaceFootprint(WorkFaceCenter, WorkFaceRotation, WorkFaceSize, minimumY, maximumY);
     }
     private Zx200KeyboardController keyboard;
     private ArticulationBody root;
@@ -107,7 +138,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
     private float selectedSupportY;
     private float selectedTruckGroundY;
     private Vector3 selectedRootPosition;
-    private Quaternion selectedRootRotation;
+    private Quaternion selectedRootRotation = Quaternion.identity;
     private Vector3 selectedFaceDirection;
     private float selectedFaceRise;
     private string candidateDiagnostics = string.Empty;
@@ -131,11 +162,16 @@ public sealed class CesiumMoundSite : MonoBehaviour
             enabled = false;
             return;
         }
+        soil.deferAutomaticInitialization = true;
         ResolveTilesetUrl();
         keyboard = machine.GetComponent<Zx200KeyboardController>();
         keyboard.ResolveArticulationRoot(); root = keyboard.articulationRoot;
         originalRootPosition = root.transform.position;
-        if (siteMode == SitePreparationMode.DynamicDeveloper) InstallSurveyCamera();
+        if (siteMode == SitePreparationMode.DynamicDeveloper)
+        {
+            InstallSurveyCamera();
+            soil.InitializeForConstructionSite(soil.GetComponent<Terrain>());
+        }
         else if (bakedSite != null && bakedSite.terrainData != null)
         {
             soil.GetComponent<Terrain>().terrainData = bakedSite.terrainData;
@@ -312,7 +348,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
                     MapSurfacePrepared = true;
                     ConstructionSiteMapClip clip = tileset.GetComponent<ConstructionSiteMapClip>();
                     if (clip == null) clip = tileset.gameObject.AddComponent<ConstructionSiteMapClip>();
-                    clip.workArea = WorkAreaBounds;
+                    ConfigureMapClip(clip);
                     clip.RefreshLoadedTiles();
                     Physics.SyncTransforms();
 
@@ -413,7 +449,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
             MapSurfacePrepared = true;
             ConstructionSiteMapClip clip = tileset.GetComponent<ConstructionSiteMapClip>();
             if (clip == null) clip = tileset.gameObject.AddComponent<ConstructionSiteMapClip>();
-            clip.workArea = WorkAreaBounds;
+            ConfigureMapClip(clip);
             clip.RefreshLoadedTiles();
             soil.GetComponent<Terrain>().enabled = true;
             soil.SoilCollider.enabled = true;
@@ -476,6 +512,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
         target.machineRotation = root.transform.rotation;
         target.truckPosition = truck.position;
         target.truckRotation = truck.rotation;
+        target.workFaceCenter = WorkFaceCenter;
+        target.workFaceRotation = WorkFaceRotation;
+        target.workFaceSize = WorkFaceSize;
         target.originalSupportY = originalSupportY;
         target.selectedSupportY = selectedSupportY;
         target.selectedTruckGroundY = selectedTruckGroundY;
@@ -644,8 +683,6 @@ public sealed class CesiumMoundSite : MonoBehaviour
             }
         }
 
-        ApplyBenchSupportPads(baseGround, origin, size, candidate.rootXZ, candidate.direction,
-            candidate.supportY, candidate.truckGroundY);
         if (!MeasurePreparedSupport(baseGround, origin, size, candidate.rootXZ, candidate.direction,
             out selectedSupportY, out selectedTruckGroundY, out string supportFailure))
         {
@@ -724,11 +761,14 @@ public sealed class CesiumMoundSite : MonoBehaviour
             }
         }
         soil.PrepareMoundSurface(heights, ground);
+        Vector3 workFaceCenter = selectedRootPosition + selectedRootRotation *
+            new Vector3(0f, 0f, soilStripCenterLocalZ);
+        Vector2 workFaceSize = new Vector2(soilStripHalfWidth * 2f, soilStripHalfDepth * 2f);
         int holesResolution = data.holesResolution;
-        var solidCells = new bool[holesResolution, holesResolution];
+        bool[,] holes = ConstructionSiteFootprint.BuildTerrainHoles(holesResolution,
+            origin, size, workFaceCenter, selectedRootRotation, workFaceSize);
         for (int z = 0; z < holesResolution; z++)
         {
-            for (int x = 0; x < holesResolution; x++) solidCells[z, x] = true;
             if ((z + 1) % 8 == 0)
             {
                 SurveyFrameYieldCount++;
@@ -741,7 +781,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
                 }
             }
         }
-        data.SetHoles(0, 0, solidCells);
+        data.SetHoles(0, 0, holes);
         if (MapChangedSinceSearch())
         {
             workFaceCoverageIncomplete = true;
@@ -750,10 +790,20 @@ public sealed class CesiumMoundSite : MonoBehaviour
         }
         ConstructionSiteSurfaceAppearance appearance = GetComponent<ConstructionSiteSurfaceAppearance>();
         if (appearance == null) appearance = gameObject.AddComponent<ConstructionSiteSurfaceAppearance>();
-        if (!appearance.ApplySlopeBand(tileset.gameObject, soil, WorkAreaBounds, stripMask))
-            Debug.Log("Cesium map image unavailable for slope texture; retaining the existing soil TerrainLayer.", this);
+        Bounds workFaceBounds = ConstructionSiteFootprint.CalculateBounds(workFaceCenter,
+            selectedRootRotation, workFaceSize, origin.y, origin.y + size.y);
+        if (!appearance.ApplySlopeBand(tileset.gameObject, soil, workFaceBounds, stripMask))
+        {
+            if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+            {
+                Status = "无法捕获坡面范围内的 Cesium 影像；保留原地图和设备位置，请检查图形渲染后重试。";
+                Debug.LogWarning(Status, this);
+                yield break;
+            }
+            Debug.Log("无图形设备：跳过仅供自动化仿真的 Cesium 坡面影像采集；交付烘焙必须在图形模式完成。", this);
+        }
         preparedSoilMask = (float[,])stripMask.Clone();
-        Status = "坡脚、坡面和矿车支撑均已通过验证，贴坡土带已生成。";
+        Status = "完整坡面土层已生成；挖掘机与矿车支撑面保留原 Cesium 地图。";
         moundPreparationSucceeded = true;
     }
 
@@ -929,44 +979,6 @@ public sealed class CesiumMoundSite : MonoBehaviour
         float truckSpread = truckY - truckMinimum;
         failure = truckSpread <= .5f ? string.Empty : $"矿车地面高差 {truckSpread:F2}m 超过0.50m";
         return truckSpread <= .5f;
-    }
-
-    private void ApplyBenchSupportPads(float[,] ground, Vector3 origin, Vector3 size,
-        Vector2 rootXZ, Vector3 direction, float machineY, float truckY)
-    {
-        Quaternion machineRotation = Quaternion.LookRotation(direction, Vector3.up);
-        Vector3 machineCenter = new Vector3(rootXZ.x, 0, rootXZ.y);
-        Quaternion truckRotation = machineRotation * Quaternion.Euler(0, truckParkingYawDegrees, 0);
-        Vector3 truckCenter = machineCenter + machineRotation * truckParkingOffsetLocal +
-            truckRotation * new Vector3(0, 0, .95f);
-        Quaternion inverseTruckRotation = Quaternion.Inverse(truckRotation);
-        for (int z = 0; z < ground.GetLength(0); z++)
-        for (int x = 0; x < ground.GetLength(1); x++)
-        {
-            Vector3 point = origin + new Vector3(size.x * x / (ground.GetLength(1) - 1f), 0,
-                size.z * z / (ground.GetLength(0) - 1f));
-            Vector3 machineLocal = Quaternion.Inverse(machineRotation) * (point - machineCenter);
-            Vector3 truckLocal = inverseTruckRotation * (point - truckCenter);
-            float machineMask = FlatSupportMask(machineLocal.x, machineLocal.z, 2.3f, 2.8f, .8f);
-            float truckMask = FlatSupportMask(truckLocal.x, truckLocal.z, 1.6f, 2.3f, .65f);
-            float mask = Mathf.Max(machineMask, truckMask);
-            if (mask <= 0f) continue;
-            float target = machineMask >= truckMask ? machineY : truckY;
-            ground[z, x] = BlendSupportHeightWithoutLowering(ground[z, x], target, mask);
-        }
-    }
-
-    private static float BlendSupportHeightWithoutLowering(float sampledHeight, float supportTarget, float blend)
-    {
-        float raisedTarget = Mathf.Max(sampledHeight, supportTarget);
-        return Mathf.Lerp(sampledHeight, raisedTarget, Mathf.Clamp01(blend));
-    }
-
-    private static float FlatSupportMask(float x, float z, float halfWidth, float halfLength, float blend)
-    {
-        float width = 1f - Smooth01((Mathf.Abs(x) - halfWidth) / blend);
-        float length = 1f - Smooth01((Mathf.Abs(z) - halfLength) / blend);
-        return width * length;
     }
 
     private static bool SamplePreparedHeight(float[,] ground, Vector3 origin, Vector3 size,

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using CesiumForUnity;
 using UnityEditor;
@@ -11,6 +12,7 @@ public static class ConstructionSiteBaker
 {
     private const string ScenePath = "Assets/Scenes/sence_test.unity";
     private const string AssetDirectory = "Assets/ConstructionSite/Baked/SenceTest";
+    private const string CanonicalTerrainPath = AssetDirectory + "/ConstructionSiteTerrain.asset";
 
     [InitializeOnLoadMethod]
     private static void KeepLocalMapUrlsOutOfSavedScenes()
@@ -36,7 +38,7 @@ public static class ConstructionSiteBaker
             }
     }
 
-    /// <summary>Save the fully measured, untouched dynamic site as a portable asset with owned Terrain subassets.</summary>
+    /// <summary>Save the measured untouched work face as portable data plus a standalone Terrain asset.</summary>
     [MenuItem("Tools/Excavator/Construction Site/Bake Ready Dynamic Site")]
     public static void BakeReadyDynamicSite()
     {
@@ -47,8 +49,26 @@ public static class ConstructionSiteBaker
         if (site.siteMode != CesiumMoundSite.SitePreparationMode.DynamicDeveloper || !site.IsReady)
             throw new InvalidOperationException("当前施工区未在动态开发模式就绪，不能烘焙。");
         var data = ScriptableObject.CreateInstance<BakedConstructionSiteData>();
-        TerrainData terrainCopy = UnityEngine.Object.Instantiate(site.soil.Terrain.terrainData);
+        TerrainData sourceTerrain = site.soil.Terrain.terrainData;
+        TerrainData terrainCopy = UnityEngine.Object.Instantiate(sourceTerrain);
         terrainCopy.name = "SenceTest cuttable terrain";
+        int alphaResolution = sourceTerrain.alphamapResolution;
+        float[,,] alphaWeights = sourceTerrain.GetAlphamaps(0, 0, alphaResolution, alphaResolution);
+        TerrainLayer[] sourceLayers = terrainCopy.terrainLayers;
+        var layers = new TerrainLayer[sourceLayers.Length];
+        var terrainSubassets = new System.Collections.Generic.List<UnityEngine.Object>();
+        for (int i = 0; i < sourceLayers.Length; i++)
+        {
+            TerrainLayer sourceLayer = sourceLayers[i];
+            if (sourceLayer == null) throw new InvalidOperationException("TerrainLayer 引用为空，不能烘焙材质。");
+            TerrainLayer layer = UnityEngine.Object.Instantiate(sourceLayer);
+            layer.name = "Site surface " + i;
+            layer.diffuseTexture = CloneTexture(sourceLayer.diffuseTexture, "Site diffuse " + i, terrainSubassets);
+            layer.normalMapTexture = CloneTexture(sourceLayer.normalMapTexture, "Site normal " + i, terrainSubassets);
+            layer.maskMapTexture = CloneTexture(sourceLayer.maskMapTexture, "Site mask " + i, terrainSubassets);
+            layers[i] = layer;
+            terrainSubassets.Add(layer);
+        }
         terrainCopy.SetTreeInstances(Array.Empty<TreeInstance>(), true);
         terrainCopy.treePrototypes = Array.Empty<TreePrototype>();
         terrainCopy.detailPrototypes = Array.Empty<DetailPrototype>();
@@ -61,38 +81,34 @@ public static class ConstructionSiteBaker
         }
 
         string path = null;
+        string terrainPath = null;
         try
         {
             EnsureDirectory(AssetDirectory);
             path = AssetDatabase.GenerateUniqueAssetPath(AssetDirectory + "/ConstructionSite.asset");
+            terrainPath = AssetDatabase.GenerateUniqueAssetPath(
+                AssetDirectory + "/ConstructionSiteTerrain.asset");
+            // Keep temporary TerrainLayer references out of CreateAsset; Unity drops non-asset
+            // layers during serialization. They are reattached after their owned copies are assets.
+            terrainCopy.terrainLayers = Array.Empty<TerrainLayer>();
+            AssetDatabase.CreateAsset(terrainCopy, terrainPath);
             AssetDatabase.CreateAsset(data, path);
-            AssetDatabase.AddObjectToAsset(terrainCopy, data);
-            TerrainLayer[] layers = terrainCopy.terrainLayers;
-            for (int i = 0; i < layers.Length; i++)
-            {
-                TerrainLayer source = layers[i];
-                if (source == null) throw new InvalidOperationException("TerrainLayer 引用为空，不能烘焙材质。");
-                if (AssetDatabase.Contains(source)) continue;
-                TerrainLayer layer = UnityEngine.Object.Instantiate(source);
-                layer.name = "Site surface " + i;
-                AssetDatabase.AddObjectToAsset(layer, data);
-                layer.diffuseTexture = PersistTexture(source.diffuseTexture, data, "Site diffuse " + i);
-                layer.normalMapTexture = PersistTexture(source.normalMapTexture, data, "Site normal " + i);
-                layer.maskMapTexture = PersistTexture(source.maskMapTexture, data, "Site mask " + i);
-                layers[i] = layer;
-            }
+            foreach (UnityEngine.Object subasset in terrainSubassets)
+                AssetDatabase.AddObjectToAsset(subasset, terrainCopy);
             terrainCopy.terrainLayers = layers;
+            // Reassigning TerrainLayers can invalidate Unity 6's native splat database.
+            // Restore the sampled soil/map blend after all persistent layer references are set.
+            terrainCopy.SetAlphamaps(0, 0, alphaWeights);
             if (data.terrainMaterial != null && !AssetDatabase.Contains(data.terrainMaterial))
             {
                 Material material = UnityEngine.Object.Instantiate(data.terrainMaterial);
                 material.name = "Site Terrain material";
-                AssetDatabase.AddObjectToAsset(material, data);
+                AssetDatabase.AddObjectToAsset(material, terrainCopy);
                 data.terrainMaterial = material;
             }
             EditorUtility.SetDirty(terrainCopy);
             EditorUtility.SetDirty(data);
             AssetDatabase.SaveAssets();
-            AssetDatabase.ImportAsset(path);
             Selection.activeObject = data;
             Debug.Log($"施工区已保存到 {path}，初始可切土量 {data.initialSoilVolumeM3:F3}m³。退出 Play 后执行 Apply Selected Baked Site。", data);
         }
@@ -100,10 +116,13 @@ public static class ConstructionSiteBaker
         {
             if (path != null && AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(path) != null)
                 AssetDatabase.DeleteAsset(path);
-            else
+            if (terrainPath != null && AssetDatabase.LoadAssetAtPath<TerrainData>(terrainPath) != null)
+                AssetDatabase.DeleteAsset(terrainPath);
+            if ((path == null || AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(path) == null) &&
+                (terrainPath == null || AssetDatabase.LoadAssetAtPath<TerrainData>(terrainPath) == null))
             {
-                UnityEngine.Object.DestroyImmediate(terrainCopy);
-                UnityEngine.Object.DestroyImmediate(data);
+                if (terrainCopy != null && !AssetDatabase.Contains(terrainCopy)) UnityEngine.Object.DestroyImmediate(terrainCopy);
+                if (data != null && !AssetDatabase.Contains(data)) UnityEngine.Object.DestroyImmediate(data);
             }
             throw;
         }
@@ -144,7 +163,8 @@ public static class ConstructionSiteBaker
         collider.enabled = false; // The baked-site loader enables collision after validating the snapshot.
         ConstructionSiteMapClip clip = site.tileset.GetComponent<ConstructionSiteMapClip>();
         if (clip == null) clip = Undo.AddComponent<ConstructionSiteMapClip>(site.tileset.gameObject);
-        clip.workArea = new Bounds(data.terrainOrigin + data.terrainData.size * .5f, data.terrainData.size);
+        clip.SetWorkFaceFootprint(data.workFaceCenter, data.workFaceRotation, data.workFaceSize,
+            data.terrainOrigin.y, data.terrainOrigin.y + data.terrainData.size.y);
         machineRoot.SetPositionAndRotation(data.machinePosition, data.machineRotation);
         site.truck.SetPositionAndRotation(data.truckPosition, data.truckRotation);
         PrefabUtility.RecordPrefabInstancePropertyModifications(machineRoot);
@@ -178,9 +198,15 @@ public static class ConstructionSiteBaker
         if (!Application.isBatchMode)
             throw new InvalidOperationException("此入口仅供隔离项目的批处理烘焙验收使用。");
         EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-        Selection.activeObject = FindOnlyBakedSite();
+        Selection.activeObject = PromoteCanonicalBakedSite(FindOnlyBakedSite(), out string[] backupPaths);
         ApplySelectedBakedSite();
         ValidateSelectedBakedSite();
+        foreach (string backupPath in backupPaths)
+        {
+            AssetDatabase.DeleteAsset(backupPath);
+        }
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
     }
 
     /// <summary>Remove unused legacy tree prototypes from the already captured local construction patch.</summary>
@@ -199,18 +225,87 @@ public static class ConstructionSiteBaker
 
     private static BakedConstructionSiteData FindOnlyBakedSite()
     {
-        string[] assets = AssetDatabase.FindAssets("t:BakedConstructionSiteData", new[] { AssetDirectory });
-        if (assets.Length != 1)
-            throw new InvalidOperationException($"需要恰好一个已烘焙施工区资源，实际找到 {assets.Length} 个。");
-        return AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(AssetDatabase.GUIDToAssetPath(assets[0]));
+        var assets = AssetDatabase.FindAssets("t:BakedConstructionSiteData", new[] { AssetDirectory })
+            .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
+            .Select(path => new
+            {
+                Path = path,
+                Data = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(path)
+            })
+            .Where(candidate => candidate.Data != null &&
+                !Path.GetFileNameWithoutExtension(candidate.Path).Contains("_previous", StringComparison.Ordinal) &&
+                candidate.Data.formatVersion == BakedConstructionSiteData.CurrentVersion &&
+                candidate.Data.terrainData != null)
+            .OrderByDescending(candidate => File.GetLastWriteTimeUtc(Path.GetFullPath(candidate.Path)))
+            .ToArray();
+        if (assets.Length == 0)
+            throw new InvalidOperationException("没有找到新版已烘焙施工区资源；旧版本不会参与应用，请先重新烘焙。");
+        if (assets.Length > 1)
+            Debug.LogWarning($"发现 {assets.Length} 个新版烘焙文件，将应用最近生成的：{assets[0].Path}。");
+        return assets[0].Data;
     }
 
-    private static Texture2D PersistTexture(Texture2D texture, UnityEngine.Object parent, string name)
+    private static BakedConstructionSiteData PromoteCanonicalBakedSite(BakedConstructionSiteData data,
+        out string[] backupPaths)
     {
-        if (texture == null || AssetDatabase.Contains(texture)) return texture;
+        var backups = new System.Collections.Generic.List<string>();
+        string sourcePath = AssetDatabase.GetAssetPath(data);
+        string sourceTerrainPath = AssetDatabase.GetAssetPath(data.terrainData);
+        string canonicalPath = AssetDirectory + "/ConstructionSite.asset";
+        bool terrainAlreadyCanonical = string.Equals(sourceTerrainPath, CanonicalTerrainPath, StringComparison.Ordinal);
+        if (string.Equals(sourcePath, canonicalPath, StringComparison.Ordinal) &&
+            terrainAlreadyCanonical)
+        {
+            backupPaths = Array.Empty<string>();
+            return data;
+        }
+        if (string.Equals(sourcePath, sourceTerrainPath, StringComparison.Ordinal))
+            throw new InvalidOperationException("新版 TerrainData 必须是独立资源；请重新烘焙后再应用。");
+
+        if (AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(canonicalPath) != null)
+        {
+            string backupDataPath = AssetDatabase.GenerateUniqueAssetPath(AssetDirectory + "/ConstructionSite_previous.asset");
+            string backupError = AssetDatabase.MoveAsset(canonicalPath, backupDataPath);
+            if (!string.IsNullOrEmpty(backupError))
+                throw new InvalidOperationException("无法暂存旧版施工区资源：" + backupError);
+            backups.Add(backupDataPath);
+        }
+        if (!terrainAlreadyCanonical && AssetDatabase.LoadAssetAtPath<TerrainData>(CanonicalTerrainPath) != null)
+        {
+            string backupTerrainPath = AssetDatabase.GenerateUniqueAssetPath(
+                AssetDirectory + "/ConstructionSiteTerrain_previous.asset");
+            string backupError = AssetDatabase.MoveAsset(CanonicalTerrainPath, backupTerrainPath);
+            if (!string.IsNullOrEmpty(backupError))
+                throw new InvalidOperationException("无法暂存旧版独立地形资源：" + backupError);
+            backups.Add(backupTerrainPath);
+        }
+
+        if (!terrainAlreadyCanonical)
+        {
+            string terrainMoveError = AssetDatabase.MoveAsset(sourceTerrainPath, CanonicalTerrainPath);
+            if (!string.IsNullOrEmpty(terrainMoveError))
+                throw new InvalidOperationException("无法将新版 TerrainData 整理为标准路径：" + terrainMoveError);
+        }
+        string moveError = AssetDatabase.MoveAsset(sourcePath, canonicalPath);
+        if (!string.IsNullOrEmpty(moveError))
+            throw new InvalidOperationException("无法将新版施工区资源整理为唯一标准路径：" + moveError);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        BakedConstructionSiteData promoted = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(canonicalPath);
+        if (promoted == null)
+            throw new InvalidOperationException("新版烘焙资源移动后无法重新载入；旧版资源保留在暂存路径中：" +
+                string.Join(", ", backups));
+        backupPaths = backups.ToArray();
+        return promoted;
+    }
+
+    private static Texture2D CloneTexture(Texture2D texture, string name,
+        System.Collections.Generic.List<UnityEngine.Object> terrainSubassets)
+    {
+        if (texture == null) return null;
         Texture2D copy = UnityEngine.Object.Instantiate(texture);
         copy.name = name;
-        AssetDatabase.AddObjectToAsset(copy, parent);
+        terrainSubassets.Add(copy);
         return copy;
     }
 

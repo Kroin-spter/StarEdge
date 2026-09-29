@@ -12,6 +12,9 @@ namespace ExcavatorControls.Tests
         private GameObject ground;
         private GameObject georeferenceRoot;
         private Material terrainMaterial;
+        private Texture2D mapTexture;
+        private TerrainLayer soilLayer;
+        private TerrainLayer mapLayer;
 
         [SetUp]
         public void SetUp()
@@ -21,6 +24,13 @@ namespace ExcavatorControls.Tests
             for (int z = 0; z < 33; z++)
                 for (int x = 0; x < 33; x++) heights[z, x] = .4f;
             terrainData.SetHeights(0, 0, heights);
+            mapTexture = new Texture2D(2, 2);
+            mapTexture.SetPixels(new[] { new Color(.48f, .4f, .31f), new Color(.52f, .44f, .34f),
+                new Color(.45f, .38f, .3f), new Color(.5f, .42f, .33f) });
+            mapTexture.Apply();
+            soilLayer = new TerrainLayer { name = "Test soil" };
+            mapLayer = new TerrainLayer { name = "Test Cesium imagery", diffuseTexture = mapTexture };
+            terrainData.terrainLayers = new[] { soilLayer, mapLayer };
             baked = ScriptableObject.CreateInstance<BakedConstructionSiteData>();
             baked.terrainData = terrainData;
             terrainMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/ConstructionSite/Terrain.mat");
@@ -31,6 +41,9 @@ namespace ExcavatorControls.Tests
             baked.georeferenceLatitude = 43.5;
             baked.georeferenceLongitude = 81.5;
             baked.georeferenceHeight = 1322.8;
+            baked.workFaceCenter = baked.terrainOrigin + new Vector3(2f, 0f, 2f);
+            baked.workFaceRotation = Quaternion.Euler(0f, 25f, 0f);
+            baked.workFaceSize = new Vector2(2f, 2f);
             baked.machineRotation = Quaternion.identity;
             baked.truckRotation = Quaternion.identity;
             baked.groundHeights = new float[33 * 33];
@@ -41,6 +54,9 @@ namespace ExcavatorControls.Tests
                 baked.soilMask[i] = 1f;
             }
             baked.initialSoilVolumeM3 = 6.4;
+            terrainData.SetHoles(0, 0, ConstructionSiteFootprint.BuildTerrainHoles(
+                terrainData.holesResolution, baked.terrainOrigin, terrainData.size,
+                baked.workFaceCenter, baked.workFaceRotation, baked.workFaceSize));
         }
 
         [TearDown]
@@ -50,6 +66,21 @@ namespace ExcavatorControls.Tests
             if (georeferenceRoot != null) Object.DestroyImmediate(georeferenceRoot);
             Object.DestroyImmediate(baked);
             Object.DestroyImmediate(terrainData);
+            Object.DestroyImmediate(soilLayer);
+            Object.DestroyImmediate(mapLayer);
+            Object.DestroyImmediate(mapTexture);
+        }
+
+        [Test]
+        public void WorkFaceBoundsUseTheSlopeFootprintInsteadOfTheFullTerrainPatch()
+        {
+            Bounds bounds = baked.GetWorkFaceBounds();
+            Vector3 machineSupport = baked.workFaceCenter - baked.workFaceRotation * Vector3.forward * 3f;
+
+            Assert.That(ConstructionSiteFootprint.ContainsHorizontal(machineSupport, baked.workFaceCenter,
+                baked.workFaceRotation, baked.workFaceSize), Is.False);
+            Assert.That(bounds.size.x, Is.LessThan(terrainData.size.x));
+            Assert.That(bounds.size.z, Is.LessThan(terrainData.size.z));
         }
 
         [Test]

@@ -10,6 +10,7 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
     [Min(0f)] public float floorHeight = .05f;
     [Min(.01f)] public float maximumCutDepth = .8f;
     [Min(.001f)] public float minimumCutDepth = .015f;
+    [HideInInspector] public bool deferAutomaticInitialization;
     public Terrain Terrain { get; private set; }
     /// <summary>Persistent source TerrainData; the runtime excavation copy is kept separate.</summary>
     public TerrainData SourceTerrainData => source;
@@ -22,24 +23,31 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
 
     private void Start()
     {
-        if (Application.isPlaying) Initialize(GetComponent<Terrain>());
+        if (Application.isPlaying && !deferAutomaticInitialization) Initialize(GetComponent<Terrain>());
     }
 
     /// <summary>克隆指定地形数据并绑定碰撞体；重复初始化同一地形无副作用。</summary>
     /// <param name="terrain">本物体的无旋转、单位缩放Terrain；源数据永不改写。</param>
     public void Initialize(Terrain terrain)
     {
-        InitializeCore(terrain, false);
+        InitializeCore(terrain, false, true);
     }
 
     /// <summary>Rebuild the baked height field into a separate runtime TerrainData without cloning its native splat subassets.</summary>
     /// <param name="terrain">This object's Terrain bearing the persistent baked source.</param>
     public void InitializeBaked(Terrain terrain)
     {
-        InitializeCore(terrain, true);
+        InitializeCore(terrain, true, true);
     }
 
-    private void InitializeCore(Terrain terrain, bool rebuildBakedData)
+    /// <summary>Rebuild a site TerrainData from its first soil layer without reading imported splat data.</summary>
+    /// <param name="terrain">This object's source Terrain.</param>
+    public void InitializeForConstructionSite(Terrain terrain)
+    {
+        InitializeCore(terrain, true, false);
+    }
+
+    private void InitializeCore(Terrain terrain, bool rebuildBakedData, bool preserveAllLayers)
     {
         if (runtime != null) return;
         if (terrain == null || terrain.gameObject != gameObject || terrain.terrainData == null)
@@ -66,7 +74,10 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
             if (holes != runtime.holesResolution)
                 throw new InvalidOperationException("烘焙地形的孔洞分辨率与运行副本不一致。");
             runtime.SetHoles(0, 0, source.GetHoles(0, 0, holes, holes));
-            runtime.terrainLayers = source.terrainLayers;
+            TerrainLayer[] sourceLayers = source.terrainLayers ?? Array.Empty<TerrainLayer>();
+            runtime.terrainLayers = preserveAllLayers || sourceLayers.Length <= 1
+                ? sourceLayers
+                : new[] { sourceLayers[0] };
             if (runtime.terrainLayers.Length == 1)
             {
                 // Headless map baking retains the single soil layer; Unity may serialize
@@ -77,7 +88,7 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
                     for (int x = 0; x < resolution; x++) weights[z, x, 0] = 1f;
                 runtime.SetAlphamaps(0, 0, weights);
             }
-            else if (runtime.terrainLayers.Length > 1)
+            else if (runtime.terrainLayers.Length > 1 && preserveAllLayers)
                 runtime.SetAlphamaps(0, 0, source.GetAlphamaps(0, 0,
                     source.alphamapResolution, source.alphamapResolution));
         }
