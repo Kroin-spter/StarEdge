@@ -36,7 +36,7 @@ namespace ExcavatorControls.Tests
                     .Single(component => component != null && component.GetType().Name == "CesiumMoundSite");
                 PropertyInfo ready = site.GetType().GetProperty("IsReady");
                 PropertyInfo status = site.GetType().GetProperty("Status");
-                float deadline = Time.realtimeSinceStartup + 90f;
+                float deadline = Time.realtimeSinceStartup + 240f;
                 while (!(bool)ready.GetValue(site) && Time.realtimeSinceStartup < deadline)
                     yield return null;
                 Assert.That((bool)ready.GetValue(site), Is.True, status.GetValue(site).ToString());

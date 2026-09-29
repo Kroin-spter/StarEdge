@@ -62,6 +62,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
     [Range(.2f, .9f)] public float minimumSurfaceNormalY = .55f;
     [Min(.25f)] public float minimumReadyTipClearanceMeters = .6f;
     [Min(.1f)] public float soilStripHalfWidth = 6f;
+    public float soilStripCenterLocalX;
     [Min(.1f)] public float soilStripCenterLocalZ = 6.7f;
     [Min(.1f)] public float soilStripHalfDepth = 2f;
     [Min(.05f)] public float soilStripHeight = .55f;
@@ -86,7 +87,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
     /// <summary>World-space center of the face-only cuttable replacement.</summary>
     public Vector3 WorkFaceCenter => siteMode == SitePreparationMode.Baked && bakedSite != null
         ? bakedSite.workFaceCenter
-        : selectedRootPosition + selectedRootRotation * new Vector3(0f, 0f, soilStripCenterLocalZ);
+        : selectedRootPosition + selectedRootRotation *
+            new Vector3(soilStripCenterLocalX, 0f, soilStripCenterLocalZ);
     /// <summary>World orientation of the cuttable slope face.</summary>
     public Quaternion WorkFaceRotation => siteMode == SitePreparationMode.Baked && bakedSite != null
         ? bakedSite.workFaceRotation : selectedRootRotation;
@@ -226,7 +228,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
             cameraManager.useSceneViewCameraInEditor = false;
         }
 
-        float footprintPadding = Mathf.Max(replacementAreaSize.x, replacementAreaSize.y) * .5f + 4f;
+        float footprintPadding = ReplacementSearchPadding();
         float halfExtent = workFaceSearchRadius + footprintPadding;
         float altitude = Mathf.Max(120f, halfExtent * 2f);
         var cameraObject = new GameObject("Cesium work-face survey camera")
@@ -270,7 +272,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
     private void FocusSurveyCameraOnWorkFace()
     {
         if (surveyCamera == null) return;
-        float footprintPadding = Mathf.Max(replacementAreaSize.x, replacementAreaSize.y) * .5f + 4f;
+        float footprintPadding = ReplacementSearchPadding();
         float altitude = Mathf.Max(120f, (workFaceSearchRadius + footprintPadding) * 2f);
         surveyCamera.transform.SetPositionAndRotation(
             selectedRootPosition + Vector3.up * altitude,
@@ -644,8 +646,10 @@ public sealed class CesiumMoundSite : MonoBehaviour
         TerrainData data = soil.Terrain.terrainData;
         int n = data.heightmapResolution;
         Vector3 size = new Vector3(replacementAreaSize.x, 1f, replacementAreaSize.y);
-        Vector3 origin = new Vector3(selectedRootPosition.x - size.x * .5f, 0,
-            selectedRootPosition.z - size.z * .5f);
+        Vector3 patchCenter = selectedRootPosition + selectedRootRotation *
+            new Vector3(soilStripCenterLocalX, 0f, soilStripCenterLocalZ);
+        Vector3 origin = new Vector3(patchCenter.x - size.x * .5f, 0,
+            patchCenter.z - size.z * .5f);
         soil.transform.position = origin;
         data.size = size;
 
@@ -761,8 +765,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
             }
         }
         soil.PrepareMoundSurface(heights, ground);
-        Vector3 workFaceCenter = selectedRootPosition + selectedRootRotation *
-            new Vector3(0f, 0f, soilStripCenterLocalZ);
+        Vector3 workFaceCenter = WorkFaceCenter;
         Vector2 workFaceSize = new Vector2(soilStripHalfWidth * 2f, soilStripHalfDepth * 2f);
         int holesResolution = data.holesResolution;
         bool[,] holes = ConstructionSiteFootprint.BuildTerrainHoles(holesResolution,
@@ -813,7 +816,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         float spacing = Mathf.Max(.5f, workFaceSearchSpacing);
         int searchCells = Mathf.CeilToInt(workFaceSearchRadius / spacing);
         float actualRadius = searchCells * spacing;
-        float padding = Mathf.Max(replacementAreaSize.x, replacementAreaSize.y) * .5f + 4f;
+        float padding = ReplacementSearchPadding();
         int paddingCells = Mathf.CeilToInt(padding / spacing);
         int resolution = searchCells * 2 + paddingCells * 2 + 1;
         Vector3 original = originalRootPosition;
@@ -867,14 +870,13 @@ public sealed class CesiumMoundSite : MonoBehaviour
                 testedPositions++;
                 if (!useExplicitWorkFaceAnchor &&
                     Vector2.Distance(rootXZ, new Vector2(original.x, original.z)) > actualRadius) continue;
-                if (!HasReplacementCoverage(samples, gridOrigin, spacing, rootXZ)) continue;
-                coveredPositions++;
-
                 for (int directionIndex = 0; directionIndex < directionCount; directionIndex++)
                 {
                     Vector3 direction = usePrepositionedEquipment
                         ? root.transform.forward
                         : Quaternion.Euler(0, directionIndex * (360f / directionCount), 0) * Vector3.forward;
+                    if (!HasReplacementCoverage(samples, gridOrigin, spacing, rootXZ, direction)) continue;
+                    coveredPositions++;
                     if (!EvaluateWorkFace(samples, gridOrigin, spacing, rootXZ, direction,
                         out float supportY, out float truckY, out float rise, out float supportSpread,
                         out float surfaceNormalY, out int rejectionStage))
@@ -995,9 +997,17 @@ public sealed class CesiumMoundSite : MonoBehaviour
         return float.IsFinite(height);
     }
 
-    private bool HasReplacementCoverage(float[,] samples, Vector3 gridOrigin, float spacing, Vector2 rootXZ)
+    private float ReplacementSearchPadding() =>
+        Mathf.Max(replacementAreaSize.x, replacementAreaSize.y) * .5f +
+        Mathf.Sqrt(soilStripCenterLocalX * soilStripCenterLocalX +
+            soilStripCenterLocalZ * soilStripCenterLocalZ) + 4f;
+
+    private bool HasReplacementCoverage(float[,] samples, Vector3 gridOrigin, float spacing,
+        Vector2 rootXZ, Vector3 direction)
     {
-        Vector3 center = new Vector3(rootXZ.x, 0, rootXZ.y);
+        Quaternion rotation = Quaternion.LookRotation(direction, Vector3.up);
+        Vector3 center = new Vector3(rootXZ.x, 0, rootXZ.y) + rotation *
+            new Vector3(soilStripCenterLocalX, 0f, soilStripCenterLocalZ);
         foreach (int x in new[] { -1, 1 })
         foreach (int z in new[] { -1, 1 })
         {
@@ -1046,7 +1056,10 @@ public sealed class CesiumMoundSite : MonoBehaviour
         rejectionStage = 4;
         if (truckY - minimumTruck > .6f) return false;
 
-        float[] lateral = { -soilStripHalfWidth * .75f, 0f, soilStripHalfWidth * .75f };
+        // Candidate validation concerns the active digging reach near the machine;
+        // the authored soil can continue much farther along the same wall.
+        float reach = Mathf.Min(soilStripHalfWidth, 12.5f) * .75f;
+        float[] lateral = { -reach, 0f, reach };
         float foot = 0, middle = 0, crest = 0;
         float minFoot = float.PositiveInfinity, maxFoot = float.NegativeInfinity;
         float minCrest = float.PositiveInfinity, maxCrest = float.NegativeInfinity;
@@ -1088,7 +1101,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
 
     private float SoilStripMask(Vector3 machineLocal)
     {
-        float side = 1f - Smooth01((Mathf.Abs(machineLocal.x) - (soilStripHalfWidth - .7f)) / .7f);
+        float side = 1f - Smooth01((Mathf.Abs(machineLocal.x - soilStripCenterLocalX) -
+            (soilStripHalfWidth - .7f)) / .7f);
         float distance = Mathf.Abs(machineLocal.z - soilStripCenterLocalZ);
         float end = 1f - Smooth01((distance - (soilStripHalfDepth - .25f)) / .25f);
         return side * end;

@@ -48,11 +48,11 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
 
     private struct ClipPlane
     {
-        internal Vector2 normal;
+        internal Vector3 normal;
         internal float boundary;
         internal bool keepGreater;
 
-        internal ClipPlane(Vector2 normal, float boundary, bool keepGreater)
+        internal ClipPlane(Vector3 normal, float boundary, bool keepGreater)
         {
             this.normal = normal;
             this.boundary = boundary;
@@ -145,7 +145,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
             Mesh source = filter.sharedMesh;
             if (source == null || replacements.Exists(r => r.filter == filter && r.clipped == source)) continue;
             var renderer = filter.GetComponent<Renderer>();
-            if (renderer != null && !HorizontalOverlap(renderer.bounds.min, renderer.bounds.max)) continue;
+            if (renderer != null && !OverlapsWorkArea(renderer.bounds.min, renderer.bounds.max)) continue;
             if (!source.isReadable)
             {
                 Debug.LogWarning("Cannot clip unreadable streamed work-area mesh: " + filter.name, filter);
@@ -287,13 +287,13 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
                 Vector3 a = worldVertices[aIndex], b = worldVertices[bIndex], c = worldVertices[cIndex];
                 Vector3 min = Vector3.Min(a, Vector3.Min(b, c));
                 Vector3 max = Vector3.Max(a, Vector3.Max(b, c));
-                if (!HorizontalOverlap(min, max))
+                if (!OverlapsWorkArea(min, max))
                 {
                     AddOriginalTriangle(retained, aIndex, bIndex, cIndex);
                     continue;
                 }
 
-                if (IsTriangleInsideWorkArea(a, b, c))
+                if (IsTriangleInsideWorkArea(a, b, c, workAreaPlanes))
                 {
                     changed = true;
                     continue;
@@ -358,25 +358,27 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
         if (!useOrientedWorkArea)
             return new[]
             {
-                new ClipPlane(Vector2.right, workArea.min.x, true),
-                new ClipPlane(Vector2.right, workArea.max.x, false),
-                new ClipPlane(Vector2.up, workArea.min.z, true),
-                new ClipPlane(Vector2.up, workArea.max.z, false)
+                new ClipPlane(Vector3.right, workArea.min.x, true),
+                new ClipPlane(Vector3.right, workArea.max.x, false),
+                new ClipPlane(Vector3.forward, workArea.min.z, true),
+                new ClipPlane(Vector3.forward, workArea.max.z, false),
+                new ClipPlane(Vector3.up, workArea.min.y, true),
+                new ClipPlane(Vector3.up, workArea.max.y, false)
             };
 
         Quaternion horizontalRotation = ConstructionSiteFootprint.GetHorizontalRotation(workAreaRotation);
         Vector3 right = horizontalRotation * Vector3.right;
         Vector3 forward = horizontalRotation * Vector3.forward;
-        Vector2 rightNormal = new Vector2(right.x, right.z);
-        Vector2 forwardNormal = new Vector2(forward.x, forward.z);
-        float rightCenter = Vector2.Dot(new Vector2(workAreaCenter.x, workAreaCenter.z), rightNormal);
-        float forwardCenter = Vector2.Dot(new Vector2(workAreaCenter.x, workAreaCenter.z), forwardNormal);
+        float rightCenter = Vector3.Dot(workAreaCenter, right);
+        float forwardCenter = Vector3.Dot(workAreaCenter, forward);
         return new[]
         {
-            new ClipPlane(rightNormal, rightCenter - workAreaSize.x * .5f, true),
-            new ClipPlane(rightNormal, rightCenter + workAreaSize.x * .5f, false),
-            new ClipPlane(forwardNormal, forwardCenter - workAreaSize.y * .5f, true),
-            new ClipPlane(forwardNormal, forwardCenter + workAreaSize.y * .5f, false)
+            new ClipPlane(right, rightCenter - workAreaSize.x * .5f, true),
+            new ClipPlane(right, rightCenter + workAreaSize.x * .5f, false),
+            new ClipPlane(forward, forwardCenter - workAreaSize.y * .5f, true),
+            new ClipPlane(forward, forwardCenter + workAreaSize.y * .5f, false),
+            new ClipPlane(Vector3.up, workArea.min.y, true),
+            new ClipPlane(Vector3.up, workArea.max.y, false)
         };
     }
 
@@ -415,7 +417,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
     private static bool IsInside(float distance, bool keepGreater) => keepGreater ? distance >= 0f : distance <= 0f;
 
     private static float PlaneDistance(Vector3 point, ClipPlane plane) =>
-        point.x * plane.normal.x + point.z * plane.normal.y - plane.boundary;
+        Vector3.Dot(point, plane.normal) - plane.boundary;
 
     private static void AddDistinct(List<ClipVertex> vertices, ClipVertex candidate)
     {
@@ -571,15 +573,19 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
         }
     }
 
-    private bool IsTriangleInsideWorkArea(Vector3 a, Vector3 b, Vector3 c) =>
-        IsInsideWorkArea(a) && IsInsideWorkArea(b) && IsInsideWorkArea(c);
+    private static bool IsTriangleInsideWorkArea(Vector3 a, Vector3 b, Vector3 c, ClipPlane[] planes) =>
+        IsInsideWorkArea(a, planes) && IsInsideWorkArea(b, planes) && IsInsideWorkArea(c, planes);
 
-    private bool IsInsideWorkArea(Vector3 point) =>
-        point.x >= workArea.min.x && point.x <= workArea.max.x &&
-        point.z >= workArea.min.z && point.z <= workArea.max.z;
+    private static bool IsInsideWorkArea(Vector3 point, ClipPlane[] planes)
+    {
+        foreach (ClipPlane plane in planes)
+            if (!IsInside(PlaneDistance(point, plane), plane.keepGreater)) return false;
+        return true;
+    }
 
-    private bool HorizontalOverlap(Vector3 min, Vector3 max) =>
+    private bool OverlapsWorkArea(Vector3 min, Vector3 max) =>
         min.x <= workArea.max.x && max.x >= workArea.min.x &&
+        min.y <= workArea.max.y && max.y >= workArea.min.y &&
         min.z <= workArea.max.z && max.z >= workArea.min.z;
 
     private void OnDisable()

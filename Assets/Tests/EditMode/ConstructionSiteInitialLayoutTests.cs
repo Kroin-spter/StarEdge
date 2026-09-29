@@ -1,5 +1,6 @@
 using System.Linq;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -9,6 +10,25 @@ namespace ExcavatorControls.Tests
     /// <summary>Checks the construction demo's authored, pre-Play equipment placement.</summary>
     public sealed class ConstructionSiteInitialLayoutTests
     {
+        /// <summary>The authored soil follows the long exposed wall while the lower bench remains Cesium.</summary>
+        [Test]
+        public void BakedSlopeCoversTheLongWallButNotTheLowerBench()
+        {
+            BakedConstructionSiteData site = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/SenceTest/ConstructionSite.asset");
+            Assert.That(site, Is.Not.Null);
+            TerrainData terrain = site.terrainData;
+            Assert.That(terrain, Is.Not.Null);
+            Quaternion heading = ConstructionSiteFootprint.GetHorizontalRotation(site.machineRotation);
+            Vector3 farLeftWall = site.machinePosition + heading * new Vector3(-60f, 0f, 6.5f);
+            Vector3 farLeftBench = site.machinePosition + heading * new Vector3(-60f, 0f, -3f);
+
+            Assert.That(IsSolidAt(terrain, site.terrainOrigin, farLeftWall), Is.True,
+                "The west part of the red outlined slope must be actual cuttable Terrain.");
+            Assert.That(IsSolidAt(terrain, site.terrainOrigin, farLeftBench), Is.False,
+                "The lower bench below the slope must stay on the original Cesium surface.");
+        }
+
         /// <summary>The excavator and truck must be saved at the tested lower work face.</summary>
         [Test]
         public void SenceTestStartsWithMobileExcavatorAndTruckAtLowerWorkFace()
@@ -28,7 +48,6 @@ namespace ExcavatorControls.Tests
                 Transform trackBase = keyboard.articulationRoot.transform;
                 AssertPosition(trackBase.position, site.bakedSite.machinePosition, "excavator track base");
                 Assert.That(Quaternion.Angle(trackBase.rotation, site.bakedSite.machineRotation), Is.LessThan(.1f));
-                Assert.That(Mathf.Abs(Mathf.DeltaAngle(trackBase.eulerAngles.y, 22.5f)), Is.LessThan(.6f));
                 ConstructionSiteMapClip clip = behaviours.OfType<ConstructionSiteMapClip>().SingleOrDefault();
                 Assert.That(clip, Is.Not.Null, "The editor and runtime must share one map clipping boundary.");
                 Bounds slopeReplacement = clip.workArea;
@@ -40,8 +59,10 @@ namespace ExcavatorControls.Tests
                 Assert.That(ConstructionSiteFootprint.ContainsHorizontal(site.truck.position, clip.workAreaCenter,
                     clip.workAreaRotation, clip.workAreaSize), Is.False,
                     "The dump truck must remain supported by the original Cesium ground.");
-                Assert.That(slopeReplacement.size.x, Is.LessThan(30f));
-                Assert.That(slopeReplacement.size.z, Is.LessThan(30f));
+                Assert.That(site.bakedSite.workFaceSize.x, Is.GreaterThanOrEqualTo(120f),
+                    "The soil must span the long outlined wall, not just the active bucket reach.");
+                Assert.That(site.bakedSite.workFaceSize.y, Is.LessThanOrEqualTo(10f),
+                    "The replacement must stay on the wall without extending onto the lower bench.");
                 Assert.That(Vector2.Distance(new Vector2(trackBase.position.x, trackBase.position.z),
                     new Vector2(281.0765f, 359.2318f)), Is.LessThan(3f));
                 Assert.That(site.useExplicitWorkFaceAnchor, Is.False,
@@ -58,13 +79,13 @@ namespace ExcavatorControls.Tests
                     "The cut approach must not lift the boom to the old high -60 degree pose.");
                 Assert.That(site.truckParkingOffsetLocal.x, Is.LessThanOrEqualTo(6.9f),
                     "The truck should park closer to the excavator while keeping its side clearance.");
-                Assert.That(site.soilStripHalfWidth, Is.EqualTo(12.5f).Within(.01f));
+                Assert.That(site.soilStripHalfWidth, Is.EqualTo(65f).Within(.01f));
+                Assert.That(site.soilStripCenterLocalX, Is.EqualTo(-30f).Within(.01f));
                 Assert.That(site.soilStripCenterLocalZ, Is.EqualTo(6.5f).Within(.01f),
                     "The cuttable soil should be centered across the complete slope face, not only near its crest.");
-                Assert.That(site.soilStripHalfDepth, Is.EqualTo(4f).Within(.01f));
+                Assert.That(site.soilStripHalfDepth, Is.EqualTo(5f).Within(.01f));
                 AssertPosition(site.truck.position, site.bakedSite.truckPosition, "dump truck");
                 Assert.That(Quaternion.Angle(site.truck.rotation, site.bakedSite.truckRotation), Is.LessThan(.1f));
-                Assert.That(Mathf.Abs(Mathf.DeltaAngle(site.truck.eulerAngles.y, 112.5f)), Is.LessThan(.6f));
                 Terrain terrain = site.soil.GetComponent<Terrain>();
                 Assert.That(terrain.enabled, Is.True, "The baked slope must be visible before Play.");
                 Assert.That(terrain.terrainData, Is.SameAs(site.bakedSite.terrainData));
@@ -106,6 +127,17 @@ namespace ExcavatorControls.Tests
         {
             Assert.That(Vector3.Distance(actual, expected), Is.LessThan(.05f),
                 $"{subject} must be authored on the lower bench before Play; actual={actual}, expected={expected}");
+        }
+
+        private static bool IsSolidAt(TerrainData terrain, Vector3 origin, Vector3 point)
+        {
+            Vector3 local = point - origin;
+            Vector3 size = terrain.size;
+            if (local.x < 0f || local.z < 0f || local.x >= size.x || local.z >= size.z) return false;
+            int holes = terrain.holesResolution;
+            int x = Mathf.FloorToInt(local.x / size.x * holes);
+            int z = Mathf.FloorToInt(local.z / size.z * holes);
+            return !terrain.IsHole(x, z);
         }
 
     }

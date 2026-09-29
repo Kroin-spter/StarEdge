@@ -82,6 +82,79 @@ namespace ExcavatorControls.Tests
             }
         }
 
+        /// <summary>Clip the soil face at its elevation without deleting the original lower and upper benches.</summary>
+        [Test]
+        public void WorkFaceClipPreservesCesiumSurfacesAboveAndBelowTheSoilBand()
+        {
+            Type type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("ConstructionSiteMapClip"))
+                .First(t => t != null);
+            var root = new GameObject("clip");
+            var tile = new GameObject("three elevations");
+            var source = new Mesh();
+            source.vertices = new[]
+            {
+                new Vector3(-1, -5, -1), new Vector3(1, -5, -1), new Vector3(0, -5, 1),
+                new Vector3(-1, 0, -1), new Vector3(1, 0, -1), new Vector3(0, 0, 1),
+                new Vector3(-1, 5, -1), new Vector3(1, 5, -1), new Vector3(0, 5, 1)
+            };
+            source.triangles = new[] { 0, 2, 1, 3, 5, 4, 6, 8, 7 };
+            tile.AddComponent<MeshFilter>().sharedMesh = source;
+            tile.AddComponent<MeshRenderer>();
+            tile.AddComponent<MeshCollider>().sharedMesh = source;
+            try
+            {
+                Component clip = root.AddComponent(type);
+                type.GetField("workArea").SetValue(clip, new Bounds(Vector3.zero, new Vector3(10, 2, 10)));
+                type.GetMethod("ClipTile").Invoke(clip, new object[] { tile });
+                Mesh result = tile.GetComponent<MeshFilter>().sharedMesh;
+                Assert.That(result.triangles, Is.EqualTo(new[] { 0, 2, 1, 6, 8, 7 }),
+                    "Clipping a horizontal work face must preserve the Cesium lower floor and upper road.");
+                Assert.That(tile.GetComponent<MeshCollider>().sharedMesh.triangles,
+                    Is.EqualTo(new[] { 0, 2, 1, 6, 8, 7 }));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(tile);
+                UnityEngine.Object.DestroyImmediate(source);
+            }
+        }
+
+        /// <summary>Keep tiles inside the broad-phase bounds but outside the rotated cuttable strip.</summary>
+        [Test]
+        public void RotatedWorkFaceDoesNotDeleteTrianglesOutsideItsActualFootprint()
+        {
+            Type type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("ConstructionSiteMapClip"))
+                .First(t => t != null);
+            var root = new GameObject("clip");
+            var tile = new GameObject("road inside broad bounds");
+            var source = new Mesh
+            {
+                vertices = new[] { new Vector3(2.8f, 0f, 2.8f), new Vector3(3.2f, 0f, 2.8f),
+                    new Vector3(3f, 0f, 3.2f) },
+                triangles = new[] { 0, 2, 1 }
+            };
+            tile.AddComponent<MeshFilter>().sharedMesh = source;
+            tile.AddComponent<MeshRenderer>();
+            tile.AddComponent<MeshCollider>().sharedMesh = source;
+            try
+            {
+                Component clip = root.AddComponent(type);
+                type.GetMethod("SetWorkFaceFootprint").Invoke(clip, new object[]
+                    { Vector3.zero, Quaternion.Euler(0f, 45f, 0f), new Vector2(10f, 2f), -1f, 1f });
+                type.GetMethod("ClipTile").Invoke(clip, new object[] { tile });
+                Assert.That(tile.GetComponent<MeshFilter>().sharedMesh, Is.SameAs(source),
+                    "The road outside the rotated strip must remain visible even when its tile is inside the broad bounds.");
+                Assert.That(tile.GetComponent<MeshCollider>().sharedMesh, Is.SameAs(source));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(tile);
+                UnityEngine.Object.DestroyImmediate(source);
+            }
+        }
+
         /// <summary>Keep only the outside part of triangles crossing the work-area boundary.</summary>
         [Test]
         public void BoundaryTrianglesAreSplitWithoutGapsOrInteriorMapCollision()
