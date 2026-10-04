@@ -24,6 +24,81 @@ namespace ExcavatorControls.Tests
         private Scene loadedScene;
         private static bool legacySceneWarningsHandled;
 
+        /// <summary>A baked soil snapshot must not release the tracks before the original Cesium bench is collidable.</summary>
+        /// <returns>One real main-scene load and a support raycast at site-ready time.</returns>
+        [UnityTest]
+        public IEnumerator BakedSiteWaitsForOriginalCesiumTrackSupport()
+        {
+            ExpectKnownLegacySceneWarnings();
+            ExpectThreeMissingMapWarnings();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            loadedScene = SceneManager.GetSceneByPath(ScenePath);
+            SceneManager.SetActiveScene(loadedScene);
+
+            CesiumMoundSite site = loadedScene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<CesiumMoundSite>(true)).Single();
+            float deadline = Time.realtimeSinceStartup + 40f;
+            while (!site.IsReady && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(site.IsReady, Is.True, site.Status);
+
+            Vector3 machinePosition = site.machine.GetComponent<Zx200KeyboardController>()
+                .articulationRoot.transform.position;
+            var ray = new Ray(machinePosition + Vector3.up * 15f, Vector3.down);
+            MeshCollider[] mapColliders = site.tileset.GetComponentsInChildren<MeshCollider>();
+            Debug.Log($"[SITE SUPPORT] loaded map colliders={mapColliders.Length}, root={machinePosition}");
+            bool mapSupportsTracks = mapColliders
+                .Any(collider => collider.enabled && collider.gameObject.activeInHierarchy &&
+                    collider.Raycast(ray, out RaycastHit hit, 50f) &&
+                    Mathf.Abs(machinePosition.y - hit.point.y) < 2f);
+            Assert.That(mapSupportsTracks, Is.True,
+                "Site-ready must mean the original Cesium bench physically supports the excavator tracks.");
+        }
+
+        /// <summary>Capture the baked slope and Cesium bench from the saved Game camera for visual inspection.</summary>
+        /// <returns>A rendered scene preview when a graphics device is available.</returns>
+        [UnityTest]
+        public IEnumerator BakedSlopeRendersFromSavedGameCamera()
+        {
+            ExpectKnownLegacySceneWarnings();
+            ExpectThreeMissingMapWarnings();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            loadedScene = SceneManager.GetSceneByPath(ScenePath);
+            SceneManager.SetActiveScene(loadedScene);
+            CesiumMoundSite site = loadedScene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<CesiumMoundSite>(true)).Single();
+            float deadline = Time.realtimeSinceStartup + 40f;
+            while (!site.IsReady && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(site.IsReady, Is.True, site.Status);
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) yield break;
+            for (int frame = 0; frame < 180; frame++) yield return null;
+            Camera camera = loadedScene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<Camera>(true))
+                .First(candidate => candidate.CompareTag("MainCamera"));
+            var target = new RenderTexture(1280, 900, 24);
+            var image = new Texture2D(1280, 900, TextureFormat.RGB24, false);
+            RenderTexture previousTarget = camera.targetTexture;
+            RenderTexture previousActive = RenderTexture.active;
+            try
+            {
+                camera.targetTexture = target;
+                camera.Render();
+                RenderTexture.active = target;
+                image.ReadPixels(new Rect(0, 0, 1280, 900), 0, 0);
+                image.Apply();
+                Directory.CreateDirectory("Diagnostics");
+                File.WriteAllBytes("Diagnostics/baked-slope-game-camera.png", image.EncodeToPNG());
+            }
+            finally
+            {
+                RenderTexture.active = previousActive;
+                camera.targetTexture = previousTarget;
+                UnityEngine.Object.DestroyImmediate(image);
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
         /// <summary>Resolve the configured local map and retain normal Unity log assertions.</summary>
         [SetUp]
         public void SetUp()

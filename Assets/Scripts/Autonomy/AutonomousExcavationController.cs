@@ -564,6 +564,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             if (!IsRunning) yield break;
             if (State == AutonomousExcavationState.EmptyCut)
             {
+                nextDigPointIndex++;
                 yield return RecoverFromEmptyCut();
                 if (!IsRunning || !stageSucceeded) yield break;
                 continue;
@@ -575,6 +576,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             if (!IsRunning || !stageSucceeded) yield break;
             if (State == AutonomousExcavationState.EmptyCut)
             {
+                nextDigPointIndex++;
                 yield return RecoverFromEmptyCut();
                 if (!IsRunning || !stageSucceeded) yield break;
                 continue;
@@ -802,7 +804,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             EnterFault("挖点土量数据不是有限数值");
             yield break;
         }
-        nextDigPointIndex++;
+        // Reuse this point after a productive bucket. Only an empty or unsafe cut
+        // advances to the next reachable swing offset.
         stageSucceeded = true;
     }
 

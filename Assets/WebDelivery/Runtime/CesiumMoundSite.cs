@@ -179,6 +179,8 @@ public sealed class CesiumMoundSite : MonoBehaviour
         }
         else if (bakedSite != null && bakedSite.terrainData != null)
         {
+            // Keep Cesium requesting the parked bench even when no Game view is rendered.
+            InstallSurveyCamera();
             soil.GetComponent<Terrain>().terrainData = bakedSite.terrainData;
             soil.SoilCollider.terrainData = bakedSite.terrainData;
         }
@@ -457,6 +459,50 @@ public sealed class CesiumMoundSite : MonoBehaviour
             ConfigureMapClip(clip);
             soil.GetComponent<Terrain>().enabled = true;
             soil.SoilCollider.enabled = true;
+            loaded = true;
+        }
+        catch (Exception exception)
+        {
+            loaded = false;
+            MapSurfacePrepared = false;
+            soil.GetComponent<Terrain>().enabled = false;
+            soil.SoilCollider.enabled = false;
+            cutter.enabled = false;
+            if (resistance != null) resistance.enabled = false;
+            machine.enabled = false;
+            keyboard.enabled = false;
+            root.immovable = true;
+            Status = "烘焙施工区加载失败，请重新烘焙：" + exception.Message;
+            Debug.LogError(Status, this);
+        }
+        if (!loaded) yield break;
+
+        // The baked Terrain contains only the slope. Tracks remain locked until the
+        // original Cesium lower bench is physically present beneath them.
+        float deadline = Time.realtimeSinceStartup + loadingTimeout;
+        int stableSupportFrames = 0;
+        while (Time.realtimeSinceStartup < deadline)
+        {
+            MeshCollider[] map = GetLoadedMapColliders();
+            if (TryTrackSupport(map, out float support) &&
+                Mathf.Abs(support - selectedSupportY) <= .65f)
+            {
+                if (++stableSupportFrames >= 3) break;
+            }
+            else stableSupportFrames = 0;
+            Status = $"等待原 Cesium 履带支撑地面；当前碰撞瓦片={map.Length}";
+            yield return new WaitForSecondsRealtime(.25f);
+        }
+        if (stableSupportFrames < 3)
+        {
+            Status = "原 Cesium 履带支撑地面在限定时间内未就绪；设备保持锁定";
+            Debug.LogWarning(Status, this);
+            ReleaseSurveyCamera();
+            yield break;
+        }
+
+        try
+        {
             cutter.enabled = originalCutter;
             if (resistance != null) resistance.enabled = originalResistance;
             keyboard.fixedBase = originalFixed;
@@ -464,10 +510,10 @@ public sealed class CesiumMoundSite : MonoBehaviour
             root.useGravity = !originalFixed;
             machine.enabled = originalMachine;
             keyboard.enabled = originalKeyboard;
-            loaded = true;
         }
         catch (Exception exception)
         {
+            loaded = false;
             MapSurfacePrepared = false;
             soil.GetComponent<Terrain>().enabled = false;
             soil.SoilCollider.enabled = false;
@@ -483,6 +529,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         yield return new WaitForFixedUpdate();
         Physics.SyncTransforms();
         IsReady = true;
+        RestoreSceneViewCameraSetting();
         Status = "本地烘焙施工区已就绪";
         Debug.Log($"[ZX200] {Status}；初始土量={bakedSite.initialSoilVolumeM3:F3}m³", this);
     }

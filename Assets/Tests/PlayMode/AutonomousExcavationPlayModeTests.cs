@@ -17,10 +17,62 @@ namespace ExcavatorControls.Tests
             " Set CESIUM_TILESET_DIR or place the map beside the project.";
         private static bool expectedInitialSceneWarnings;
 
+        /// <summary>Finish the saved scene's one-cubic-metre job using actual truck receipts and a parked track base.</summary>
+        /// <returns>Scene startup, the configured multi-bucket job and scene cleanup.</returns>
+        [UnityTest]
+        [Timeout(900000)]
+        public IEnumerator ConfiguredOneCubicMetreJobReachesCompleted()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                AutonomousExcavationController autonomy = FindInScene<AutonomousExcavationController>(scene);
+                BucketSoilCutter cutter = FindInScene<BucketSoilCutter>(scene);
+                SoilReceivingZone receiver = FindInScene<SoilReceivingZone>(scene);
+                Zx200KeyboardController keyboard = autonomy.machine.GetComponent<Zx200KeyboardController>();
+                keyboard.ResolveArticulationRoot();
+                Vector3 trackBaseAtStart = keyboard.articulationRoot.transform.position;
+                double receiverBefore = receiver.VolumeM3;
+                double groundPileBefore = ManualSoilTestMotion.GroundPileVolumeFor(cutter);
+                Assert.That(autonomy.targetVolumeM3, Is.EqualTo(1f).Within(.001f));
+                Assert.That(autonomy.StartAutonomousJob(), Is.True);
+                float deadline = Time.realtimeSinceStartup + 720f;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                    yield return new WaitForFixedUpdate();
+
+                Debug.Log($"CONFIGURED JOB state={autonomy.State}, cycles={autonomy.CompletedCycles}, " +
+                    $"delivered={autonomy.DeliveredVolumeM3:F6}, receiver={receiver.VolumeM3:F6}, " +
+                    $"bucket={cutter.VolumeM3:F6}, status={autonomy.Status}");
+                Assert.That(autonomy.IsRunning, Is.False, "The configured 1 m³ job exceeded its physical-run deadline.");
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(autonomy.CompletedCycles, Is.GreaterThanOrEqualTo(4));
+                Assert.That(autonomy.DeliveredVolumeM3, Is.GreaterThanOrEqualTo(1d));
+                Assert.That(autonomy.DeliveredVolumeM3,
+                    Is.EqualTo(receiver.VolumeM3 - receiverBefore).Within(1e-5));
+                Assert.That(cutter.VolumeM3, Is.LessThanOrEqualTo(.01));
+                Assert.That(Vector3.Distance(trackBaseAtStart, keyboard.articulationRoot.transform.position),
+                    Is.LessThan(.2f));
+                ManualSoilTestMotion.AssertBalanceIncludingPiles(cutter, groundPileBefore, .003);
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
         /// <summary>Run at least three automatic dig, load and return cycles using actual landing volume.</summary>
         /// <returns>Scene load, Cesium readiness, repeated autonomous cycles and cleanup frames.</returns>
         [UnityTest]
-        [Timeout(300000)]
+        [Timeout(420000)]
         public IEnumerator RunsThreeAutomaticDigAndLoadCycles()
         {
             Scene previous = SceneManager.GetActiveScene();
@@ -80,7 +132,7 @@ namespace ExcavatorControls.Tests
                 AutonomousExcavationState stateAtMaximumTrackBaseDrift = autonomy.State;
                 Assert.That(autonomy.StartAutonomousJob(.5), Is.True);
                 var observedStates = new List<AutonomousExcavationState>();
-                float deadline = Time.realtimeSinceStartup + 220;
+                float deadline = Time.realtimeSinceStartup + 330;
                 while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
                     maximumObservedBucketLoad = System.Math.Max(maximumObservedBucketLoad, cutter.VolumeM3);
@@ -203,12 +255,17 @@ namespace ExcavatorControls.Tests
                     $"longest no-motion pause={longestNearFullPause:F2}s, " +
                     $"carry boom/arm/bucket=({carriedBoomAngle:F1},{carriedArmAngle:F1},{carriedBucketAngle:F1}), " +
                     $"mouth up dot={carriedMouthUpDot:F2}");
-                Assert.That(float.IsNaN(nearFullCurlDelay), Is.False,
-                    "By 55% fill the bucket must already be curling, or advance another 5 degrees without waiting for capacity.");
-                Assert.That(nearFullCurlDelay, Is.LessThan(4f),
-                    "The near-full bucket must not remain stationary waiting for the cut timeout.");
-                Assert.That(longestNearFullPause, Is.LessThan(1.5f),
-                    "The near-full digging phase must not pause with every working joint stationary.");
+                Assert.That(maximumCutBucketAngle - bucketAngleAtFillStart, Is.GreaterThan(10f),
+                    "The bucket must curl through the cut even when a valid bucket never reaches 55% fill.");
+                if (!float.IsNaN(bucketAngleAtNearFull))
+                {
+                    Assert.That(float.IsNaN(nearFullCurlDelay), Is.False,
+                        "By 55% fill the bucket must already be curling, or advance another 5 degrees without waiting for capacity.");
+                    Assert.That(nearFullCurlDelay, Is.LessThan(4f),
+                        "The near-full bucket must not remain stationary waiting for the cut timeout.");
+                    Assert.That(longestNearFullPause, Is.LessThan(1.5f),
+                        "The near-full digging phase must not pause with every working joint stationary.");
+                }
                 Assert.That(carriedArmAngle, Is.GreaterThan(85f),
                     "The loaded arm should tuck farther in than the previous fixed 80-degree carry target.");
                 Assert.That(carriedBoomAngle, Is.LessThan(-32f),

@@ -49,7 +49,9 @@ export CESIUM_TILESET_DIR=/absolute/path/to/osgb_small_005_004
 
 主场景的 `ZX200 construction site` 已挂载 `AutonomousExcavationController`。当前流程从一个已验证可达挖点开始，自动完成切入、收斗、抬升、保持高位回转、卸料、确认车厢接收、返回并继续下一斗；目标量和车厢容量判断按真实接收量执行。
 
-当前验收目标为同一可达挖点的连续多斗自主装车：默认目标量 `1m³`，按当前约 `0.3m³/斗` 应连续完成约 4 斗，并在每斗卸料前检查车厢接收区和铲斗高位净空。自动换挖点、底盘路径和多挖点调度仍属于后续阶段。
+主场景默认任务目标量为 `1m³`，它表示本次实际装车增量，不表示矿车装满。当前铲斗配置上限为 `0.303886m³`；矿车按有效货箱尺寸和填充高度计算的容量为 `5.984m³`，即使每斗达到上限也至少需要 20 斗才能真正满车。实际每斗接收量通常低于斗容上限，应以车厢显示的实收量判断进度，不按“0.3m³/斗”估算演示时间。自动控制器在固定回转角度间换挖点，并对当前土层厚度调整切深；底盘自动行走和矿车满载长周期验收仍属于后续阶段。
+
+本地 PlayMode 闭环验收记录：默认 `1m³` 任务连续完成 10 斗后进入 `Completed`，车厢实收 `1.065694m³`，与控制器累计量一致，斗内余量为零，履带底盘无位移。可用 `Assets/Tests/PlayMode/AutonomousExcavationPlayModeTests.cs` 中的 `ConfiguredOneCubicMetreJobReachesCompleted` 复跑；地图瓦片目录通过 `CESIUM_TILESET_DIR` 指向 `osgb_small_005_004`。该结果仅证明任务目标量闭环，未验证满载 `5.984m³` 的约数十斗长期连续运行。
 
 运行时快捷键：
 
@@ -59,7 +61,7 @@ export CESIUM_TILESET_DIR=/absolute/path/to/osgb_small_005_004
 
 HMI 集成使用 `AutonomousExcavationController.StartAutonomousJob()`、`RequestManualTakeover()` 和 `ResetAutonomousJob()`；通过 `State`、`Status`、`FaultReason`、`DeliveredVolumeM3` 和 `CompletedCycles` 读取反馈。完成判定以 `SoilReceivingZone.VolumeM3` 的实际增加量为准，不以铲斗释放量代替。
 
-当前版本暂不包含底盘自动路径规划和多个挖点换点；主场景地图未就绪、车满、空挖/挖尽、姿态或卸料超时，以及卸料净空不足都会安全停止并保留原因。施工场编辑器将车辆放在土区右前方独立装车位，并校验土区扩大边界与车辆实体碰撞盒至少保留约 2m 水平净距。
+当前版本暂不包含底盘自动路径规划和跨位置的多挖点调度；主场景地图未就绪、车满、空挖/挖尽、姿态或卸料超时，以及卸料净空不足都会安全停止并保留原因。`Completed` 是任务目标量达到，`TruckFull` 才表示车厢余量不足以接收下一斗。施工场编辑器将车辆放在土区右前方独立装车位，并校验土区扩大边界与车辆实体碰撞盒至少保留约 2m 水平净距。
 
 ## Git 提交边界
 

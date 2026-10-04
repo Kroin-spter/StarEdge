@@ -18,6 +18,7 @@ obj/
 
 # Local build output
 /AZ_demo*/
+/Diagnostics/
 
 # Burst-generated native output
 /Data/Plugins/lib_burst_generated.cpp
