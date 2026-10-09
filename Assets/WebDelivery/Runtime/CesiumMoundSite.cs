@@ -71,6 +71,18 @@ public sealed class CesiumMoundSite : MonoBehaviour
     public float truckParkingYawDegrees = 90f;
     [Min(1f)] public float loadingTimeout = 30f;
     public bool IsReady { get; private set; }
+    /// <summary>Check whether the parked-base excavation route remains valid after manual driving.</summary>
+    /// <param name="position">Current articulation-root world position.</param>
+    /// <param name="rotation">Current articulation-root world rotation.</param>
+    /// <returns>True before preparation or while the machine remains close to its surveyed work pose.</returns>
+    public bool CanStartAutonomousFrom(Vector3 position, Quaternion rotation)
+    {
+        if (!IsReady || siteMode != SitePreparationMode.Baked || bakedSite == null) return true;
+        Vector3 offset = position - bakedSite.machinePosition;
+        return new Vector2(offset.x, offset.z).magnitude <= 2f &&
+            Mathf.Abs(offset.y) <= 1f &&
+            Quaternion.Angle(rotation, bakedSite.machineRotation) <= 20f;
+    }
     public bool MapSurfacePrepared { get; private set; }
     public string Status { get; private set; } = "Waiting for map ground";
     /// <summary>Vertical drop from the excavator's original platform to the selected lower bench.</summary>

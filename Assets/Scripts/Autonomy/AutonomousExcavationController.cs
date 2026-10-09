@@ -360,6 +360,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private bool unloaderEnabledBeforeJob;
     private bool automaticModeOwnsBaseLock;
     private bool fixedBaseBeforeAutomaticMode;
+    private bool awaitingManualInputNeutral;
     private bool cuttingSuppressionPending;
     private bool cuttingWasSuppressedBeforeEntry;
 
@@ -405,7 +406,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     /// <returns>任务成功启动时返回 true。</returns>
     public bool StartAutonomousJob(double requestedTargetM3)
     {
-        if (IsRunning || State == AutonomousExcavationState.Resetting)
+        if (IsRunning || jobRoutine != null || State == AutonomousExcavationState.Resetting)
             return false;
         if (!ResolveReferences())
         {
@@ -422,6 +423,23 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             EnterFault("自主流程参数无效");
             return false;
         }
+        if (!CanStartFromCurrentBase())
+        {
+            EnterFault("设备已离开校准作业位；请人工返回坡面装车位后再启动自动流程");
+            return false;
+        }
+        if (cutter.VolumeM3 > 1e-5 &&
+            cutter.VolumeM3 < minimumTransferVolumeM3)
+        {
+            EnterFault("斗内已有少量土，但未达到安全转运量；请继续人工收斗或清斗后再启动");
+            return false;
+        }
+        string initialTruckPenetration = FindTruckPenetration();
+        if (initialTruckPenetration != null)
+        {
+            EnterFault("当前姿态已与矿车穿透，请人工脱离后再启动：" + initialTruckPenetration);
+            return false;
+        }
 
         taskTargetVolumeM3 = requestedTargetM3;
         taskReceiverStartVolumeM3 = receiver.VolumeM3;
@@ -435,13 +453,15 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         stateHistory.Clear();
         FaultReason = string.Empty;
         keyboard.SetAutomaticControl(true);
+        awaitingManualInputNeutral = true;
+        machine.StopAutomaticMotion();
         LockBaseForAutomaticMotion();
         IsRunning = true;
         unloaderEnabledBeforeJob = unloader.enabled;
         jobOwnsUnloaderEnabledState = true;
         unloader.enabled = false;
         SetState(AutonomousExcavationState.WaitingForSite, "等待施工区域就绪");
-        jobRoutine = StartCoroutine(RunJob());
+        jobRoutine = StartCoroutine(RunJobOwned());
         return jobRoutine != null;
     }
 
@@ -452,6 +472,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         if (!IsRunning) return;
         IsRunning = false;
+        awaitingManualInputNeutral = false;
         RestoreUnloaderEnabledState();
         RestoreJobUnloaderEnabledState();
         RestoreCuttingSuppression();
@@ -509,8 +530,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (Input.GetKeyDown(autonomousStartKey)) StartAutonomousJob();
         if (Input.GetKeyDown(KeyCode.Escape)) RequestManualTakeover();
         if (Input.GetKeyDown(KeyCode.Backspace)) ResetAutonomousJob();
-        if (IsRunning && keyboard != null && keyboard.ManualInputActive)
-            RequestManualTakeover();
+        HandleManualInput();
     }
 
     private void OnDisable()
@@ -544,45 +564,67 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             GUI.Label(new Rect(24, 370, 575, 20), "故障：" + FaultReason);
     }
 
+    private IEnumerator RunJobOwned()
+    {
+        try { yield return RunJob(); }
+        finally { jobRoutine = null; }
+    }
+
     private IEnumerator RunJob()
     {
+        while (IsRunning && awaitingManualInputNeutral)
+            yield return null;
+        if (!IsRunning) yield break;
         yield return WaitForSiteReady();
         if (!IsRunning || !stageSucceeded) yield break;
         // Cesium site preparation restores the scene's manual-drive setting when it becomes ready.
         // Reassert the autonomous lock before the first machine motion.
         LockBaseForAutomaticMotion();
+        bool carryManualBucket = cutter.VolumeM3 >= minimumTransferVolumeM3;
 
         while (IsRunning)
         {
-            SetState(AutonomousExcavationState.AcquirePoint, "检查当前挖点和车厢容量");
-            yield return AcquirePoint();
-            if (!IsRunning) yield break;
-            if (!stageSucceeded) yield break;
-
-            SetState(AutonomousExcavationState.LowerAndEnter, "动臂下放并进入土层");
-            yield return PrepareForCut();
-            if (!IsRunning) yield break;
-            if (State == AutonomousExcavationState.EmptyCut)
+            if (carryManualBucket)
             {
-                nextDigPointIndex++;
-                yield return RecoverFromEmptyCut();
-                if (!IsRunning || !stageSucceeded) yield break;
-                continue;
+                carryManualBucket = false;
+                if (receiver.AvailableM3 < cutter.VolumeM3)
+                {
+                    Finish(AutonomousExcavationState.TruckFull,
+                        "车厢余量不足以接收人工已装入铲斗的土量");
+                    yield break;
+                }
             }
-            if (!stageSucceeded) yield break;
-
-            SetState(AutonomousExcavationState.FillBucket, "收斗切削并等待有效进斗量");
-            yield return FillBucket();
-            if (!IsRunning || !stageSucceeded) yield break;
-            if (State == AutonomousExcavationState.EmptyCut)
+            else
             {
-                nextDigPointIndex++;
-                yield return RecoverFromEmptyCut();
+                SetState(AutonomousExcavationState.AcquirePoint, "检查当前挖点和车厢容量");
+                yield return AcquirePoint();
                 if (!IsRunning || !stageSucceeded) yield break;
-                continue;
+
+                SetState(AutonomousExcavationState.LowerAndEnter, "动臂下放并进入土层");
+                yield return PrepareForCut();
+                if (!IsRunning) yield break;
+                if (State == AutonomousExcavationState.EmptyCut)
+                {
+                    nextDigPointIndex++;
+                    yield return RecoverFromEmptyCut();
+                    if (!IsRunning || !stageSucceeded) yield break;
+                    continue;
+                }
+                if (!stageSucceeded) yield break;
+
+                SetState(AutonomousExcavationState.FillBucket, "收斗切削并等待有效进斗量");
+                yield return FillBucket();
+                if (!IsRunning || !stageSucceeded) yield break;
+                if (State == AutonomousExcavationState.EmptyCut)
+                {
+                    nextDigPointIndex++;
+                    yield return RecoverFromEmptyCut();
+                    if (!IsRunning || !stageSucceeded) yield break;
+                    continue;
+                }
             }
 
-            SetState(AutonomousExcavationState.Lift, "抬升满斗");
+            SetState(AutonomousExcavationState.Lift, "从当前姿态抬升并保土");
             yield return RaiseToDumpClearance();
             if (!IsRunning || !stageSucceeded) yield break;
 
@@ -621,10 +663,17 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 if (!IsRunning) yield break;
                 if (!stageSucceeded || !IsProjectedDumpApproachSafe())
                 {
+                    yield return RecenterLoadedBucketForDump();
+                    if (!IsRunning) yield break;
+                }
+                if (!stageSucceeded || !IsProjectedDumpApproachSafe())
+                {
                     Zx200JointPose unsafePose = machine.ReadActualPose();
                     EnterFault($"车厢侧展开后无法安全校位，尚未打开铲斗；姿态=" +
                         $"({unsafePose.swing:F1},{unsafePose.boom:F1},{unsafePose.arm:F1},{unsafePose.bucket:F1})，" +
-                        $"预计开斗斗尖={GetPredictedOpenTip()}，接收区判定={IsProjectedDumpCentered()}");
+                        $"预计开斗斗尖={GetPredictedOpenTip()}，" +
+                        $"车厢局部斗尖={receiver.transform.InverseTransformPoint(GetPredictedOpenTip())}，" +
+                        $"接收区判定={IsProjectedDumpCentered()}");
                     yield break;
                 }
 
@@ -1583,6 +1632,49 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         }
     }
 
+    private IEnumerator RecenterLoadedBucketForDump()
+    {
+        // Manual entry can alter the opening projection after the first truck-side alignment.
+        // Search only small measured arm steps; the ordinary collision and landing checks stay active.
+        ArticulationDrive armDrive = machine.armJoint.xDrive;
+        for (int attempt = 0; IsRunning && attempt < 6; attempt++)
+        {
+            if (IsProjectedDumpApproachSafe())
+            {
+                stageSucceeded = true;
+                yield break;
+            }
+            Zx200JointPose actual = machine.ReadActualPose();
+            Vector3 projectedTip = GetPredictedOpenTip();
+            Vector3 pivot = machine.armJoint.transform.TransformPoint(machine.armJoint.anchorPosition);
+            Vector3 axis = machine.armJoint.transform.TransformDirection(
+                machine.armJoint.anchorRotation * Vector3.right).normalized;
+            Vector3 currentLocal = receiver.transform.InverseTransformPoint(projectedTip);
+            float bestArm = actual.arm;
+            float bestScore = Mathf.Abs(currentLocal.z) + Mathf.Abs(currentLocal.x);
+            foreach (float delta in new[] { -3f, 3f })
+            {
+                float candidate = Zx200DigController.ClampTarget(actual.arm + delta,
+                    armDrive.lowerLimit, armDrive.upperLimit);
+                if (Mathf.Abs(candidate - actual.arm) < 1f) continue;
+                Vector3 candidateTip = pivot + Quaternion.AngleAxis(candidate - actual.arm, axis) *
+                    (projectedTip - pivot);
+                Vector3 candidateLocal = receiver.transform.InverseTransformPoint(candidateTip);
+                float score = Mathf.Abs(candidateLocal.z) + Mathf.Abs(candidateLocal.x);
+                if (score >= bestScore) continue;
+                bestScore = score;
+                bestArm = candidate;
+            }
+            if (Mathf.Abs(bestArm - actual.arm) < 1f) yield break;
+            actual.arm = bestArm;
+            actual.duration = 1.2f;
+            yield return MoveToPose(actual, "车厢侧微调斗杆落点超时");
+            if (!IsRunning || !stageSucceeded) yield break;
+            yield return AlignCurrentSwing(false);
+            if (!IsRunning) yield break;
+        }
+    }
+
     private IEnumerator RaiseToDumpClearance()
     {
         stageSucceeded = false;
@@ -2062,10 +2154,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         while (CanContinueMotion(allowDuringReset) && machine.IsBusy && Time.realtimeSinceStartup < deadline)
         {
             HandleManualInput();
-            if (State == AutonomousExcavationState.SwingToTruck ||
-                State == AutonomousExcavationState.Dump ||
-                State == AutonomousExcavationState.ReturnToDig ||
-                State == AutonomousExcavationState.Resetting)
+            if (RequiresTruckCollisionMonitoring(State))
             {
                 bool raisingToClearTruckWall = State == AutonomousExcavationState.SwingToTruck &&
                     axis == AutonomousMotionAxis.Boom && !EnsureLoadedSwingClearance() &&
@@ -2312,6 +2401,31 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         }
     }
 
+    private static bool RequiresTruckCollisionMonitoring(AutonomousExcavationState state)
+    {
+        return state == AutonomousExcavationState.SwingToTruck ||
+            state == AutonomousExcavationState.PrepareDump ||
+            state == AutonomousExcavationState.Dump ||
+            state == AutonomousExcavationState.ReturnToDig ||
+            state == AutonomousExcavationState.Resetting;
+    }
+
+    private bool CanStartFromCurrentBase()
+    {
+        if (siteReadinessSource == null || keyboard == null || !keyboard.ResolveArticulationRoot())
+            return true;
+        MethodInfo check = siteReadinessSource.GetType().GetMethod("CanStartAutonomousFrom",
+            BindingFlags.Instance | BindingFlags.Public);
+        if (check == null) return true;
+        Transform root = keyboard.articulationRoot.transform;
+        try { return check.Invoke(siteReadinessSource, new object[] { root.position, root.rotation }) is bool allowed && allowed; }
+        catch (Exception error)
+        {
+            Debug.LogWarning("无法检查自动作业位：" + error.Message, this);
+            return false;
+        }
+    }
+
     private bool FiniteMetrics()
     {
         return IsFinite(cutter.VolumeM3) && IsFinite(cutter.ExcavatedVolumeM3) &&
@@ -2401,8 +2515,13 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
     private void HandleManualInput()
     {
-        if (IsRunning && keyboard != null && keyboard.ManualInputActive)
-            RequestManualTakeover();
+        if (!IsRunning || keyboard == null) return;
+        if (awaitingManualInputNeutral)
+        {
+            if (!keyboard.ManualInputActive) awaitingManualInputNeutral = false;
+            return;
+        }
+        if (keyboard.ManualInputActive) RequestManualTakeover();
     }
 
     private void Finish(AutonomousExcavationState terminalState, string message)

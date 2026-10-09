@@ -17,6 +17,322 @@ namespace ExcavatorControls.Tests
             " Set CESIUM_TILESET_DIR or place the map beside the project.";
         private static bool expectedInitialSceneWarnings;
 
+        /// <summary>A held manual command at automatic start must not cancel the new job until it returns to neutral.</summary>
+        /// <returns>One site load and control handoff frames.</returns>
+        [UnityTest]
+        public IEnumerator StartingWithHeldAzInputWaitsForNeutralBeforeAllowingTakeover()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                keyboard.ReceiveControlTopic("{\"action4\":254}");
+                yield return null;
+                Assert.That(keyboard.ManualInputActive, Is.True);
+                Assert.That(autonomy.StartAutonomousJob(.3), Is.True);
+                yield return null;
+                Assert.That(autonomy.IsRunning, Is.True,
+                    "Held manual input at the P transition must not immediately cancel the automatic job.");
+                keyboard.ReceiveControlTopic("{\"action4\":127}");
+                yield return null;
+                Assert.That(keyboard.ManualInputActive, Is.False,
+                    "The automatic handoff must observe a neutral manual command before accepting takeover input.");
+                keyboard.ReceiveControlTopic("{\"action1\":254}");
+                yield return null;
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.ManualTakeover));
+                Assert.That(keyboard.AutomaticControlActive, Is.False);
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Continue a real hand-dug bucket into the truck, then keep digging automatically.</summary>
+        /// <returns>Manual excavation, automatic loaded handoff, multiple receipts and cleanup.</returns>
+        [UnityTest]
+        [Timeout(600000)]
+        public IEnumerator ManualLoadedBucketHandsOffAndCompletesFurtherAutomaticLoads()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var machine = FindInScene<Zx200DigController>(scene);
+                var cutter = FindInScene<BucketSoilCutter>(scene);
+                var receiver = FindInScene<SoilReceivingZone>(scene);
+                double receiverBefore = receiver.VolumeM3;
+                double groundPileBefore = ManualSoilTestMotion.GroundPileVolumeFor(cutter);
+                machine.ApplyWorkReadyPose();
+                float readyDeadline = Time.realtimeSinceStartup + 20f;
+                while (!cutter.StartupReady && Time.realtimeSinceStartup < readyDeadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(cutter.StartupReady, Is.True,
+                    "Manual excavation also requires the real machine to reach its initial work-ready pose.");
+                for (int frame = 0; frame < 400; frame++)
+                {
+                    Zx200JointPose target = machine.ReadActualPose();
+                    Zx200JointPose approach = machine.approachPose;
+                    float boom = Mathf.DeltaAngle(target.boom, approach.boom);
+                    float arm = Mathf.DeltaAngle(target.arm, approach.arm);
+                    float bucket = Mathf.DeltaAngle(target.bucket, approach.bucket);
+                    if (Mathf.Abs(boom) < .5f && Mathf.Abs(arm) < .5f && Mathf.Abs(bucket) < .5f) break;
+                    machine.AdjustManualPose(0f, Mathf.Clamp(boom, -.3f, .3f),
+                        Mathf.Clamp(arm, -.3f, .3f), Mathf.Clamp(bucket, -.3f, .3f));
+                    yield return new WaitForFixedUpdate();
+                }
+                for (int frame = 0; frame < 250 && cutter.VolumeM3 < .015; frame++)
+                {
+                    machine.AdjustManualPose(0f, 10f * Time.fixedDeltaTime, 0f, 0f);
+                    yield return new WaitForFixedUpdate();
+                }
+                for (int frame = 0; frame < 180 && cutter.VolumeM3 < .015; frame++)
+                {
+                    machine.AdjustManualPose(0f, 0f, 10f * Time.fixedDeltaTime,
+                        5f * Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                }
+                Vector3 manualTip = cutter.TipWorldPosition;
+                Debug.Log($"HAND-DUG bucket={cutter.VolumeM3:F6}, removed={cutter.ExcavatedVolumeM3:F6}, " +
+                    $"tip={manualTip}, surface={cutter.soil.Terrain.SampleHeight(manualTip) + cutter.soil.transform.position.y:F3}, " +
+                    $"hasSurface={cutter.soil.HasSurfaceAt(manualTip)}, ready={cutter.StartupReady}, " +
+                    $"status={cutter.Status}, pose={machine.ReadActualPose()}");
+                Assert.That(cutter.VolumeM3, Is.GreaterThan(.005),
+                    "The handoff must begin with actual soil in the manually operated bucket.");
+                Assert.That(autonomy.StartAutonomousJob(.22), Is.True);
+                Camera previewCamera = SystemInfo.graphicsDeviceType ==
+                    UnityEngine.Rendering.GraphicsDeviceType.Null
+                    ? null : machine.GetComponent<Zx200CameraController>().targetCamera;
+                var capturedStages = new HashSet<AutonomousExcavationState>();
+                AutonomousExcavationState lastStage = autonomy.State;
+                float stageEntered = Time.realtimeSinceStartup;
+                float deadline = Time.realtimeSinceStartup + 450f;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    if (autonomy.State != lastStage)
+                    {
+                        lastStage = autonomy.State;
+                        stageEntered = Time.realtimeSinceStartup;
+                    }
+                    if (previewCamera != null && Time.realtimeSinceStartup - stageEntered > .45f &&
+                        (lastStage == AutonomousExcavationState.Lift ||
+                         lastStage == AutonomousExcavationState.SwingToTruck ||
+                         lastStage == AutonomousExcavationState.Dump ||
+                         lastStage == AutonomousExcavationState.ReturnToDig) &&
+                        capturedStages.Add(lastStage))
+                        CaptureHandoffFrame(previewCamera, lastStage.ToString());
+                    yield return new WaitForFixedUpdate();
+                }
+                if (previewCamera != null) CaptureHandoffFrame(previewCamera, "Completed");
+                Debug.Log($"HANDOFF RESULT state={autonomy.State}, cycles={autonomy.CompletedCycles}, " +
+                    $"delivered={autonomy.DeliveredVolumeM3:F6}, receiver={receiver.VolumeM3:F6}, " +
+                    $"bucket={cutter.VolumeM3:F6}, status={autonomy.Status}");
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(autonomy.CompletedCycles, Is.GreaterThanOrEqualTo(2));
+                Assert.That(autonomy.DeliveredVolumeM3, Is.GreaterThanOrEqualTo(.22));
+                Assert.That(autonomy.DeliveredVolumeM3,
+                    Is.EqualTo(receiver.VolumeM3 - receiverBefore).Within(1e-5));
+                Assert.That(cutter.VolumeM3, Is.LessThanOrEqualTo(.01));
+                ManualSoilTestMotion.AssertBalanceIncludingPiles(cutter, groundPileBefore, .003);
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Start an empty automatic dig from an operator-adjusted safe linkage pose.</summary>
+        /// <returns>Manual pose adjustment, one automatic truck receipt and scene cleanup.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator EmptyManualPoseCanEnterAutomaticDigging()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var machine = FindInScene<Zx200DigController>(scene);
+                var cutter = FindInScene<BucketSoilCutter>(scene);
+                var receiver = FindInScene<SoilReceivingZone>(scene);
+                machine.ApplyWorkReadyPose();
+                float readyDeadline = Time.realtimeSinceStartup + 20f;
+                while (!cutter.StartupReady && Time.realtimeSinceStartup < readyDeadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(cutter.StartupReady, Is.True);
+                machine.AdjustManualPose(0f, -5f, 5f, 8f);
+                for (int frame = 0; frame < 120; frame++) yield return new WaitForFixedUpdate();
+                Assert.That(cutter.VolumeM3, Is.Zero.Within(1e-5));
+                Assert.That(machine.IsPoseWithinTolerance(machine.workReadyPose, 2f), Is.False);
+                double receiverBefore = receiver.VolumeM3;
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.True);
+                float deadline = Time.realtimeSinceStartup + 120f;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(receiver.VolumeM3 - receiverBefore, Is.GreaterThanOrEqualTo(.02));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Release automatic ownership during live unloading without resetting soil or pose.</summary>
+        /// <returns>A real automatic bucket, dump-phase interruption and cleanup.</returns>
+        [UnityTest]
+        [Timeout(150000)]
+        public IEnumerator ManualTakeoverDuringDumpKeepsSoilAndUnlocksControls()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                var machine = FindInScene<Zx200DigController>(scene);
+                var cutter = FindInScene<BucketSoilCutter>(scene);
+                Assert.That(autonomy.StartAutonomousJob(.3), Is.True);
+                float deadline = Time.realtimeSinceStartup + 100f;
+                while (autonomy.IsRunning && autonomy.State != AutonomousExcavationState.Dump &&
+                       Time.realtimeSinceStartup < deadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Dump), autonomy.Status);
+                double excavatedBefore = cutter.ExcavatedVolumeM3;
+                autonomy.RequestManualTakeover();
+                yield return null;
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.ManualTakeover));
+                Assert.That(autonomy.IsRunning, Is.False);
+                Assert.That(keyboard.AutomaticControlActive, Is.False);
+                Assert.That(keyboard.fixedBase, Is.False);
+                Assert.That(machine.IsBusy, Is.False);
+                Assert.That(cutter.ExcavatedVolumeM3, Is.EqualTo(excavatedBefore).Within(1e-6));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Reject the fixed work-face route after the operator drives the track base away.</summary>
+        /// <returns>One real site load, displaced base, rejected start and cleanup.</returns>
+        [UnityTest]
+        public IEnumerator DisplacedTrackBaseCannotStartFixedWorkFaceJob()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var site = FindInScene<CesiumMoundSite>(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                keyboard.articulationRoot.TeleportRoot(site.bakedSite.machinePosition + Vector3.right * 25f,
+                    site.bakedSite.machineRotation);
+                Physics.SyncTransforms();
+                yield return new WaitForFixedUpdate();
+                Debug.Log($"DISPLACED BASE root={keyboard.articulationRoot.transform.position}, " +
+                    $"surveyed={site.bakedSite.machinePosition}, siteAllows=" +
+                    $"{site.CanStartAutonomousFrom(keyboard.articulationRoot.transform.position, keyboard.articulationRoot.transform.rotation)}");
+                Assert.That(autonomy.StartAutonomousJob(.2), Is.False);
+                Assert.That(autonomy.IsRunning, Is.False);
+                Assert.That(keyboard.AutomaticControlActive, Is.False);
+                Assert.That(autonomy.FaultReason, Does.Contain("作业位"));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Stopping and restarting in the same frame must leave only the new job driving the machine.</summary>
+        /// <returns>Immediate ownership switch and one real truck receipt.</returns>
+        [UnityTest]
+        [Timeout(150000)]
+        public IEnumerator ImmediateRestartAfterManualTakeoverHasOnlyOneAutomaticJob()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var receiver = FindInScene<SoilReceivingZone>(scene);
+                double before = receiver.VolumeM3;
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.True);
+                autonomy.RequestManualTakeover();
+                var routineField = typeof(AutonomousExcavationController).GetField("jobRoutine",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Assert.That(routineField, Is.Not.Null);
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.False,
+                    "A new job must wait until the previous coroutine has unwound its safety cleanup.");
+                float releaseDeadline = Time.realtimeSinceStartup + 2f;
+                while (routineField.GetValue(autonomy) != null &&
+                       Time.realtimeSinceStartup < releaseDeadline) yield return null;
+                Assert.That(routineField.GetValue(autonomy), Is.Null);
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.True);
+                float deadline = Time.realtimeSinceStartup + 100f;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(autonomy.CompletedCycles, Is.EqualTo(1));
+                Assert.That(receiver.VolumeM3 - before, Is.GreaterThanOrEqualTo(.02));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
         /// <summary>Finish the saved scene's one-cubic-metre job using actual truck receipts and a parked track base.</summary>
         /// <returns>Scene startup, the configured multi-bucket job and scene cleanup.</returns>
         [UnityTest]
@@ -515,6 +831,51 @@ namespace ExcavatorControls.Tests
             if (unload != null) yield return unload;
         }
 
+        /// <summary>Reject an already-overlapping truck pose before granting automatic control.</summary>
+        /// <returns>Scene setup, collision injection, start rejection and scene cleanup.</returns>
+        [UnityTest]
+        public IEnumerator PreexistingTruckPenetrationRejectsAutomaticStart()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(
+                ScenePath, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            GameObject probe = null;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var machine = FindInScene<Zx200DigController>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                var receiver = FindInScene<SoilReceivingZone>(scene);
+                Collider machineCollider = machine.GetComponentInChildren<Collider>(true);
+                Assert.That(machineCollider, Is.Not.Null);
+                Transform truckRoot = receiver.transform.parent != null
+                    ? receiver.transform.parent
+                    : receiver.transform;
+                probe = new GameObject("Preexisting truck collision probe");
+                probe.transform.SetParent(truckRoot, true);
+                probe.transform.position = machineCollider.bounds.center;
+                probe.AddComponent<BoxCollider>().size = Vector3.one * .25f;
+                Physics.SyncTransforms();
+
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.False);
+                Assert.That(autonomy.IsRunning, Is.False);
+                Assert.That(keyboard.AutomaticControlActive, Is.False);
+                Assert.That(autonomy.FaultReason, Does.Contain("矿车穿透"));
+            }
+            finally
+            {
+                if (probe != null) Object.Destroy(probe);
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
         /// <summary>Verify the production motion monitor stops automatically when a truck collider is obstructed.</summary>
         /// <returns>Scene loading, collision injection during truck approach, fault handling and cleanup frames.</returns>
         [UnityTest]
@@ -823,6 +1184,31 @@ namespace ExcavatorControls.Tests
                 yield return null;
             Assert.That(autonomy.IsRunning, Is.False,
                 $"Autonomous job timed out in {autonomy.State}: {autonomy.Status}");
+        }
+
+        private static void CaptureHandoffFrame(Camera camera, string stage)
+        {
+            var target = new RenderTexture(1280, 900, 24);
+            var image = new Texture2D(1280, 900, TextureFormat.RGB24, false);
+            RenderTexture previousTarget = camera.targetTexture;
+            RenderTexture previousActive = RenderTexture.active;
+            try
+            {
+                camera.targetTexture = target;
+                camera.Render();
+                RenderTexture.active = target;
+                image.ReadPixels(new Rect(0, 0, 1280, 900), 0, 0);
+                image.Apply();
+                Directory.CreateDirectory("Diagnostics");
+                File.WriteAllBytes("Diagnostics/manual-auto-" + stage + ".png", image.EncodeToPNG());
+            }
+            finally
+            {
+                RenderTexture.active = previousActive;
+                camera.targetTexture = previousTarget;
+                Object.DestroyImmediate(image);
+                Object.DestroyImmediate(target);
+            }
         }
 
         private static void ExpectFirstSceneLoadMessages()

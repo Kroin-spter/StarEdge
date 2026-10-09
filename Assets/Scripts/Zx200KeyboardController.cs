@@ -80,11 +80,11 @@ public class Zx200KeyboardController : MonoBehaviour
             (Input.GetKey(KeyCode.G) ? 1f : 0f);
         float keyboardBucket = (Input.GetKey(KeyCode.Y) ? 1f : 0f) -
             (Input.GetKey(KeyCode.H) ? 1f : 0f);
-        float normalizedDeadzone = Mathf.Clamp01(neutralDeadzone / 127.5f);
         ManualInputActive = HasNonNeutralInput(
             vertical, horizontal, keyboardSwing, keyboardBoom, keyboardArm, keyboardBucket, .1f) ||
-            (topicActive && HasNonNeutralInput(
-                0f, 0f, topicSwing, topicBoom, topicArm, topicBucket, normalizedDeadzone));
+            (topicActive && HasNonNeutralTopicInput(
+                topicFrame.action1, topicFrame.action2, topicFrame.action3,
+                topicFrame.action4, topicFrame.action5, topicFrame.action6, neutralDeadzone));
         if (AutomaticControlActive)
         {
             if (trackDrive != null) trackDrive.Stop();
@@ -211,6 +211,26 @@ public class Zx200KeyboardController : MonoBehaviour
         return Mathf.Abs(vertical) > threshold || Mathf.Abs(horizontal) > threshold ||
             Mathf.Abs(swing) > threshold || Mathf.Abs(boom) > threshold ||
             Mathf.Abs(arm) > threshold || Mathf.Abs(bucket) > threshold;
+    }
+
+    /// <summary>Detect any non-neutral AZ action, including either track, for manual takeover.</summary>
+    /// <param name="leftTrack">AZ action1 raw value.</param>
+    /// <param name="rightTrack">AZ action2 raw value.</param>
+    /// <param name="swing">AZ action3 raw value.</param>
+    /// <param name="arm">AZ action4 raw value.</param>
+    /// <param name="bucket">AZ action5 raw value.</param>
+    /// <param name="boom">AZ action6 raw value.</param>
+    /// <param name="deadzone">Raw deadzone around AZ neutral.</param>
+    /// <returns>True if any fresh action is outside the deadzone.</returns>
+    public static bool HasNonNeutralTopicInput(float leftTrack, float rightTrack, float swing,
+        float arm, float bucket, float boom, float deadzone)
+    {
+        return Mathf.Abs(leftTrack - 127.5f) > deadzone ||
+            Mathf.Abs(rightTrack - 127.5f) > deadzone ||
+            Mathf.Abs(swing - 127.5f) > deadzone ||
+            Mathf.Abs(arm - 127.5f) > deadzone ||
+            Mathf.Abs(bucket - 127.5f) > deadzone ||
+            Mathf.Abs(boom - 127.5f) > deadzone;
     }
 
     /// <summary>将左右履带指令转换为前进和转向输入。</summary>

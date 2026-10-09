@@ -59,6 +59,9 @@ export CESIUM_TILESET_DIR=/absolute/path/to/osgb_small_005_004
 - `Esc`：人工接管，停止自动姿态和履带请求，但保留现场已产生的土量。
 - `Backspace`：停止并复位运行时土区、铲斗、空中土流、车厢记录和设备姿态。
 
+人工挖掘中也可按 `P`：如果斗内已有达到最小转运量的真实土方，自动流程先从当前实测姿态完成这斗的抬升、回转、卸料，再继续下一斗；空斗从当前姿态进入挖点。按键时尚未回中的键盘或 AZ 手柄输入不会同帧取消自动；回中后新的关节或履带输入仍会立即交还人工。自动运行期间 `Esc` 始终可以接管。接管不会清空土区、斗内或车厢土量；需要全部清场时才使用 `Backspace`。
+这套装车轨迹仍以烘焙的坡面作业位为基准：人工可调整大臂、小臂、铲斗和回转姿态；若把履带开出已校准的作业位，系统会拒绝套用原固定挖点，提示先人工返回。没有新增底盘自动寻路。
+
 HMI 集成使用 `AutonomousExcavationController.StartAutonomousJob()`、`RequestManualTakeover()` 和 `ResetAutonomousJob()`；通过 `State`、`Status`、`FaultReason`、`DeliveredVolumeM3` 和 `CompletedCycles` 读取反馈。完成判定以 `SoilReceivingZone.VolumeM3` 的实际增加量为准，不以铲斗释放量代替。
 
 当前版本暂不包含底盘自动路径规划和跨位置的多挖点调度；主场景地图未就绪、车满、空挖/挖尽、姿态或卸料超时，以及卸料净空不足都会安全停止并保留原因。`Completed` 是任务目标量达到，`TruckFull` 才表示车厢余量不足以接收下一斗。施工场编辑器将车辆放在土区右前方独立装车位，并校验土区扩大边界与车辆实体碰撞盒至少保留约 2m 水平净距。

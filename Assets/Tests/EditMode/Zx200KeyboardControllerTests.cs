@@ -177,5 +177,18 @@ namespace ExcavatorControls.Tests
             Assert.That(Zx200KeyboardController.HasNonNeutralInput(
                 vertical, horizontal, swing, boom, arm, bucket, .1f), Is.EqualTo(expected));
         }
+
+        /// <summary>AZ left/right track input alone must count as a manual takeover request.</summary>
+        [Test]
+        public void HasNonNeutralTopicInput_IncludesBothTracks()
+        {
+            MethodInfo detect = typeof(Zx200KeyboardController).GetMethod("HasNonNeutralTopicInput",
+                BindingFlags.Public | BindingFlags.Static);
+            Assert.That(detect, Is.Not.Null);
+            Assert.That((bool)detect.Invoke(null, new object[] { 254f, 127f, 127f, 127f, 127f, 127f, 1.5f }),
+                Is.True);
+            Assert.That((bool)detect.Invoke(null, new object[] { 127f, 127f, 127f, 127f, 127f, 127f, 1.5f }),
+                Is.False);
+        }
     }
 }

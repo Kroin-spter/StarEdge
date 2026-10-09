@@ -137,6 +137,19 @@ namespace ExcavatorControls.Tests
                 available, minimumTransfer, loadCapacity), Is.EqualTo(expected));
         }
 
+        /// <summary>Truck-side arm recentering must receive the same collision monitor as dump motion.</summary>
+        [TestCase(AutonomousExcavationState.PrepareDump, true)]
+        [TestCase(AutonomousExcavationState.SwingToTruck, true)]
+        [TestCase(AutonomousExcavationState.AcquirePoint, false)]
+        public void RequiresTruckCollisionMonitoring_CoversTruckSideRecenter(
+            AutonomousExcavationState state, bool expected)
+        {
+            MethodInfo policy = typeof(AutonomousExcavationController).GetMethod(
+                "RequiresTruckCollisionMonitoring", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(policy, Is.Not.Null);
+            Assert.That((bool)policy.Invoke(null, new object[] { state }), Is.EqualTo(expected));
+        }
+
         [TestCase(AutonomousMotionAxis.Bucket, 15f, 10f, 20f, 30f, 15f)]
         [TestCase(AutonomousMotionAxis.Boom, 10f, 25f, 20f, 30f, 25f)]
         [TestCase(AutonomousMotionAxis.Arm, 10f, 15f, 35f, 30f, 35f)]
