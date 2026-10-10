@@ -205,6 +205,60 @@ namespace ExcavatorControls.Tests
             if (unload != null) yield return unload;
         }
 
+        /// <summary>Starting from a hand-steered slope pose should use that area first and change cut location on later buckets.</summary>
+        /// <returns>Two or more real cuts and matching truck receipts.</returns>
+        [UnityTest]
+        [Timeout(300000)]
+        public IEnumerator HandSteeredStartUsesDifferentDigPointsAndLoadsTruck()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var machine = FindInScene<Zx200DigController>(scene);
+                var receiver = FindInScene<SoilReceivingZone>(scene);
+                machine.ApplyWorkReadyPose();
+                for (int frame = 0; frame < 80; frame++) yield return new WaitForFixedUpdate();
+                machine.AdjustManualPose(16f, 0f, 0f, 0f);
+                for (int frame = 0; frame < 120; frame++) yield return new WaitForFixedUpdate();
+                Assert.That(machine.ReadActualPose().swing, Is.GreaterThan(10f));
+                double before = receiver.VolumeM3;
+                Assert.That(autonomy.StartAutonomousJob(.2), Is.True);
+                var cutAngles = new System.Collections.Generic.List<float>();
+                bool wasCutting = false;
+                float deadline = Time.realtimeSinceStartup + 250f;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    bool cutting = autonomy.State == AutonomousExcavationState.FillBucket;
+                    if (cutting && !wasCutting) cutAngles.Add(machine.ReadActualPose().swing);
+                    wasCutting = cutting;
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(cutAngles.Count, Is.GreaterThanOrEqualTo(2));
+                Assert.That(cutAngles[0], Is.GreaterThan(8f),
+                    "The first automatic cut should stay near the operator-selected part of the slope.");
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(cutAngles[0], cutAngles[1])), Is.GreaterThan(4f),
+                    "The next bucket should target a different reachable patch.");
+                Assert.That(receiver.VolumeM3 - before, Is.GreaterThanOrEqualTo(.2));
+                Assert.That(autonomy.DeliveredVolumeM3,
+                    Is.EqualTo(receiver.VolumeM3 - before).Within(1e-5));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
         /// <summary>Release automatic ownership during live unloading without resetting soil or pose.</summary>
         /// <returns>A real automatic bucket, dump-phase interruption and cleanup.</returns>
         [UnityTest]

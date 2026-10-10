@@ -46,7 +46,9 @@ public enum AutonomousMotionAxis
 [DisallowMultipleComponent]
 public sealed class AutonomousExcavationController : MonoBehaviour
 {
-    private static readonly float[] DigPointSwingOffsetsDegrees = { 0f, -8f, 8f, -16f, 16f, -24f, 24f };
+    // Traverse adjacent work-face sectors, then reverse without a large wrap-around swing.
+    private static readonly float[] DigPointSwingOffsetsDegrees =
+        { -24f, -16f, -8f, 0f, 8f, 16f, 24f, 16f, 8f, 0f, -8f, -16f };
     // The validated high-clearance dump pose may be up to 7 m above the receiver; wall clearance is checked separately.
     private const float MaximumDumpDropMeters = 7f;
     private const float DumpLandingInsetMeters = .25f;
@@ -353,6 +355,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private double taskReceiverStartVolumeM3;
     private double cycleReceiverStartVolumeM3;
     private int nextDigPointIndex;
+    private int consecutiveEmptyDigPoints;
     private float dumpSwingTarget;
     private bool stageSucceeded;
     private bool dumpOwnsUnloaderEnabledState;
@@ -452,7 +455,17 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         FullBucketRecoveryCount = 0;
         PartialBucketRecoveryCount = 0;
         LastCutEntryDepthMeters = 0f;
+        float manualSwing = machine.ReadActualPose().swing - machine.workReadyPose.swing;
         nextDigPointIndex = 0;
+        float nearestSwingError = float.PositiveInfinity;
+        for (int index = 0; index < DigPointSwingOffsetsDegrees.Length; index++)
+        {
+            float error = Mathf.Abs(Mathf.DeltaAngle(manualSwing, DigPointSwingOffsetsDegrees[index]));
+            if (error > nearestSwingError) continue;
+            nearestSwingError = error;
+            nextDigPointIndex = index;
+        }
+        consecutiveEmptyDigPoints = 0;
         stateHistory.Clear();
         FaultReason = string.Empty;
         keyboard.SetAutomaticControl(true);
@@ -614,7 +627,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 if (!IsRunning) yield break;
                 if (State == AutonomousExcavationState.EmptyCut)
                 {
-                    nextDigPointIndex++;
+                    AdvanceDigPoint(true);
                     yield return RecoverFromEmptyCut();
                     if (!IsRunning || !stageSucceeded) yield break;
                     continue;
@@ -626,11 +639,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 if (!IsRunning || !stageSucceeded) yield break;
                 if (State == AutonomousExcavationState.EmptyCut)
                 {
-                    nextDigPointIndex++;
+                    AdvanceDigPoint(true);
                     yield return RecoverFromEmptyCut();
                     if (!IsRunning || !stageSucceeded) yield break;
                     continue;
                 }
+                AdvanceDigPoint(false);
             }
 
             SetState(AutonomousExcavationState.Lift, "从当前姿态抬升并保土");
@@ -828,9 +842,30 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         // Park the upper machine before moving the tracks. Its soil ledger is not reset.
         LockBaseForAutomaticMotion();
         bool cuttingWasSuppressed = cutter.IsCuttingSuppressed;
+        BucketSoilResistance returnResistance = machine.bucketJoint.GetComponent<BucketSoilResistance>();
+        bool resistanceWasEnabled = returnResistance != null && returnResistance.enabled;
         cutter.SetCuttingSuppressed(true);
+        if (resistanceWasEnabled) returnResistance.enabled = false;
         try
         {
+            // A hand-dug bucket may still touch the face. Lift it before the generic
+            // single-axis pose mover curls the bucket; otherwise resistance stalls that curl.
+            Vector3 tip = cutter.TipWorldPosition;
+            float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+            if (tip.y < surface + .2f)
+            {
+                Zx200JointPose clearance = machine.ReadActualPose();
+                Vector3 axis = machine.boomJoint.transform.TransformDirection(
+                    machine.boomJoint.anchorRotation * Vector3.right).normalized;
+                Vector3 pivot = machine.boomJoint.transform.TransformPoint(machine.boomJoint.anchorPosition);
+                float sign = GetHeightImprovingRotationSign(axis, tip - pivot);
+                ArticulationDrive boomDrive = machine.boomJoint.xDrive;
+                clearance.boom = Zx200DigController.ClampTarget(clearance.boom + sign * 8f,
+                    boomDrive.lowerLimit, boomDrive.upperLimit);
+                clearance.duration = 1.2f;
+                yield return MoveToPose(clearance, "履带回位前铲斗脱坡超时");
+                if (!IsRunning || !stageSucceeded) yield break;
+            }
             Zx200JointPose stowed = machine.carryPose;
             stowed.swing = 0f;
             stowed.duration = Mathf.Max(stowed.duration, 2f);
@@ -937,8 +972,15 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         finally
         {
             keyboard.StopAutomaticTrackInput();
+            if (resistanceWasEnabled && returnResistance != null) returnResistance.enabled = true;
             cutter.SetCuttingSuppressed(cuttingWasSuppressed);
         }
+    }
+
+    private void AdvanceDigPoint(bool wasEmpty)
+    {
+        consecutiveEmptyDigPoints = wasEmpty ? consecutiveEmptyDigPoints + 1 : 0;
+        nextDigPointIndex = (nextDigPointIndex + 1) % DigPointSwingOffsetsDegrees.Length;
     }
 
     private IEnumerator AcquirePoint()
@@ -968,7 +1010,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             EnterFault("可挖土区未启用");
             yield break;
         }
-        if (nextDigPointIndex >= DigPointSwingOffsetsDegrees.Length)
+        if (consecutiveEmptyDigPoints >= DigPointSwingOffsetsDegrees.Length)
         {
             Finish(AutonomousExcavationState.SoilExhausted, "已遍历全部预设可达挖点，停止继续切削");
             yield break;
@@ -2098,7 +2140,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         {
             yield return MoveToPose(clearTruck, "离开车厢回转姿态超时", 3f);
             if (IsRunning && stageSucceeded)
-                yield return MoveToPose(machine.workReadyPose, "多斗循环返回挖点准备姿态超时");
+            {
+                Zx200JointPose nextPoint = machine.workReadyPose;
+                nextPoint.swing += DigPointSwingOffsetsDegrees[nextDigPointIndex];
+                yield return MoveToPose(nextPoint, "多斗循环返回挖点准备姿态超时");
+            }
         }
         finally
         {
