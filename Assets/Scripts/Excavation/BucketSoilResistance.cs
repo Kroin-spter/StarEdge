@@ -42,6 +42,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
     private Vector3 previous;
     private bool hasPrevious;
     private bool floorMomentumBrakeActive;
+    private bool allowManualSlopeRelief;
     private bool full, atFloor, tooDeep;
     private readonly System.Collections.Generic.Dictionary<ArticulationBody, float> holds =
         new System.Collections.Generic.Dictionary<ArticulationBody, float>();
@@ -133,6 +134,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
     public Zx200JointPose ConstrainPose(Zx200DigController machine, Zx200JointPose requested, float deltaSeconds)
     {
         EvaluateContact();
+        allowManualSlopeRelief = machine != null && !machine.IsBusy;
         if (!isActiveAndEnabled || machine == null || !IsContacting || deltaSeconds <= 0)
         { holds.Clear(); floorMomentumBrakeActive = false; return requested; }
         var actual = machine.ReadActualPose();
@@ -149,6 +151,11 @@ public sealed class BucketSoilResistance : MonoBehaviour
         Zx200DigController machine, Zx200JointPose actual, ref Zx200JointPose requested,
         float deltaSeconds)
     {
+        if (machine.boomJoint == null || machine.bucketJoint == null)
+        {
+            floorMomentumBrakeActive = false;
+            return false;
+        }
         Vector3 tip = cutter.TipWorldPosition;
         if (!cutter.soil.HasSurfaceAt(tip))
         {
@@ -177,11 +184,13 @@ public sealed class BucketSoilResistance : MonoBehaviour
         float triggerClearance = CalculateVelocityBrakeTriggerClearance(
             nominalTriggerClearance, clearanceClosingSpeedMps, floorBrakingResponseSeconds);
         float releaseClearance = triggerClearance + .06f;
+        bool closingOnFloor = clearanceClosingSpeedMps > .02f;
 
-        if (!floorMomentumBrakeActive && predictedClearance <= triggerClearance)
+        if (!floorMomentumBrakeActive && closingOnFloor && predictedClearance <= triggerClearance)
             floorMomentumBrakeActive = true;
-        else if (floorMomentumBrakeActive && currentClearance >= releaseClearance &&
-            predictedClearance >= currentClearance - .01f)
+        else if (floorMomentumBrakeActive &&
+            (!closingOnFloor && predictedClearance >= currentClearance - .005f ||
+             currentClearance >= releaseClearance && predictedClearance >= currentClearance - .01f))
             floorMomentumBrakeActive = false;
 
         if (!floorMomentumBrakeActive) return false;
@@ -218,6 +227,15 @@ public sealed class BucketSoilResistance : MonoBehaviour
         }
         float guardedBucketTarget = GuardJoint(
             machine.bucketJoint, actual.bucket, requested.bucket, deltaSeconds);
+        if (!machine.IsBusy)
+        {
+            float guardedArmTarget = GuardJoint(
+                machine.armJoint, actual.arm, requested.arm, deltaSeconds);
+            // Manual withdrawal may follow a falling local floor; the autonomous scoop
+            // keeps its original coordinated boom/bucket brake trajectory.
+            recovery.arm = Mathf.MoveTowardsAngle(actual.arm, guardedArmTarget,
+                cuttingSpeedDegrees * deltaSeconds);
+        }
         float curlStep = cuttingSpeedDegrees * Mathf.Clamp(floorBrakingCurlSpeedScale, .1f, 1f) * deltaSeconds;
         recovery.bucket = Zx200DigController.ClampTarget(
             Mathf.MoveTowardsAngle(actual.bucket, guardedBucketTarget, curlStep),
@@ -331,7 +349,8 @@ public sealed class BucketSoilResistance : MonoBehaviour
             Mathf.Clamp(actualDelta, -1, 1), axis) * (tip - pivot);
         // A held cutting target must never prevent the operator/controller from reversing
         // toward a measured pose that raises the tooth out of the cut.
-        if (nextFromActual.y - tip.y > .0001f)
+        if (nextFromActual.y - tip.y > .0001f ||
+            allowManualSlopeRelief && ImprovesFloorClearance(tip, nextFromActual))
         {
             holds.Remove(joint);
             return requested;
@@ -345,7 +364,8 @@ public sealed class BucketSoilResistance : MonoBehaviour
         Vector3 next = pivot + Quaternion.AngleAxis(Mathf.Clamp(delta, -1, 1), axis) * (tip - pivot);
         Vector3 movement = next - tip;
         // A positive vertical step always allows escape, even at capacity or at the excavation floor.
-        if (movement.y > .0001f) { holds.Remove(joint); return requested; }
+        if (movement.y > .0001f || allowManualSlopeRelief && ImprovesFloorClearance(tip, next))
+        { holds.Remove(joint); return requested; }
         // Contact limits are independent of another joint's direction rejection in this command.
         // On a mound, overhead height grows during a horizontal cut into its face. It is
         // not a downward plunge. The real arm cuts at about 32 degrees below horizontal;
@@ -367,6 +387,14 @@ public sealed class BucketSoilResistance : MonoBehaviour
         }
         holds.Remove(joint);
         return Mathf.MoveTowards(actual, requested, cuttingSpeedDegrees * dt);
+    }
+
+    private bool ImprovesFloorClearance(Vector3 current, Vector3 next)
+    {
+        if (cutter.soil == null || !cutter.soil.HasSurfaceAt(next)) return false;
+        // A sloped floor may fall faster than the tooth. Compare local clearance, not only Y.
+        return next.y - cutter.soil.GetFloorWorldY(next) >
+            current.y - cutter.soil.GetFloorWorldY(current) + .0001f;
     }
 
     private float Hold(ArticulationBody joint, float actual)

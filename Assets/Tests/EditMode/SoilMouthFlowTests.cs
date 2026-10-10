@@ -120,7 +120,7 @@ namespace ExcavatorControls.Tests
                 Physics.SyncTransforms();
                 double initial = cutter.VolumeM3;
                 double fullRequest = System.Math.Min(initial,
-                    .1 * unloader.flowM3PerSecond * Mathf.Lerp(.3f, 1,
+                    .1 * unloader.flowM3PerSecond * 1.8f * Mathf.Lerp(.3f, 1,
                         Mathf.Clamp01((float)(initial / cutter.EffectiveCapacityM3))));
 
                 double emitted = unloader.Step(.1f);

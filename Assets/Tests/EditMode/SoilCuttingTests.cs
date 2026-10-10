@@ -36,6 +36,46 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void LooseGroundPileBaseFollowsSlopingSoilSurface()
+        {
+            var terrain = (DeformableSoilTerrain)soil;
+            var heights = new float[33, 33];
+            for (int z = 0; z < 33; z++)
+                for (int x = 0; x < 33; x++) heights[z, x] = .8f - .3f * z / 32f;
+            terrain.SetPreparedSurface(heights);
+            bucket = new GameObject("slope pile source");
+            var cutter = bucket.AddComponent<BucketSoilCutter>();
+            cutter.soil = terrain;
+            cutter.tipLocalPosition = Vector3.zero;
+            cutter.cutDirectionLocal = Vector3.forward;
+            bucket.transform.position = new Vector3(2, 1.1f, 1.5f);
+            cutter.SamplePose();
+            bucket.transform.position += Vector3.forward * .3f;
+            cutter.SamplePose();
+            Assert.That(cutter.VolumeM3, Is.GreaterThan(.01));
+            var pile = new GameObject("slope pile");
+            try
+            {
+                pile.transform.position = new Vector3(2,
+                    terrain.Terrain.SampleHeight(new Vector3(2, 0, 2)), 2);
+                var zone = pile.AddComponent<SoilReceivingZone>();
+                zone.isGroundPile = true;
+                zone.size = new Vector2(100, 100);
+                zone.capacityM3 = 100000;
+                Assert.That(cutter.TransferTo(zone, .02), Is.GreaterThan(.005));
+                Mesh mesh = pile.GetComponent<MeshFilter>().sharedMesh;
+                for (int i = 2; i < mesh.vertexCount; i++)
+                {
+                    Vector3 world = pile.transform.TransformPoint(mesh.vertices[i]);
+                    float terrainY = terrain.Terrain.SampleHeight(world) + terrain.transform.position.y;
+                    Assert.That(Mathf.Abs(world.y - terrainY), Is.LessThan(.015f),
+                        "Loose soil rim must rest on the actual slope instead of a flat floating disc");
+                }
+            }
+            finally { UnityEngine.Object.DestroyImmediate(pile); }
+        }
+
+        [Test]
         public void PreparedSurfacePreservesSourceAndBecomesResetAndVolumeBaseline()
         {
             var terrain = (DeformableSoilTerrain)soil;

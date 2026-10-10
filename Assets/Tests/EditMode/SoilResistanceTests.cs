@@ -69,6 +69,78 @@ namespace ExcavatorControls.Tests
             }
         }
 
+        [TestCase(-.2f)]
+        [TestCase(0f)]
+        public void AtSlopeFloorArmWithdrawalCanIncreaseLocalClearanceWithoutRaisingWorldHeight(float boomWithdrawal)
+        {
+            var data = new TerrainData { heightmapResolution = 33, size = new Vector3(4, 2, 4) };
+            var surface = new float[33, 33];
+            var groundFloor = new float[33, 33];
+            for (int z = 0; z < 33; z++)
+                for (int x = 0; x < 33; x++)
+                {
+                    surface[z, x] = .85f;
+                    groundFloor[z, x] = .7f - .1f * z / 32f;
+                }
+            data.SetHeights(0, 0, surface);
+            var ground = Terrain.CreateTerrainGameObject(data);
+            var rig = new GameObject("slope floor guard fixture");
+            var bucket = new GameObject("blade");
+            try
+            {
+                var soil = ground.AddComponent<DeformableSoilTerrain>();
+                soil.PrepareMoundSurface(surface, groundFloor);
+                var cutter = bucket.AddComponent<BucketSoilCutter>();
+                cutter.soil = soil;
+                cutter.tipLocalPosition = Vector3.zero;
+                cutter.cutDirectionLocal = Vector3.forward;
+                bucket.transform.position = new Vector3(2,
+                    boomWithdrawal == 0f ? 1.36f : 1.31f, 2);
+                var resistance = bucket.AddComponent<BucketSoilResistance>();
+                var machine = rig.AddComponent<Zx200DigController>();
+                var boom = new GameObject("boom pivot");
+                boom.transform.SetParent(rig.transform);
+                boom.transform.position = bucket.transform.position - Vector3.forward;
+                machine.boomJoint = boom.AddComponent<ArticulationBody>();
+                machine.boomJoint.matchAnchors = false;
+                machine.boomJoint.anchorPosition = Vector3.zero;
+                machine.boomJoint.anchorRotation = Quaternion.identity;
+                ArticulationDrive boomDrive = machine.boomJoint.xDrive;
+                boomDrive.lowerLimit = -30f;
+                boomDrive.upperLimit = 30f;
+                machine.boomJoint.xDrive = boomDrive;
+                var arm = new GameObject("arm pivot");
+                arm.transform.SetParent(rig.transform);
+                arm.transform.position = bucket.transform.position - Vector3.up * 2;
+                machine.armJoint = arm.AddComponent<ArticulationBody>();
+                machine.armJoint.matchAnchors = false;
+                machine.armJoint.anchorPosition = Vector3.zero;
+                machine.armJoint.anchorRotation = Quaternion.identity;
+                machine.bucketJoint = bucket.AddComponent<ArticulationBody>();
+                var requested = new Zx200JointPose(0, boomWithdrawal, .3f, 0, 0);
+                Vector3 tip = cutter.TipWorldPosition;
+                Vector3 pivot = arm.transform.TransformPoint(machine.armJoint.anchorPosition);
+                Vector3 axis = arm.transform.TransformDirection(machine.armJoint.anchorRotation * Vector3.right);
+                Vector3 advancedTip = pivot + Quaternion.AngleAxis(.3f, axis) * (tip - pivot);
+                Assert.That(advancedTip.y, Is.LessThan(tip.y));
+                Assert.That(advancedTip.y - soil.GetFloorWorldY(advancedTip),
+                    Is.GreaterThan(tip.y - soil.GetFloorWorldY(tip)));
+                var result = resistance.ConstrainPose(machine, requested, .02f);
+                Assert.That(result.arm, Is.GreaterThan(.05f),
+                    "A shallow downward arm sweep toward a lower floor is a safe withdrawal, not a jam");
+                if (boomWithdrawal == 0f)
+                    Assert.That(result.boom, Is.Zero.Within(.01f),
+                        "Stationary tooth above the floor must not trigger an unsolicited boom lift");
+            }
+            finally
+            {
+                Object.DestroyImmediate(bucket);
+                Object.DestroyImmediate(rig);
+                Object.DestroyImmediate(ground);
+                Object.DestroyImmediate(data);
+            }
+        }
+
         /// <summary>Depth/floor limits use actual terrain heights; lifting out clears contact without modifying soil.</summary>
         [Test]
         public void ContactReportsDepthAndFloorAndClearsAboveSurface()

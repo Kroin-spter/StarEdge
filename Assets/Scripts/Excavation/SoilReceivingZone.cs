@@ -110,6 +110,7 @@ public sealed class SoilReceivingZone : MonoBehaviour
         mesh.Clear();
         if (isGroundPile)
         {
+            DeformableSoilTerrain source = records.Count > 0 ? records[0].Source : null;
             const int sides = 24;
             float slope = Mathf.Tan(32 * Mathf.Deg2Rad);
             float polygonFactor = sides * Mathf.Sin(2 * Mathf.PI / sides) * .5f;
@@ -118,10 +119,12 @@ public sealed class SoilReceivingZone : MonoBehaviour
             var triangles = new int[sides * 6];
             var uv = new Vector2[sides + 2];
             vertices[0] = Vector3.up * radius * slope;
+            vertices[1] = ConformPileBase(Vector3.zero, source);
             for (int i = 0; i < sides; i++)
             {
                 float angle = i * 2 * Mathf.PI / sides;
-                vertices[i+2] = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * radius;
+                vertices[i+2] = ConformPileBase(
+                    new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * radius, source);
                 uv[i+2] = new Vector2(vertices[i+2].x, vertices[i+2].z) * 3;
                 int next = (i+1) % sides + 2;
                 int at = i*6;
@@ -143,6 +146,15 @@ public sealed class SoilReceivingZone : MonoBehaviour
             new Vector2(0,0),new Vector2(size.x,0),size,new Vector2(0,size.y) };
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
+    }
+
+    private Vector3 ConformPileBase(Vector3 localPoint, DeformableSoilTerrain source)
+    {
+        if (source == null || source.Terrain == null) return localPoint;
+        Vector3 world = transform.TransformPoint(localPoint);
+        if (!source.HasSurfaceAt(world)) return localPoint;
+        world.y = source.Terrain.SampleHeight(world) + source.transform.position.y;
+        return transform.InverseTransformPoint(world);
     }
 
     private void OnDestroy()
