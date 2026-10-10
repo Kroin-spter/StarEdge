@@ -90,6 +90,9 @@ public class Zx200DigController : MonoBehaviour
     /// <summary>获取最近一次自动单姿态动作是否实际稳定到位。</summary>
     public bool LastAutomaticMotionSucceeded { get; private set; }
 
+    /// <summary>Number of accepted manual joint commands since this controller was created.</summary>
+    public uint ManualPoseRevision { get; private set; }
+
     private void Awake()
     {
         if (!PrepareForPhysics())
@@ -351,6 +354,9 @@ public class Zx200DigController : MonoBehaviour
             current.arm + armDelta,
             current.bucket + bucketDelta,
             0f));
+        if (Mathf.Abs(swingDelta) + Mathf.Abs(boomDelta) + Mathf.Abs(armDelta) +
+            Mathf.Abs(bucketDelta) > .00001f)
+            ManualPoseRevision++;
         return true;
     }
 

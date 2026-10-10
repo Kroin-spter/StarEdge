@@ -80,12 +80,7 @@ namespace ExcavatorControls.Tests
                 var receiver = FindInScene<SoilReceivingZone>(scene);
                 double receiverBefore = receiver.VolumeM3;
                 double groundPileBefore = ManualSoilTestMotion.GroundPileVolumeFor(cutter);
-                machine.ApplyWorkReadyPose();
-                float readyDeadline = Time.realtimeSinceStartup + 20f;
-                while (!cutter.StartupReady && Time.realtimeSinceStartup < readyDeadline)
-                    yield return new WaitForFixedUpdate();
-                Assert.That(cutter.StartupReady, Is.True,
-                    "Manual excavation also requires the real machine to reach its initial work-ready pose.");
+                Debug.Log($"MANUAL START ready={cutter.StartupReady}, pose={machine.ReadActualPose()}");
                 for (int frame = 0; frame < 400; frame++)
                 {
                     Zx200JointPose target = machine.ReadActualPose();
@@ -98,12 +93,12 @@ namespace ExcavatorControls.Tests
                         Mathf.Clamp(arm, -.3f, .3f), Mathf.Clamp(bucket, -.3f, .3f));
                     yield return new WaitForFixedUpdate();
                 }
-                for (int frame = 0; frame < 250 && cutter.VolumeM3 < .015; frame++)
+                for (int frame = 0; frame < 250 && cutter.VolumeM3 < .05; frame++)
                 {
                     machine.AdjustManualPose(0f, 10f * Time.fixedDeltaTime, 0f, 0f);
                     yield return new WaitForFixedUpdate();
                 }
-                for (int frame = 0; frame < 180 && cutter.VolumeM3 < .015; frame++)
+                for (int frame = 0; frame < 180 && cutter.VolumeM3 < .05; frame++)
                 {
                     machine.AdjustManualPose(0f, 0f, 10f * Time.fixedDeltaTime,
                         5f * Time.fixedDeltaTime);
@@ -113,9 +108,10 @@ namespace ExcavatorControls.Tests
                 Debug.Log($"HAND-DUG bucket={cutter.VolumeM3:F6}, removed={cutter.ExcavatedVolumeM3:F6}, " +
                     $"tip={manualTip}, surface={cutter.soil.Terrain.SampleHeight(manualTip) + cutter.soil.transform.position.y:F3}, " +
                     $"hasSurface={cutter.soil.HasSurfaceAt(manualTip)}, ready={cutter.StartupReady}, " +
-                    $"status={cutter.Status}, pose={machine.ReadActualPose()}");
-                Assert.That(cutter.VolumeM3, Is.GreaterThan(.005),
-                    "The handoff must begin with actual soil in the manually operated bucket.");
+                    $"status={cutter.Status}, pose={machine.ReadActualPose()}, " +
+                    $"guard={machine.bucketJoint.GetComponent<BucketSoilResistance>().BlockReason}");
+                Assert.That(cutter.VolumeM3, Is.GreaterThanOrEqualTo(.05),
+                    "A hand-operated cut must gather useful real soil before switching to automatic loading.");
                 Assert.That(autonomy.StartAutonomousJob(.22), Is.True);
                 Camera previewCamera = SystemInfo.graphicsDeviceType ==
                     UnityEngine.Rendering.GraphicsDeviceType.Null

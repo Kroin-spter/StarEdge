@@ -62,6 +62,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
     /// <summary>Whether the physical machine has settled at its initial work-ready pose so cutting may be counted.</summary>
     public bool StartupReady => startupReady;
     private Zx200DigController machine;
+    private uint manualRevisionAtEnable;
     private Vector3 previous;
     private Vector3 lastObserved;
     private TerrainCollider ignoredTerrain;
@@ -78,6 +79,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
     {
         hasPrevious = false;
         machine = GetComponentInParent<Zx200DigController>();
+        manualRevisionAtEnable = machine != null ? machine.ManualPoseRevision : 0;
         if (machine == null || IsMachineReady()) startupReady = true;
     }
     private void Update()
@@ -101,17 +103,29 @@ public sealed class BucketSoilCutter : MonoBehaviour
             UpdateFill();
             return 0;
         }
-        // 初次定位会经过土区，只有设备实际到达待机姿态后才允许计量作业。
-        // 已在待机位置添加的采样器可立即启用，复位土区也不要求重做机械初始化。
+        // Before site preparation, teleporting the machine across soil must not count as a cut.
+        // Once the site is ready, an explicit manual command unlocks cutting even if the
+        // operator never waited at the narrow automatic work-ready pose.
         if (!startupReady)
         {
-            if (!IsMachineReady())
+            // WebDelivery depends on ExcavatorControls, so keep this optional site
+            // readiness check by name instead of introducing a circular assembly reference.
+            Component site = soil.transform.parent != null
+                ? soil.transform.parent.GetComponent("CesiumMoundSite") : null;
+            bool siteReady = site == null ||
+                site.GetType().GetProperty("IsReady")?.GetValue(site) is true;
+            bool manualWorkStarted = machine != null &&
+                machine.ManualPoseRevision != manualRevisionAtEnable &&
+                siteReady;
+            if (!IsMachineReady() && !manualWorkStarted)
             {
                 hasPrevious = false;
                 Status = "等待设备初始姿态稳定";
                 return 0;
             }
             startupReady = true;
+            hasPrevious = false;
+            previousBlade = null;
         }
         Vector3 current = TipWorldPosition;
         Vector3[] corners = GetBladeWorldCorners();
