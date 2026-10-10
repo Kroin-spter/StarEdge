@@ -83,6 +83,20 @@ namespace ExcavatorControls.Tests
             Assert.That(bounds.size.z, Is.LessThan(terrainData.size.z));
         }
 
+        /// <summary>Convoy support checks use the immutable surveyed map floor, not excavatable soil heights.</summary>
+        [Test]
+        public void GroundSamplerInterpolatesBakedCesiumFloorAndRejectsOutsidePositions()
+        {
+            Assert.That(baked.TrySampleGroundWorldY(new Vector3(12f, 0f, 22f), out float center), Is.True);
+            Assert.That(center, Is.EqualTo(7.4f).Within(.0001f));
+            Assert.That(baked.TrySampleGroundWorldY(new Vector3(9.99f, 0f, 22f), out _), Is.False);
+            Assert.That(baked.TrySampleGroundWorldY(new Vector3(14.01f, 0f, 22f), out _), Is.False);
+
+            baked.groundHeights[16 * 33 + 16] = .3f;
+            Assert.That(baked.TrySampleGroundWorldY(new Vector3(12f, 0f, 22f), out center), Is.True);
+            Assert.That(center, Is.EqualTo(7.6f).Within(.0001f));
+        }
+
         [Test]
         public void CorruptBaselineAndWrongMapAreRejectedWithReasons()
         {

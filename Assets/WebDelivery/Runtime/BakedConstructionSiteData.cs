@@ -109,6 +109,34 @@ public sealed class BakedConstructionSiteData : ScriptableObject
             terrainOrigin.y, terrainOrigin.y + terrainData.size.y);
     }
 
+    /// <summary>Sample the surveyed Cesium ground beneath a machine or truck support point.</summary>
+    /// <param name="worldPoint">World position whose X/Z coordinates select the map sample.</param>
+    /// <param name="worldY">Interpolated immutable map-ground elevation in world metres.</param>
+    /// <returns>False for missing data, a nonfinite point, or a point outside the baked survey.</returns>
+    public bool TrySampleGroundWorldY(Vector3 worldPoint, out float worldY)
+    {
+        worldY = 0f;
+        if (terrainData == null || groundHeights == null || !Finite(worldPoint)) return false;
+        int resolution = terrainData.heightmapResolution;
+        if (resolution < 2 || groundHeights.Length != resolution * resolution) return false;
+        Vector3 size = terrainData.size;
+        if (!Finite(size) || size.x <= 0f || size.y <= 0f || size.z <= 0f) return false;
+        float x = (worldPoint.x - terrainOrigin.x) / size.x;
+        float z = (worldPoint.z - terrainOrigin.z) / size.z;
+        if (x < 0f || x > 1f || z < 0f || z > 1f) return false;
+        float gridX = x * (resolution - 1);
+        float gridZ = z * (resolution - 1);
+        int x0 = Mathf.FloorToInt(gridX), z0 = Mathf.FloorToInt(gridZ);
+        int x1 = Mathf.Min(x0 + 1, resolution - 1);
+        int z1 = Mathf.Min(z0 + 1, resolution - 1);
+        float bottom = Mathf.Lerp(groundHeights[z0 * resolution + x0],
+            groundHeights[z0 * resolution + x1], gridX - x0);
+        float top = Mathf.Lerp(groundHeights[z1 * resolution + x0],
+            groundHeights[z1 * resolution + x1], gridX - x0);
+        worldY = terrainOrigin.y + Mathf.Lerp(bottom, top, gridZ - z0) * size.y;
+        return float.IsFinite(worldY);
+    }
+
     /// <summary>Prepare the soil component from this snapshot using its own mutable TerrainData copy.</summary>
     /// <param name="soil">Terrain-bearing soil component in the delivery scene.</param>
     /// <exception cref="InvalidOperationException">The target already uses a different source Terrain.</exception>
