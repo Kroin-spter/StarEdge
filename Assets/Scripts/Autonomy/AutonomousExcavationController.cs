@@ -24,7 +24,8 @@ public enum AutonomousExcavationState
     ManualTakeover,
     Fault,
     Resetting,
-    PrepareDump
+    PrepareDump,
+    ReturnToWorkSite
 }
 
 /// <summary>Identifies the single articulation axis currently commanded by the autonomous sequencer.</summary>
@@ -361,6 +362,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private bool automaticModeOwnsBaseLock;
     private bool fixedBaseBeforeAutomaticMode;
     private bool awaitingManualInputNeutral;
+    private bool returnToWorkSiteOnStart;
     private bool cuttingSuppressionPending;
     private bool cuttingWasSuppressedBeforeEntry;
 
@@ -423,9 +425,10 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             EnterFault("自主流程参数无效");
             return false;
         }
-        if (!CanStartFromCurrentBase())
+        returnToWorkSiteOnStart = !CanStartFromCurrentBase();
+        if (returnToWorkSiteOnStart && !CanReturnFromCurrentBase())
         {
-            EnterFault("设备已离开校准作业位；请人工返回坡面装车位后再启动自动流程");
+            EnterFault("设备已离开校准作业位及坡脚近距回位范围；请人工开回可通行的坡面附近再启动自动流程");
             return false;
         }
         if (cutter.VolumeM3 > 1e-5 &&
@@ -455,7 +458,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         keyboard.SetAutomaticControl(true);
         awaitingManualInputNeutral = true;
         machine.StopAutomaticMotion();
-        LockBaseForAutomaticMotion();
+        if (!returnToWorkSiteOnStart) LockBaseForAutomaticMotion();
         IsRunning = true;
         unloaderEnabledBeforeJob = unloader.enabled;
         jobOwnsUnloaderEnabledState = true;
@@ -579,6 +582,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (!IsRunning || !stageSucceeded) yield break;
         // Cesium site preparation restores the scene's manual-drive setting when it becomes ready.
         // Reassert the autonomous lock before the first machine motion.
+        if (returnToWorkSiteOnStart || !CanStartFromCurrentBase())
+        {
+            SetState(AutonomousExcavationState.ReturnToWorkSite, "履带驶回校准挖掘位");
+            yield return DriveBackToWorkSite();
+            if (!IsRunning || !stageSucceeded) yield break;
+        }
         LockBaseForAutomaticMotion();
         bool carryManualBucket = cutter.VolumeM3 >= minimumTransferVolumeM3;
 
@@ -792,6 +801,137 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             yield break;
         }
         stageSucceeded = true;
+    }
+
+    private IEnumerator DriveBackToWorkSite()
+    {
+        stageSucceeded = false;
+        if (!TryGetAutonomousBaseTarget(out Vector3 targetPosition, out Quaternion targetRotation) ||
+            !CanReturnFromCurrentBase())
+        {
+            EnterFault("当前履带位置不在坡脚近距回位范围内");
+            yield break;
+        }
+        if (!keyboard.ResolveArticulationRoot())
+        {
+            EnterFault("履带根刚体缺失，无法回位");
+            yield break;
+        }
+        ArticulationBody root = keyboard.articulationRoot;
+        Zx200TrackDrive trackDrive = keyboard.GetComponent<Zx200TrackDrive>();
+        if (trackDrive == null)
+        {
+            EnterFault("履带物理驱动缺失，无法回位");
+            yield break;
+        }
+
+        // Park the upper machine before moving the tracks. Its soil ledger is not reset.
+        LockBaseForAutomaticMotion();
+        bool cuttingWasSuppressed = cutter.IsCuttingSuppressed;
+        cutter.SetCuttingSuppressed(true);
+        try
+        {
+            Zx200JointPose stowed = machine.carryPose;
+            stowed.swing = 0f;
+            stowed.duration = Mathf.Max(stowed.duration, 2f);
+            yield return MoveToPose(stowed, "履带回位前收拢工作装置超时");
+            if (!IsRunning || !stageSucceeded) yield break;
+
+            ApplyBaseDriveMode(false);
+            float deadline = Time.realtimeSinceStartup + 50f;
+            float noContactSince = -1f;
+            float lastProgressAt = Time.realtimeSinceStartup;
+            float bestError = float.PositiveInfinity;
+            float stoppedTime = 0f;
+            while (IsRunning && Time.realtimeSinceStartup < deadline)
+            {
+                HandleManualInput();
+                if (!IsRunning) yield break;
+                if (!CanReturnFromCurrentBase())
+                {
+                    EnterFault("回位时履带驶出坡脚安全走廊");
+                    yield break;
+                }
+                string penetration = FindTruckPenetration();
+                if (penetration != null)
+                {
+                    EnterFault("履带回位时设备与矿车穿透，已停车：" + penetration);
+                    yield break;
+                }
+                if (trackDrive.GroundContactCount == 0)
+                {
+                    if (noContactSince < 0f) noContactSince = Time.realtimeSinceStartup;
+                    if (Time.realtimeSinceStartup - noContactSince > 1.5f)
+                    {
+                        EnterFault("履带回位时失去地面接触，已停车");
+                        yield break;
+                    }
+                }
+                else noContactSince = -1f;
+
+                Vector3 toTarget = Vector3.ProjectOnPlane(targetPosition - root.transform.position, Vector3.up);
+                Vector3 forward = Vector3.ProjectOnPlane(root.transform.forward, Vector3.up).normalized;
+                Vector3 targetForward = Vector3.ProjectOnPlane(targetRotation * Vector3.forward, Vector3.up).normalized;
+                float distance = toTarget.magnitude;
+                float yawError = Vector3.SignedAngle(forward, targetForward, Vector3.up);
+                float speed = Vector3.ProjectOnPlane(root.linearVelocity, Vector3.up).magnitude;
+                float error = distance + Mathf.Abs(yawError) * .01f;
+                if (error < bestError - .015f)
+                {
+                    bestError = error;
+                    lastProgressAt = Time.realtimeSinceStartup;
+                }
+                if (Time.realtimeSinceStartup - lastProgressAt > 8f)
+                {
+                    EnterFault($"履带回位停滞，已制动并等待人工接管；距离={distance:F2}m，偏航={yawError:F1}°，速度={speed:F2}m/s");
+                    yield break;
+                }
+                if (distance <= .15f && Mathf.Abs(yawError) <= 3f)
+                {
+                    keyboard.StopAutomaticTrackInput();
+                    stoppedTime = speed <= .15f ? stoppedTime + Time.fixedDeltaTime : 0f;
+                    if (stoppedTime >= .35f)
+                    {
+                        LockBaseForAutomaticMotion();
+                        stageSucceeded = true;
+                        yield break;
+                    }
+                }
+                else
+                {
+                    stoppedTime = 0f;
+                    float forwardDemand;
+                    float steeringDemand;
+                    if (Mathf.Abs(yawError) > 15f ||
+                        (distance < .3f && Mathf.Abs(yawError) > 3f))
+                    {
+                        forwardDemand = 0f;
+                        steeringDemand = Mathf.Sign(yawError) *
+                            Mathf.Clamp(Mathf.Abs(yawError) / 40f, .2f, .4f);
+                    }
+                    else
+                    {
+                        float direction = Vector3.Dot(toTarget, forward) >= 0f ? 1f : -1f;
+                        Vector3 desiredFacing = direction > 0f ? toTarget.normalized : -toTarget.normalized;
+                        float pathAngle = Vector3.SignedAngle(forward, desiredFacing, Vector3.up);
+                        forwardDemand = direction * Mathf.Clamp(distance * .35f, .24f, .45f);
+                        steeringDemand = Mathf.Clamp(pathAngle / 35f, -.35f, .35f) * direction;
+                    }
+                    if (!keyboard.SetAutomaticTrackInput(forwardDemand, steeringDemand))
+                    {
+                        EnterFault("自动履带指令被拒绝，回位已停止");
+                        yield break;
+                    }
+                }
+                yield return new WaitForFixedUpdate();
+            }
+            if (IsRunning) EnterFault("履带未在限定时间内驶回作业位");
+        }
+        finally
+        {
+            keyboard.StopAutomaticTrackInput();
+            cutter.SetCuttingSuppressed(cuttingWasSuppressed);
+        }
     }
 
     private IEnumerator AcquirePoint()
@@ -1294,8 +1434,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         float contactClearance = entryResistance != null ? entryResistance.contactMargin : 0f;
         // Reserve room for the articulation controller to brake before the discrete floor guard engages.
         float floorClearance = Mathf.Max(soilFloorMargin, contactClearance) + .025f;
+        // A requested plunge beyond the resistance guard leaves no room for the live scoop stroke.
+        float safeConfiguredDepth = entryResistance != null
+            ? Mathf.Min(cutEntryDepthMeters, entryResistance.maximumPenetration - .03f)
+            : cutEntryDepthMeters;
         float adaptiveEntryDepth = CalculateAdaptiveCutEntryDepth(
-            cutEntryDepthMeters, availableLayerThickness, floorClearance);
+            safeConfiguredDepth, availableLayerThickness, floorClearance);
         LastCutEntryDepthMeters = adaptiveEntryDepth;
         if (adaptiveEntryDepth <= .001f)
         {
@@ -1378,7 +1522,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             entryFloor = cutter.soil.GetFloorWorldY(entryTip);
             availableLayerThickness = Mathf.Max(0f, entrySurface - entryFloor);
             adaptiveEntryDepth = CalculateAdaptiveCutEntryDepth(
-                cutEntryDepthMeters, availableLayerThickness, floorClearance);
+                safeConfiguredDepth, availableLayerThickness, floorClearance);
             LastCutEntryDepthMeters = adaptiveEntryDepth;
             if (adaptiveEntryDepth <= .001f)
             {
@@ -2403,7 +2547,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
     private static bool RequiresTruckCollisionMonitoring(AutonomousExcavationState state)
     {
-        return state == AutonomousExcavationState.SwingToTruck ||
+        return state == AutonomousExcavationState.ReturnToWorkSite ||
+            state == AutonomousExcavationState.SwingToTruck ||
             state == AutonomousExcavationState.PrepareDump ||
             state == AutonomousExcavationState.Dump ||
             state == AutonomousExcavationState.ReturnToDig ||
@@ -2422,6 +2567,50 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         catch (Exception error)
         {
             Debug.LogWarning("无法检查自动作业位：" + error.Message, this);
+            return false;
+        }
+    }
+
+    private bool CanReturnFromCurrentBase()
+    {
+        if (siteReadinessSource == null || keyboard == null || !keyboard.ResolveArticulationRoot())
+            return false;
+        MethodInfo check = siteReadinessSource.GetType().GetMethod("CanReturnAutonomousFrom",
+            BindingFlags.Instance | BindingFlags.Public);
+        if (check == null) return false;
+        try
+        {
+            return check.Invoke(siteReadinessSource,
+                new object[] { keyboard.articulationRoot.transform.position }) is bool allowed && allowed;
+        }
+        catch (Exception error)
+        {
+            Debug.LogWarning("无法检查履带回位范围：" + error.Message, this);
+            return false;
+        }
+    }
+
+    private bool TryGetAutonomousBaseTarget(out Vector3 position, out Quaternion rotation)
+    {
+        position = default;
+        rotation = Quaternion.identity;
+        if (siteReadinessSource == null) return false;
+        Type type = siteReadinessSource.GetType();
+        PropertyInfo positionProperty = type.GetProperty("AutonomousBasePosition", BindingFlags.Public | BindingFlags.Instance);
+        PropertyInfo rotationProperty = type.GetProperty("AutonomousBaseRotation", BindingFlags.Public | BindingFlags.Instance);
+        if (positionProperty == null || rotationProperty == null) return false;
+        try
+        {
+            if (positionProperty.GetValue(siteReadinessSource) is not Vector3 workPosition ||
+                rotationProperty.GetValue(siteReadinessSource) is not Quaternion workRotation)
+                return false;
+            position = workPosition;
+            rotation = workRotation;
+            return true;
+        }
+        catch (Exception error)
+        {
+            Debug.LogWarning("读取自动作业位失败：" + error.Message, this);
             return false;
         }
     }

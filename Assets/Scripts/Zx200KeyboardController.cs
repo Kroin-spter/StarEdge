@@ -43,6 +43,7 @@ public class Zx200KeyboardController : MonoBehaviour
 
     /// <summary>获取当前帧是否检测到非中位键盘或 AZ 控制输入。</summary>
     public bool ManualInputActive { get; private set; }
+    private bool automaticTrackInputActive;
 
     private Zx200TrackDrive trackDrive;
     private float lastTopicTime = float.NegativeInfinity;
@@ -87,7 +88,7 @@ public class Zx200KeyboardController : MonoBehaviour
                 topicFrame.action4, topicFrame.action5, topicFrame.action6, neutralDeadzone));
         if (AutomaticControlActive)
         {
-            if (trackDrive != null) trackDrive.Stop();
+            if (!automaticTrackInputActive && trackDrive != null) trackDrive.Stop();
             return;
         }
 
@@ -186,7 +187,29 @@ public class Zx200KeyboardController : MonoBehaviour
     public void SetAutomaticControl(bool active)
     {
         AutomaticControlActive = active;
-        if (active && trackDrive != null) trackDrive.Stop();
+        automaticTrackInputActive = false;
+        if (trackDrive != null) trackDrive.Stop();
+    }
+
+    /// <summary>Drive the physical tracks while manual controls are owned by the automatic job.</summary>
+    /// <param name="forward">Normalized forward or reverse demand.</param>
+    /// <param name="steering">Normalized right or left differential steering demand.</param>
+    /// <returns>True when automatic control owns the track drive and accepts the command.</returns>
+    public bool SetAutomaticTrackInput(float forward, float steering)
+    {
+        if (!AutomaticControlActive || fixedBase) return false;
+        if (trackDrive == null) trackDrive = GetComponent<Zx200TrackDrive>();
+        if (trackDrive == null) return false;
+        automaticTrackInputActive = true;
+        trackDrive.SetInput(forward, steering);
+        return true;
+    }
+
+    /// <summary>Brake the tracks and release the automatic drive command without releasing manual ownership.</summary>
+    public void StopAutomaticTrackInput()
+    {
+        automaticTrackInputActive = false;
+        if (trackDrive != null) trackDrive.Stop();
     }
 
     /// <summary>判断六个归一化输入中是否存在超过死区的人工动作。</summary>

@@ -287,6 +287,221 @@ namespace ExcavatorControls.Tests
             if (unload != null) yield return unload;
         }
 
+        /// <summary>Drive backward by real track forces, then demand a physical return before the next cut.</summary>
+        /// <returns>Scene setup, manual travel, automatic track return, excavation and cleanup.</returns>
+        [UnityTest]
+        [Timeout(240000)]
+        public IEnumerator NearbyManualTrackTravelReturnsPhysicallyBeforeDigging()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                var receiver = FindInScene<SoilReceivingZone>(scene);
+                ArticulationBody root = keyboard.articulationRoot;
+                Vector3 workPosition = root.transform.position;
+                double receiverBefore = receiver.VolumeM3;
+                keyboard.enabled = false;
+                for (int frame = 0; frame < 140; frame++)
+                {
+                    keyboard.MoveArticulationRoot(-.65f, 0f, Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                }
+                keyboard.GetComponent<Zx200TrackDrive>().Stop();
+                for (int frame = 0; frame < 90; frame++) yield return new WaitForFixedUpdate();
+                keyboard.enabled = true;
+                float moved = Vector3.Distance(root.transform.position, workPosition);
+                Assert.That(moved, Is.GreaterThan(.35f), "The test must physically move the tracks first.");
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.True);
+                float deadline = Time.realtimeSinceStartup + 180f;
+                bool observedReturn = false;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    observedReturn |= autonomy.State.ToString() == "ReturnToWorkSite";
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(observedReturn, Is.True, "Automatic mode must visibly drive back to the work pose.");
+                Assert.That(Vector3.Distance(root.transform.position, workPosition), Is.LessThan(.5f));
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(receiver.VolumeM3 - receiverBefore, Is.GreaterThanOrEqualTo(.02));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Manual takeover during physical return must stop the owned track command.</summary>
+        /// <returns>Nearby track travel, return entry, takeover and unlocked controls.</returns>
+        [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator ManualTakeoverDuringTrackReturnStopsDrive()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                ArticulationBody root = keyboard.articulationRoot;
+                Vector3 start = root.transform.position;
+                keyboard.enabled = false;
+                for (int frame = 0; frame < 140; frame++)
+                {
+                    keyboard.MoveArticulationRoot(-.65f, 0f, Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                }
+                keyboard.GetComponent<Zx200TrackDrive>().Stop();
+                for (int frame = 0; frame < 90; frame++) yield return new WaitForFixedUpdate();
+                keyboard.enabled = true;
+                Assert.That(Vector3.Distance(root.transform.position, start), Is.GreaterThan(.35f));
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.True);
+                float deadline = Time.realtimeSinceStartup + 30f;
+                while (autonomy.IsRunning && autonomy.State.ToString() != "ReturnToWorkSite" &&
+                       Time.realtimeSinceStartup < deadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(autonomy.State.ToString(), Is.EqualTo("ReturnToWorkSite"));
+                autonomy.RequestManualTakeover();
+                yield return new WaitForFixedUpdate();
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.ManualTakeover));
+                Assert.That(keyboard.AutomaticControlActive, Is.False);
+                Assert.That(keyboard.fixedBase, Is.False);
+                Assert.That(keyboard.GetComponent<Zx200TrackDrive>().ForwardInput, Is.EqualTo(0f));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Forward manual travel must also drive physically back before any cutting starts.</summary>
+        /// <returns>Forward travel, automatic return and one received bucket.</returns>
+        [UnityTest]
+        [Timeout(240000)]
+        public IEnumerator NearbyForwardTravelReturnsBeforeAutomaticCut()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                var receiver = FindInScene<SoilReceivingZone>(scene);
+                var site = FindInScene<CesiumMoundSite>(scene);
+                ArticulationBody root = keyboard.articulationRoot;
+                Vector3 workPosition = root.transform.position;
+                double before = receiver.VolumeM3;
+                keyboard.enabled = false;
+                for (int frame = 0; frame < 180 &&
+                     Vector3.Distance(root.transform.position, workPosition) < .7f; frame++)
+                {
+                    keyboard.MoveArticulationRoot(.45f, 0f, Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                }
+                keyboard.GetComponent<Zx200TrackDrive>().Stop();
+                for (int frame = 0; frame < 90; frame++) yield return new WaitForFixedUpdate();
+                keyboard.enabled = true;
+                Assert.That(Vector3.Distance(root.transform.position, workPosition), Is.GreaterThan(.5f));
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.True);
+                float deadline = Time.realtimeSinceStartup + 180f;
+                bool returned = false;
+                bool verifiedParked = false;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    returned |= autonomy.State.ToString() == "ReturnToWorkSite";
+                    if (returned && !verifiedParked && autonomy.State == AutonomousExcavationState.AcquirePoint)
+                    {
+                        verifiedParked = true;
+                        float positionError = Vector3.ProjectOnPlane(
+                            root.transform.position - site.bakedSite.machinePosition, Vector3.up).magnitude;
+                        float headingError = Vector3.Angle(
+                            Vector3.ProjectOnPlane(root.transform.forward, Vector3.up),
+                            Vector3.ProjectOnPlane(site.bakedSite.machineRotation * Vector3.forward, Vector3.up));
+                        Debug.Log($"FORWARD RETURN parked error={positionError:F3}m, yaw={headingError:F2}deg");
+                        Assert.That(positionError, Is.LessThan(.15f));
+                        Assert.That(headingError, Is.LessThan(3f));
+                    }
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(returned, Is.True);
+                Assert.That(verifiedParked, Is.True);
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(Vector3.Distance(root.transform.position, workPosition), Is.LessThan(.5f));
+                Assert.That(receiver.VolumeM3 - before, Is.GreaterThanOrEqualTo(.02));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Check that the saved parking pose is modestly closer to the cuttable slope without touching its floor.</summary>
+        /// <returns>Scene load, measured face distance and tip clearance, then cleanup.</returns>
+        [UnityTest]
+        public IEnumerator SavedWorkPoseIsCloserToSlopeAndKeepsTipClearance()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var site = FindInScene<CesiumMoundSite>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                var cutter = FindInScene<BucketSoilCutter>(scene);
+                Vector3 oldWorkPosition = new Vector3(287.27197f, -2.6241553f, 355.4482f);
+                Vector3 forward = Vector3.ProjectOnPlane(site.bakedSite.machineRotation * Vector3.forward,
+                    Vector3.up).normalized;
+                float advance = Vector3.Dot(keyboard.articulationRoot.transform.position - oldWorkPosition, forward);
+                float floorClearance = cutter.TipWorldPosition.y -
+                    cutter.soil.GetFloorWorldY(cutter.TipWorldPosition);
+                float surfaceClearance = cutter.TipWorldPosition.y -
+                    (cutter.soil.Terrain.SampleHeight(cutter.TipWorldPosition) + cutter.soil.transform.position.y);
+                Debug.Log($"NEAR SLOPE advance={advance:F3}, floorClearance={floorClearance:F3}, " +
+                    $"surfaceClearance={surfaceClearance:F3}, " +
+                    $"tip={cutter.TipWorldPosition}, base={keyboard.articulationRoot.transform.position}");
+                Assert.That(advance, Is.InRange(.15f, .5f));
+                Assert.That(floorClearance, Is.GreaterThan(.08f));
+                Assert.That(surfaceClearance, Is.GreaterThan(.08f));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
         /// <summary>Stopping and restarting in the same frame must leave only the new job driving the machine.</summary>
         /// <returns>Immediate ownership switch and one real truck receipt.</returns>
         [UnityTest]
@@ -649,12 +864,38 @@ namespace ExcavatorControls.Tests
                 bool firstRemovalWasInCoordinatedCut = false;
                 bool bothJointsMovedAtFirstRemoval = false;
                 Zx200JointPose cutStartPose = default;
+                string cutExitMetrics = "未观察到切削退出";
+                bool observedCutting = false;
+                float minimumCutFloorClearance = float.PositiveInfinity;
+                float maximumCutPenetration = 0f;
+                string maximumPenetrationReason = string.Empty;
                 float deadline = Time.realtimeSinceStartup + 60f;
                 while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
                     Zx200JointPose currentCutPose = default;
                     bool readingCoordinatedCut = autonomy.State == AutonomousExcavationState.FillBucket &&
                         autonomy.machine.IsBusy;
+                    if (autonomy.State == AutonomousExcavationState.FillBucket) observedCutting = true;
+                    else if (observedCutting && cutExitMetrics == "未观察到切削退出")
+                    {
+                        Vector3 exitTip = cutter.TipWorldPosition;
+                        var exitResistance = autonomy.machine.bucketJoint.GetComponent<BucketSoilResistance>();
+                        cutExitMetrics = $"volume={cutter.VolumeM3:F4}, capacity={cutter.EffectiveCapacityM3:F4}, " +
+                            $"floorClearance={exitTip.y - cutter.soil.GetFloorWorldY(exitTip):F3}, " +
+                            $"resistance={exitResistance.BlockReason}, pose={autonomy.machine.ReadActualPose()}";
+                    }
+                    if (autonomy.State == AutonomousExcavationState.FillBucket)
+                    {
+                        Vector3 sampleTip = cutter.TipWorldPosition;
+                        minimumCutFloorClearance = Mathf.Min(minimumCutFloorClearance,
+                            sampleTip.y - cutter.soil.GetFloorWorldY(sampleTip));
+                        var sampleResistance = autonomy.machine.bucketJoint.GetComponent<BucketSoilResistance>();
+                        if (sampleResistance.PenetrationM > maximumCutPenetration)
+                        {
+                            maximumCutPenetration = sampleResistance.PenetrationM;
+                            maximumPenetrationReason = sampleResistance.BlockReason;
+                        }
+                    }
                     if (readingCoordinatedCut)
                     {
                         currentCutPose = autonomy.machine.ReadActualPose();
@@ -703,6 +944,14 @@ namespace ExcavatorControls.Tests
                 Debug.Log($"FIRST BUCKET max={maximumObservedLoad:F4}m³, cut={excavatedVolumeAtPeakLoad:F4}m³, " +
                     $"last-efficiency={collectionEfficiencyAtPeakLoad:P0}, status={cutterStatusAtPeakLoad}, " +
                     $"pose=({poseAtPeakLoad.swing:F1},{poseAtPeakLoad.boom:F1},{poseAtPeakLoad.arm:F1},{poseAtPeakLoad.bucket:F1})");
+                Debug.Log("FIRST BUCKET CUT EXIT " + cutExitMetrics);
+                Debug.Log($"FIRST BUCKET CUT LIMIT minFloor={minimumCutFloorClearance:F3}, " +
+                    $"maxPenetration={maximumCutPenetration:F3}, reason={maximumPenetrationReason}, " +
+                    $"partialRecovery={autonomy.PartialBucketRecoveryCount}");
+                var entryResistance = autonomy.machine.bucketJoint.GetComponent<BucketSoilResistance>();
+                Assert.That(autonomy.LastCutEntryDepthMeters,
+                    Is.LessThanOrEqualTo(entryResistance.maximumPenetration - .025f),
+                    "The initial entry must leave room for arm-and-bucket cutting before the hard depth stop.");
                 Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
                 Assert.That(maximumObservedLoad, Is.GreaterThanOrEqualTo(.12),
                     "The scoop stroke must continue well beyond minimumLoadVolumeM3=0.005 m³ and collect real terrain soil.");

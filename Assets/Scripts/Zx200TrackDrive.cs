@@ -39,6 +39,8 @@ public class Zx200TrackDrive : MonoBehaviour
     private PhysicsMaterial parkingMaterial;
     private bool initialized;
     private float forwardInput;
+    /// <summary>Most recent normalized forward command, exposed for control handoff checks.</summary>
+    public float ForwardInput => forwardInput;
     private float steeringInput;
     private float commandTime = float.NegativeInfinity;
     private readonly Vector3[] filteredNormals = new Vector3[6];

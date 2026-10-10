@@ -79,9 +79,24 @@ public sealed class CesiumMoundSite : MonoBehaviour
     {
         if (!IsReady || siteMode != SitePreparationMode.Baked || bakedSite == null) return true;
         Vector3 offset = position - bakedSite.machinePosition;
-        return new Vector2(offset.x, offset.z).magnitude <= 2f &&
+        return new Vector2(offset.x, offset.z).magnitude <= .15f &&
             Mathf.Abs(offset.y) <= 1f &&
-            Quaternion.Angle(rotation, bakedSite.machineRotation) <= 20f;
+            Quaternion.Angle(rotation, bakedSite.machineRotation) <= 3f;
+    }
+    /// <summary>Get the surveyed base target used by a bounded physical return.</summary>
+    public Vector3 AutonomousBasePosition => bakedSite != null ? bakedSite.machinePosition : selectedRootPosition;
+    /// <summary>Get the surveyed base orientation used by a bounded physical return.</summary>
+    public Quaternion AutonomousBaseRotation => bakedSite != null ? bakedSite.machineRotation : selectedRootRotation;
+    /// <summary>Limit physical return to the nearby lower-bench travel corridor.</summary>
+    /// <param name="position">Measured track-root position.</param>
+    /// <returns>True when the root remains in a short, mostly longitudinal corridor around the work pose.</returns>
+    public bool CanReturnAutonomousFrom(Vector3 position)
+    {
+        if (!IsReady || siteMode != SitePreparationMode.Baked || bakedSite == null) return false;
+        Vector3 local = Quaternion.Inverse(bakedSite.machineRotation) *
+            (position - bakedSite.machinePosition);
+        return Mathf.Abs(local.x) <= 2.5f && Mathf.Abs(local.z) <= 8f &&
+            Mathf.Abs(local.y) <= 1.5f;
     }
     public bool MapSurfacePrepared { get; private set; }
     public string Status { get; private set; } = "Waiting for map ground";
