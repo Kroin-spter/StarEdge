@@ -531,6 +531,8 @@ namespace ExcavatorControls.Tests
                 var keyboard = FindInScene<Zx200KeyboardController>(scene);
                 var receiver = FindInScene<SoilReceivingZone>(scene);
                 var site = FindInScene<CesiumMoundSite>(scene);
+                var cutter = FindInScene<BucketSoilCutter>(scene);
+                double excavatedBeforeReturn = cutter.ExcavatedVolumeM3;
                 ArticulationBody root = keyboard.articulationRoot;
                 Vector3 start = root.transform.position;
                 Vector3 surveyedForward = site.bakedSite.machineRotation * Vector3.forward;
@@ -563,9 +565,34 @@ namespace ExcavatorControls.Tests
                 Assert.That(Vector3.Distance(root.transform.position, start), Is.GreaterThan(2f));
                 Assert.That(initialYaw, Is.GreaterThan(10f));
                 Assert.That(autonomy.StartAutonomousJob(.02), Is.True);
+                float returnStartedAt = Time.realtimeSinceStartup;
+                float returnCompletedAfter = float.NaN;
+                float travelStartedAfter = float.NaN;
+                int ungroundedSteps = 0;
                 float deadline = Time.realtimeSinceStartup + 180f;
                 while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    if (autonomy.State == AutonomousExcavationState.ReturnToWorkSite)
+                        Assert.That(cutter.ExcavatedVolumeM3, Is.EqualTo(excavatedBeforeReturn).Within(1e-6),
+                            "Driving back must not scrape and remove soil while the bucket is in transit.");
+                    if (autonomy.State == AutonomousExcavationState.ReturnToWorkSite &&
+                        !keyboard.fixedBase &&
+                        keyboard.GetComponent<Zx200TrackDrive>().GroundContactCount == 0)
+                        ungroundedSteps++;
+                    if (float.IsNaN(travelStartedAfter) &&
+                        Vector3.Distance(root.transform.position, start) < 2.8f)
+                        travelStartedAfter = Time.realtimeSinceStartup - returnStartedAt;
+                    if (float.IsNaN(returnCompletedAfter) &&
+                        autonomy.State != AutonomousExcavationState.ReturnToWorkSite &&
+                        Time.realtimeSinceStartup - returnStartedAt > 1f)
+                        returnCompletedAfter = Time.realtimeSinceStartup - returnStartedAt;
                     yield return new WaitForFixedUpdate();
+                }
+                Debug.Log($"RETURN TO SITE duration={returnCompletedAfter:F2}s, " +
+                    $"firstTravel={travelStartedAfter:F2}s, ungrounded={ungroundedSteps}, " +
+                    $"state={autonomy.State}, status={autonomy.Status}");
+                Assert.That(returnCompletedAfter, Is.LessThan(15f),
+                    "An empty, already-clear machine should not spend several seconds fully stowing before a short return drive.");
                 Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
                 Assert.That(receiver.VolumeM3, Is.GreaterThanOrEqualTo(.02));
             }
