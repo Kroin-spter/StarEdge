@@ -245,7 +245,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
         {
             Vector3 position = tip + transform.right * (side * (bladeHalfWidth * Mathf.Abs(transform.lossyScale.x) + .08f));
             float surface = soil.Terrain.SampleHeight(position) + soil.transform.position.y;
-            position.y = Mathf.Max(position.y, surface + .03f);
+            position.y = surface + .03f;
             displacedParcels.Add(new SoilFlightTransport.Emission(volume * .5, position,
                 transform.right * (side * .12f)));
         }

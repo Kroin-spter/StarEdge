@@ -74,7 +74,9 @@ public sealed class BucketSoilUnloader : MonoBehaviour
         { ResetGate(); State = UnloadingState.Empty; Status = AirborneVolumeM3 > 0 ? "空斗，土方下落中" : "空斗"; return 0; }
         float angle = Vector3.Angle(transform.TransformDirection(openingNormalLocal), Physics.gravity);
         angleLatched = angle <= (angleLatched ? Mathf.Max(enterAngleFromDown, exitAngleFromDown) : enterAngleFromDown);
-        RetainedVolumeM3 = angleLatched ? 0 : (fill != null ? fill.RetainedCapacityM3(equilibrium) : cutter.VolumeM3);
+        // A carried load stays in the bucket until the operator deliberately tips past the
+        // dump threshold. The geometric free surface alone must not shed soil on a mild tilt.
+        RetainedVolumeM3 = angleLatched ? 0 : cutter.VolumeM3;
         double excess = System.Math.Max(0, cutter.VolumeM3 - RetainedVolumeM3);
         if (excess <= 1e-7)
         { dwell = 0; State = UnloadingState.Loaded; Status = "斗内保土"; return 0; }

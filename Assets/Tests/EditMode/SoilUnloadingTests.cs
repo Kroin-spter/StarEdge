@@ -44,6 +44,26 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void ShallowTiltKeepsCollectedSoilUntilDumpGateOpens()
+        {
+            var visual = new GameObject("bucket fill");
+            visual.transform.SetParent(bucket.transform, false);
+            cutter.fillVisual = visual.transform;
+            visual.AddComponent<BucketSoilFill>();
+            cutter.SamplePose();
+            var unloader = bucket.AddComponent<BucketSoilUnloader>();
+            unloader.openingNormalLocal = Vector3.down;
+            unloader.dwellSeconds = 0;
+            bucket.transform.position = new Vector3(10, 2, 0);
+            bucket.transform.rotation = Quaternion.Euler(75, 0, 0);
+            double retained = cutter.VolumeM3;
+            Assert.That(retained, Is.GreaterThan(0));
+            Assert.That(unloader.Step(1), Is.Zero);
+            Assert.That(cutter.VolumeM3, Is.EqualTo(retained).Within(1e-10));
+            Assert.That(unloader.AirborneVolumeM3, Is.Zero);
+        }
+
+        [Test]
         public void TipInsideExternalSolidCannotUnloadThroughIt()
         {
             var zone = receiver.AddComponent<SoilReceivingZone>();

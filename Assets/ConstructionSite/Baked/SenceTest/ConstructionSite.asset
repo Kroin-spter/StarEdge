@@ -20,9 +20,9 @@ MonoBehaviour:
   terrainData: {fileID: 15600000, guid: 443b11c53959a8af9a8460b0ddafe83f, type: 2}
   terrainMaterial: {fileID: 2100000, guid: 36f3b20ccb482f1a6aad5687a6bd764e, type: 2}
   terrainOrigin: {x: 188.89423, y: -3.8562005, z: 345.33102}
-  machinePosition: {x: 287.366, y: -2.6241553, z: 355.625}
+  machinePosition: {x: 287.436, y: -2.6241553, z: 355.757}
   machineRotation: {x: 0.038903095, y: 0.24348015, z: -0.0093595125, w: 0.96908015}
-  truckPosition: {x: 292.26212, y: -2.61129, z: 351.42337}
+  truckPosition: {x: 292.33212, y: -2.61129, z: 351.55537}
   truckRotation: {x: -0, y: 0.85812134, z: -0, w: 0.5134469}
   workFaceCenter: {x: 263.89423, y: -3.3076713, z: 375.33102}
   workFaceRotation: {x: 0.056009557, y: 0.24331477, z: -0.014075168, w: 0.9682266}
