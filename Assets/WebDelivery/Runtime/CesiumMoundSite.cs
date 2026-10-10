@@ -95,7 +95,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         if (!IsReady || siteMode != SitePreparationMode.Baked || bakedSite == null) return false;
         Vector3 local = Quaternion.Inverse(bakedSite.machineRotation) *
             (position - bakedSite.machinePosition);
-        return Mathf.Abs(local.x) <= 2.5f && Mathf.Abs(local.z) <= 8f &&
+        return Mathf.Abs(local.x) <= 3f && Mathf.Abs(local.z) <= 12f &&
             Mathf.Abs(local.y) <= 1.5f;
     }
     public bool MapSurfacePrepared { get; private set; }

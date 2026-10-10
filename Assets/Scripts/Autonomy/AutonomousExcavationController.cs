@@ -843,6 +843,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             float lastProgressAt = Time.realtimeSinceStartup;
             float bestError = float.PositiveInfinity;
             float stoppedTime = 0f;
+            bool turningForHeading = false;
             while (IsRunning && Time.realtimeSinceStartup < deadline)
             {
                 HandleManualInput();
@@ -861,7 +862,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 if (trackDrive.GroundContactCount == 0)
                 {
                     if (noContactSince < 0f) noContactSince = Time.realtimeSinceStartup;
-                    if (Time.realtimeSinceStartup - noContactSince > 1.5f)
+                    if (Time.realtimeSinceStartup - noContactSince > 2.5f)
                     {
                         EnterFault("履带回位时失去地面接触，已停车");
                         yield break;
@@ -886,7 +887,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     EnterFault($"履带回位停滞，已制动并等待人工接管；距离={distance:F2}m，偏航={yawError:F1}°，速度={speed:F2}m/s");
                     yield break;
                 }
-                if (distance <= .15f && Mathf.Abs(yawError) <= 3f)
+                if (distance <= .2f && Mathf.Abs(yawError) <= 3.5f)
                 {
                     keyboard.StopAutomaticTrackInput();
                     stoppedTime = speed <= .15f ? stoppedTime + Time.fixedDeltaTime : 0f;
@@ -902,8 +903,14 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     stoppedTime = 0f;
                     float forwardDemand;
                     float steeringDemand;
-                    if (Mathf.Abs(yawError) > 15f ||
-                        (distance < .3f && Mathf.Abs(yawError) > 3f))
+                    // Hysteresis prevents rapid switching between pivot and travel near the angle boundary.
+                    float turnEntry = distance < .35f ? 5f : 12f;
+                    float turnExit = distance < .35f ? 2.5f : 5f;
+                    if (turningForHeading)
+                        turningForHeading = Mathf.Abs(yawError) > turnExit;
+                    else
+                        turningForHeading = Mathf.Abs(yawError) > turnEntry;
+                    if (turningForHeading)
                     {
                         forwardDemand = 0f;
                         steeringDemand = Mathf.Sign(yawError) *

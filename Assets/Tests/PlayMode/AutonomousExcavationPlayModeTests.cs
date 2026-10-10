@@ -442,8 +442,8 @@ namespace ExcavatorControls.Tests
                             Vector3.ProjectOnPlane(root.transform.forward, Vector3.up),
                             Vector3.ProjectOnPlane(site.bakedSite.machineRotation * Vector3.forward, Vector3.up));
                         Debug.Log($"FORWARD RETURN parked error={positionError:F3}m, yaw={headingError:F2}deg");
-                        Assert.That(positionError, Is.LessThan(.15f));
-                        Assert.That(headingError, Is.LessThan(3f));
+                        Assert.That(positionError, Is.LessThan(.21f));
+                        Assert.That(headingError, Is.LessThan(3.5f));
                     }
                     yield return new WaitForFixedUpdate();
                 }
@@ -452,6 +452,72 @@ namespace ExcavatorControls.Tests
                 Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
                 Assert.That(Vector3.Distance(root.transform.position, workPosition), Is.LessThan(.5f));
                 Assert.That(receiver.VolumeM3 - before, Is.GreaterThanOrEqualTo(.02));
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
+        /// <summary>Return from a manually driven pose with a substantial heading error without stalling at the turn boundary.</summary>
+        /// <returns>Physical drive, measured return pose and a received bucket.</returns>
+        [UnityTest]
+        [Timeout(240000)]
+        public IEnumerator AngledManualTravelReturnsAndLoadsOneBucket()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var autonomy = FindInScene<AutonomousExcavationController>(scene);
+                var keyboard = FindInScene<Zx200KeyboardController>(scene);
+                var receiver = FindInScene<SoilReceivingZone>(scene);
+                var site = FindInScene<CesiumMoundSite>(scene);
+                ArticulationBody root = keyboard.articulationRoot;
+                Vector3 start = root.transform.position;
+                Vector3 surveyedForward = site.bakedSite.machineRotation * Vector3.forward;
+                Assert.That(site.CanReturnAutonomousFrom(start - surveyedForward * 10f), Is.True,
+                    "A ten-metre move along the lower bench should remain eligible for physical return.");
+                Assert.That(site.CanReturnAutonomousFrom(start - surveyedForward * 14f), Is.False,
+                    "The return corridor must remain bounded.");
+                Vector3 targetForward = Vector3.ProjectOnPlane(
+                    site.bakedSite.machineRotation * Vector3.forward, Vector3.up);
+                keyboard.enabled = false;
+                for (int frame = 0; frame < 500 &&
+                     Vector3.Distance(root.transform.position, start) < 3f; frame++)
+                {
+                    keyboard.MoveArticulationRoot(-.7f, 0f, Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                }
+                for (int frame = 0; frame < 150; frame++)
+                {
+                    float yaw = Vector3.SignedAngle(
+                        Vector3.ProjectOnPlane(root.transform.forward, Vector3.up), targetForward, Vector3.up);
+                    if (Mathf.Abs(yaw) >= 14f) break;
+                    keyboard.MoveArticulationRoot(0f, .35f, Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                }
+                keyboard.GetComponent<Zx200TrackDrive>().Stop();
+                for (int frame = 0; frame < 90; frame++) yield return new WaitForFixedUpdate();
+                keyboard.enabled = true;
+                float initialYaw = Vector3.Angle(
+                    Vector3.ProjectOnPlane(root.transform.forward, Vector3.up), targetForward);
+                Assert.That(Vector3.Distance(root.transform.position, start), Is.GreaterThan(2f));
+                Assert.That(initialYaw, Is.GreaterThan(10f));
+                Assert.That(autonomy.StartAutonomousJob(.02), Is.True);
+                float deadline = Time.realtimeSinceStartup + 180f;
+                while (autonomy.IsRunning && Time.realtimeSinceStartup < deadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(autonomy.State, Is.EqualTo(AutonomousExcavationState.Completed), autonomy.Status);
+                Assert.That(receiver.VolumeM3, Is.GreaterThanOrEqualTo(.02));
             }
             finally
             {
