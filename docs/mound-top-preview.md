@@ -33,4 +33,14 @@
 
 本轮实际 Play 检查通过：施工区就绪、履带由新 Terrain 承载、前方切削产生土量并降低高度。截图位于忽略提交的 `Diagnostics/map-following-{preview,close,front}.png`。
 相关 EditMode 测试 24/24 通过，PlayMode 测试 1/1 通过；不代表全项目测试或自动装车验收通过。
-截图仍可见原地图局部扫描尖刺和颜色/投影接缝；本轮并未完成所有原地图扫描伪影清理，也未把自动动作重新标定。应先在 Scene/Play 中确认这版布局，再推进动作验收。
+原地图的颜色/投影接缝和局部扫描伪影并非全部消除；本轮未把自动动作重新标定。应先在 Scene/Play 中确认这版布局，再推进动作验收。
+
+## 哑光与前部窄尖刺修复
+
+- Unity 6 新 TerrainLayer 默认使用 DiffuseAlphaChannel；RGB 影像的不透明 Alpha 让 smoothness=0 失效。已显式使用 ConstantOnly，光滑度和金属度均为 0。
+- Terrain 使用预览资源内独立 `MatteSoil.mat`，不修改全项目公用 Terrain 材质或车辆材质。
+- 分层截图确认右下角薄片来自可挖 Terrain 的残留高度，而不是未裁掉的 Cesium 瓦片。检测到 `(321.92,341.04)` 相邻格高差约 0.71m。
+- 局部修补中心 `(322,341)`、半径 X=3m/Z=2.2m 的凸起，并补充中心 `(319,339.3)`、半径 X=1.6m/Z=1.2m 的薄片范围，从周边高度连续填补；设备位置、承载核心、Cesium 裁剪范围与自动动作不变。
+- 保留各格可切厚度，按 Unity 实际高度回读重算底面和初始土量；后续重新烘焙也覆盖这片漏检区域。
+- 回归测试先分别复现 Alpha 反光配置与异常高度突跳，再验证修复。
+- 最终相关 EditMode 测试 26/26、PlayMode 就绪与切削测试 1/1 通过；实际截图为 `Diagnostics/matte-spike-preview.png` 和 `Diagnostics/matte-spike-close.png`。未验证完整自动装车循环。

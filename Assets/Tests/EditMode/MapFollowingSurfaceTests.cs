@@ -7,6 +7,45 @@ namespace ExcavatorControls.Tests
 {
     public sealed class MapFollowingSurfaceTests
     {
+        /// <summary>Opaque image alpha must never make baked mine soil polished in Unity 6.</summary>
+        [Test]
+        public void PreviewSoilUsesConstantMatteSmoothness()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            Assert.That(snapshot, Is.Not.Null);
+            foreach (TerrainLayer layer in snapshot.terrainData.terrainLayers)
+            {
+                Assert.That(layer.smoothnessSource, Is.EqualTo(TerrainLayerSmoothnessSource.ConstantOnly));
+                Assert.That(layer.smoothness, Is.Zero);
+                Assert.That(layer.metallic, Is.Zero);
+            }
+        }
+
+        /// <summary>Thin scanned shards must not survive as abrupt jumps in the front soil height field.</summary>
+        [Test]
+        public void FrontSoilHasNoThinHeightSpikes()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            TerrainData data = snapshot.terrainData;
+            int n = data.heightmapResolution;
+            float[,] heights = data.GetHeights(0, 0, n, n);
+            float maximum = 0f;
+            Vector2 worst = Vector2.zero;
+            for (int z = 1; z < n - 1; z++)
+                for (int x = 1; x < n - 1; x++)
+                {
+                    float worldX = snapshot.terrainOrigin.x + x * data.size.x / (n - 1);
+                    float worldZ = snapshot.terrainOrigin.z + z * data.size.z / (n - 1);
+                    if (worldX < 317.3f || worldX > 327f || worldZ < 338f || worldZ > 344f) continue;
+                    float jump = Mathf.Max(Mathf.Abs(heights[z, x] - heights[z, x + 1]),
+                        Mathf.Abs(heights[z, x] - heights[z + 1, x])) * data.size.y;
+                    if (jump > maximum) { maximum = jump; worst = new Vector2(worldX, worldZ); }
+                }
+            Assert.That(maximum, Is.LessThan(.3f), "前部窄尖刺位置 " + worst);
+        }
+
         /// <summary>A global reprofile instead of a local repair must fail by changing unmasked ground.</summary>
         [Test]
         public void RepairRemovesEquipmentBumpWithoutChangingSurroundingSlope()

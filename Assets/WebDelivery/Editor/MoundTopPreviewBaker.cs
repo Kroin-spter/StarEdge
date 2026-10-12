@@ -13,6 +13,81 @@ public static class MoundTopPreviewBaker
     private static double deadline;
     private static Camera surveyCamera;
 
+    /// <summary>Remove the identified front scan shards while preserving layout, track support and map clipping.</summary>
+    [MenuItem("Tools/Excavator/Construction Site/Repair Preview Front Scan Shards")]
+    public static void RepairFrontSurfaceBatch()
+    {
+        RepairShadingBatch();
+        var snapshot = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(DirectoryPath + "/ConstructionSite.asset");
+        TerrainData data = snapshot.terrainData;
+        int n = data.heightmapResolution;
+        float[,] previous = data.GetHeights(0, 0, n, n);
+        var mask = new bool[n, n];
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+                mask[z, x] = IsFrontShardArea(new Vector2(
+                    snapshot.terrainOrigin.x + x * data.size.x / (n - 1),
+                    snapshot.terrainOrigin.z + z * data.size.z / (n - 1)));
+        data.SetHeights(0, 0, MapFollowingSoilSurface.RepairHeights(previous, mask));
+        float[,] repaired = data.GetHeights(0, 0, n, n);
+        snapshot.initialSoilVolumeM3 = 0;
+        double cell = (double)data.size.x * data.size.y * data.size.z / ((n - 1) * (n - 1));
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                int index = z * n + x;
+                // Keep each cell's authored soil thickness; only remove its spurious raised geometry.
+                float thickness = Mathf.Max(0f, previous[z, x] - snapshot.groundHeights[index]);
+                snapshot.groundHeights[index] = Mathf.Max(0f, repaired[z, x] - thickness);
+                snapshot.initialSoilVolumeM3 += (repaired[z, x] - snapshot.groundHeights[index]) * cell *
+                    (x == 0 || x == n - 1 ? .5 : 1) * (z == 0 || z == n - 1 ? .5 : 1);
+            }
+        if (!snapshot.TryValidate(snapshot.sourceMapName, snapshot.georeferenceLatitude,
+            snapshot.georeferenceLongitude, snapshot.georeferenceHeight, out string reason))
+            throw new InvalidOperationException(reason);
+        EditorUtility.SetDirty(data);
+        EditorUtility.SetDirty(snapshot);
+        AssetDatabase.SaveAssets();
+        Selection.activeObject = snapshot;
+        ConstructionSiteBaker.ApplySelectedBakedSite();
+    }
+
+    /// <summary>Repair existing preview soil shading without resampling terrain or moving equipment.</summary>
+    [MenuItem("Tools/Excavator/Construction Site/Repair Preview Soil Shading")]
+    public static void RepairShadingBatch()
+    {
+        EditorSceneManager.OpenScene(ScenePath);
+        var snapshot = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(DirectoryPath + "/ConstructionSite.asset");
+        if (snapshot == null) throw new InvalidOperationException("缺少原地图融合预览快照。");
+        foreach (TerrainLayer layer in snapshot.terrainData.terrainLayers)
+        {
+            layer.smoothnessSource = TerrainLayerSmoothnessSource.ConstantOnly;
+            layer.smoothness = 0f;
+            layer.metallic = 0f;
+            EditorUtility.SetDirty(layer);
+        }
+        string materialPath = DirectoryPath + "/MatteSoil.mat";
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+        if (material == null)
+        {
+            material = UnityEngine.Object.Instantiate(snapshot.terrainMaterial);
+            material.name = "原地图融合哑光泥土";
+            AssetDatabase.CreateAsset(material, materialPath);
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            material.SetFloat("_Smoothness" + i, 0f);
+            material.SetFloat("_Metallic" + i, 0f);
+        }
+        snapshot.terrainMaterial = material;
+        EditorUtility.SetDirty(material);
+        EditorUtility.SetDirty(snapshot);
+        EditorUtility.SetDirty(snapshot.terrainData);
+        AssetDatabase.SaveAssets();
+        Selection.activeObject = snapshot;
+        ConstructionSiteBaker.ApplySelectedBakedSite();
+    }
+
     /// <summary>Reapply the map-following snapshot without regenerating or overwriting its assets.</summary>
     public static void ApplyExistingBatch()
     {
@@ -109,7 +184,8 @@ public static class MoundTopPreviewBaker
                 Vector3 world = origin + new Vector3(x * size.x / (n - 1f), 0f, z * size.z / (n - 1f));
                 if (SampleMap(map, world, out float mapY)) { top[z,x] = mapY; sampledEdges++; }
                 else missingEdges++;
-                equipment[z,x] = EquipmentWeight(new Vector2(world.x, world.z)) > 0f;
+                Vector2 point = new Vector2(world.x, world.z);
+                equipment[z,x] = EquipmentWeight(point) > 0f || IsFrontShardArea(point);
             }
         if (missingEdges > 0)
         {
@@ -180,7 +256,8 @@ public static class MoundTopPreviewBaker
         AssetDatabase.CreateAsset(terrain, terrainPath);
         Texture2D dirtImage = CopyCleanMapSoil();
         var dirt = new TerrainLayer { name = "Cesium 同色净土", diffuseTexture = dirtImage,
-            tileSize = new Vector2(28f, 28f), smoothness = 0f };
+            tileSize = new Vector2(28f, 28f), smoothness = 0f, metallic = 0f,
+            smoothnessSource = TerrainLayerSmoothnessSource.ConstantOnly };
         var mapLayer = UnityEngine.Object.Instantiate(dirt);
         mapLayer.name = "Cesium 土方影像";
         AssetDatabase.AddObjectToAsset(dirtImage, terrain);
@@ -276,5 +353,13 @@ public static class MoundTopPreviewBaker
         float arm = new Vector2((point.x-332.3f)/1.6f,(point.y-343.6f)/2.4f).magnitude;
         float scanDebris = new Vector2((point.x-326f)/4f,(point.y-340.5f)/2f).magnitude;
         return 1f-Mathf.SmoothStep(0f,1f,(Mathf.Min(Mathf.Min(truck,excavator,arm),scanDebris)-.85f)/.15f);
+    }
+
+    private static bool IsFrontShardArea(Vector2 point)
+    {
+        // The measured shard at (321.92,341.04) lay just outside the earlier equipment ellipse.
+        bool moundShard = new Vector2((point.x - 322f) / 3f, (point.y - 341f) / 2.2f).sqrMagnitude < 1f;
+        bool thinPlate = new Vector2((point.x - 319f) / 1.6f, (point.y - 339.3f) / 1.2f).sqrMagnitude < 1f;
+        return moundShard || thinPlate;
     }
 }
