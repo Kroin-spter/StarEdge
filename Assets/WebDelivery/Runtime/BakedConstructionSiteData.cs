@@ -30,6 +30,8 @@ public sealed class BakedConstructionSiteData : ScriptableObject
     public bool replacesCesiumSurface;
     [Tooltip("Tracks stand on the baked mound rather than the original Cesium lower bench.")]
     public bool supportsTracksOnTerrain;
+    [Tooltip("Optional counter-clockwise convex boundary in world X/Z; old snapshots use their rectangle.")]
+    public Vector2[] replacementPolygonXZ;
     public double initialSoilVolumeM3;
     // Row-major [z * resolution + x]. These are source-ground elevations and the authored soil-band mask.
     public float[] groundHeights;

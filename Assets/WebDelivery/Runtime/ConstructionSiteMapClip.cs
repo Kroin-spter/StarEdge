@@ -16,6 +16,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
     public Vector3 workAreaCenter;
     public Quaternion workAreaRotation = Quaternion.identity;
     public Vector2 workAreaSize;
+    public Vector2[] workAreaPolygonXZ;
 
     private Cesium3DTileset tileset;
     private readonly List<Replacement> replacements = new List<Replacement>();
@@ -194,6 +195,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
             }
             SetWorkFaceFootprint(baked.workFaceCenter, baked.workFaceRotation, baked.workFaceSize,
                 baked.terrainOrigin.y, baked.terrainOrigin.y + baked.terrainData.size.y);
+            workAreaPolygonXZ = baked.replacementPolygonXZ;
             return workArea;
         }
         if (moundSite != null && moundSite.MapSurfacePrepared)
@@ -202,6 +204,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
             float minimumY = terrain.transform.position.y;
             SetWorkFaceFootprint(moundSite.WorkFaceCenter, moundSite.WorkFaceRotation,
                 moundSite.WorkFaceSize, minimumY, minimumY + terrain.terrainData.size.y);
+            workAreaPolygonXZ = moundSite.bakedSite != null ? moundSite.bakedSite.replacementPolygonXZ : null;
             return workArea;
         }
         return moundSite.WorkAreaBounds;
@@ -219,6 +222,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
         workAreaCenter = center;
         workAreaRotation = rotation;
         workAreaSize = size;
+        workAreaPolygonXZ = null;
         useOrientedWorkArea = true;
         workArea = ConstructionSiteFootprint.CalculateBounds(center, rotation, size, minimumY, maximumY);
     }
@@ -355,6 +359,19 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
 
     private ClipPlane[] GetWorkAreaPlanes()
     {
+        if (workAreaPolygonXZ != null && workAreaPolygonXZ.Length >= 3)
+        {
+            var planes = new ClipPlane[workAreaPolygonXZ.Length + 2];
+            for (int i = 0; i < workAreaPolygonXZ.Length; i++)
+            {
+                Vector2 a = workAreaPolygonXZ[i], edge = workAreaPolygonXZ[(i + 1) % workAreaPolygonXZ.Length] - a;
+                Vector3 inward = new Vector3(-edge.y, 0f, edge.x).normalized;
+                planes[i] = new ClipPlane(inward, Vector3.Dot(new Vector3(a.x, 0f, a.y), inward), true);
+            }
+            planes[planes.Length - 2] = new ClipPlane(Vector3.up, workArea.min.y, true);
+            planes[planes.Length - 1] = new ClipPlane(Vector3.up, workArea.max.y, false);
+            return planes;
+        }
         if (!useOrientedWorkArea)
             return new[]
             {

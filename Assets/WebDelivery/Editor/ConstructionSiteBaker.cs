@@ -165,6 +165,7 @@ public static class ConstructionSiteBaker
         if (clip == null) clip = Undo.AddComponent<ConstructionSiteMapClip>(site.tileset.gameObject);
         clip.SetWorkFaceFootprint(data.workFaceCenter, data.workFaceRotation, data.workFaceSize,
             data.terrainOrigin.y, data.terrainOrigin.y + data.terrainData.size.y);
+        clip.workAreaPolygonXZ = data.replacementPolygonXZ;
         clip.enabled = data.replacesCesiumSurface;
         if (clip.enabled) clip.RefreshLoadedTiles();
         // Mound preview anchors describe the visible equipment container as well as its articulation root.

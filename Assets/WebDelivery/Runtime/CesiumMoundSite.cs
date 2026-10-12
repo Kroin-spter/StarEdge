@@ -152,6 +152,7 @@ public sealed class CesiumMoundSite : MonoBehaviour
         float minimumY = terrain.transform.position.y;
         float maximumY = minimumY + terrain.terrainData.size.y;
         clip.SetWorkFaceFootprint(WorkFaceCenter, WorkFaceRotation, WorkFaceSize, minimumY, maximumY);
+        clip.workAreaPolygonXZ = bakedSite != null ? bakedSite.replacementPolygonXZ : null;
         // The terrain is a thin coating on the Cesium face, not a replacement of the
         // vertical map column. Keep the map (and its road/bench collision) underneath.
         clip.enabled = siteMode == SitePreparationMode.Baked && bakedSite != null &&

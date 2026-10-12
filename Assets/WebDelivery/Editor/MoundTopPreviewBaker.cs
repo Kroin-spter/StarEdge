@@ -5,15 +5,15 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-/// <summary>Builds the independently saved mound-top preview without modifying the original baked site.</summary>
+/// <summary>Bakes a map-following cuttable mound, repairing only scanned equipment and local bearing pads.</summary>
 public static class MoundTopPreviewBaker
 {
     private const string ScenePath = "Assets/Scenes/sence_test.unity";
-    private const string DirectoryPath = "Assets/ConstructionSite/Baked/MoundTopPreview";
+    private const string DirectoryPath = "Assets/ConstructionSite/Baked/MapFollowingPreview";
     private static double deadline;
     private static Camera surveyCamera;
 
-    /// <summary>Reapply an existing mound snapshot to the saved scene without regenerating or overwriting its assets.</summary>
+    /// <summary>Reapply the map-following snapshot without regenerating or overwriting its assets.</summary>
     public static void ApplyExistingBatch()
     {
         EditorSceneManager.OpenScene(ScenePath);
@@ -26,6 +26,8 @@ public static class MoundTopPreviewBaker
     {
         EditorSceneManager.OpenScene(ScenePath);
         CesiumMoundSite site = UnityEngine.Object.FindFirstObjectByType<CesiumMoundSite>();
+        foreach (ConstructionSiteMapClip clip in site.tileset.GetComponents<ConstructionSiteMapClip>()) clip.enabled = false;
+        if (site.soil != null && site.soil.Terrain != null) site.soil.Terrain.enabled = false;
         var cameraObject = new GameObject("堆顶预览采样相机") { hideFlags = HideFlags.HideAndDontSave };
         surveyCamera = cameraObject.AddComponent<Camera>();
         surveyCamera.enabled = false;
@@ -59,8 +61,8 @@ public static class MoundTopPreviewBaker
         }
     }
 
-    /// <summary>Bake continuous cuttable soil, remove the scanned equipment footprint and save the preview scene.</summary>
-    [MenuItem("Tools/Excavator/Construction Site/Build Mound Top Preview")]
+    /// <summary>Sample original map elevations, repair scanned equipment and save the independently baked preview.</summary>
+    [MenuItem("Tools/Excavator/Construction Site/Build Map Following Mound Preview")]
     public static void Bake()
     {
         if (EditorApplication.isPlaying || UnityEngine.SceneManagement.SceneManager.GetActiveScene().path != ScenePath)
@@ -78,12 +80,12 @@ public static class MoundTopPreviewBaker
         foreach (MeshCollider collider in map) bounds.Encapsulate(collider.bounds);
         Debug.Log($"堆顶预览采样：地图碰撞 {map.Length}，世界范围 {bounds}");
 
-        Vector3 machinePosition = new Vector3(320.28f, 1.43f, 351.43f);
+        Vector3 machinePosition = new Vector3(325.28f, 1.43f, 347.43f);
         Quaternion rotation = Quaternion.Euler(0f, 31.008f, 0f);
         float rootOffset = original.machinePosition.y - original.selectedSupportY;
-        float supportY = machinePosition.y - rootOffset;
-        const float benchY = -2f;
-        var origin = new Vector3(machinePosition.x - 14f, -8f, machinePosition.z - 14f);
+        float supportY;
+        float benchY;
+        var origin = new Vector3(306.28f, -8f, 337.43f);
         var size = new Vector3(28f, 25f, 28f);
         const int n = 257;
         var terrain = new TerrainData
@@ -93,6 +95,10 @@ public static class MoundTopPreviewBaker
         };
         var top = new float[n, n];
         var floor = new float[n, n];
+        var equipment = new bool[n, n];
+        Vector2[] boundary = { new Vector2(309f,338f), new Vector2(330f,338f),
+            new Vector2(334f,340f), new Vector2(334f,350f), new Vector2(332f,355f),
+            new Vector2(326f,358f), new Vector2(313f,359f), new Vector2(309f,356f), new Vector2(307f,348f) };
         var snapshot = ScriptableObject.CreateInstance<BakedConstructionSiteData>();
         snapshot.groundHeights = new float[n * n];
         snapshot.soilMask = new float[n * n];
@@ -101,31 +107,59 @@ public static class MoundTopPreviewBaker
             for (int x = 0; x < n; x++)
             {
                 Vector3 world = origin + new Vector3(x * size.x / (n - 1f), 0f, z * size.z / (n - 1f));
-                Vector3 local = Quaternion.Inverse(rotation) * (world - machinePosition);
-                Vector2 profile = MoundTopExcavationProfile.Evaluate(new Vector2(local.x, local.z), benchY, supportY);
-                float edgeDistance = Mathf.Min(x, z, n - 1 - x, n - 1 - z) * size.x / (n - 1f);
-                float edgeBlend = 1f - Mathf.SmoothStep(0f, 1f, edgeDistance / 2f);
-                // Do not sample the mound interior: photogrammetry machines would become soil-shaped bumps.
-                if (edgeBlend > 0f)
-                {
-                    if (SampleMap(map, world, out float mapY))
-                    {
-                        profile.x = Mathf.Lerp(profile.x, mapY + .015f, edgeBlend);
-                        profile.y = Mathf.Lerp(profile.y, mapY, edgeBlend);
-                        sampledEdges++;
-                    }
-                    else missingEdges++;
-                }
-                top[z, x] = Mathf.Clamp01((profile.x - origin.y) / size.y);
-                floor[z, x] = Mathf.Min(top[z, x], Mathf.Clamp01((profile.y - origin.y) / size.y));
+                if (SampleMap(map, world, out float mapY)) { top[z,x] = mapY; sampledEdges++; }
+                else missingEdges++;
+                equipment[z,x] = EquipmentWeight(new Vector2(world.x, world.z)) > 0f;
             }
-        if (missingEdges > (sampledEdges + missingEdges) * .02f)
+        if (missingEdges > 0)
         {
             UnityEngine.Object.DestroyImmediate(terrain);
             UnityEngine.Object.DestroyImmediate(snapshot);
             throw new InvalidOperationException($"土堆边缘 Cesium 覆盖不足：缺失 {missingEdges} 个样本；等待地图加载后重试。");
         }
+        top = MapFollowingSoilSurface.RepairHeights(top, equipment);
+        int machineX = Mathf.RoundToInt((machinePosition.x-origin.x)/size.x*(n-1));
+        int machineZ = Mathf.RoundToInt((machinePosition.z-origin.z)/size.z*(n-1));
+        supportY = top[machineZ,machineX] + .1f;
+        Vector3 truckPosition = new Vector3(316.28f, 0f, 352.43f);
+        benchY = top[Mathf.RoundToInt((truckPosition.z-origin.z)/size.z*(n-1)),
+            Mathf.RoundToInt((truckPosition.x-origin.x)/size.x*(n-1))] + .05f;
+        machinePosition.y = supportY + rootOffset;
+        var holes = new bool[n-1,n-1];
+        for (int z=0; z<n; z++)
+            for (int x=0; x<n; x++)
+            {
+                Vector2 point = new Vector2(origin.x+x*size.x/(n-1), origin.z+z*size.z/(n-1));
+                float machineDistance = Vector2.Distance(point,new Vector2(machinePosition.x,machinePosition.z));
+                Vector3 truckLocal = Quaternion.Inverse(Quaternion.Euler(0f,239.868f,0f)) *
+                    new Vector3(point.x-truckPosition.x,0f,point.y-truckPosition.z);
+                float truckDistance = Mathf.Max(Mathf.Abs(truckLocal.x)/1.7f,Mathf.Abs(truckLocal.z)/3.8f);
+                float bearing = 1f-Mathf.SmoothStep(0f,1f,(machineDistance-2.5f)/1f);
+                float truckBearing = 1f-Mathf.SmoothStep(0f,1f,(truckDistance-1f)/.3f);
+                float height = Mathf.Lerp(top[z,x]+.015f,supportY,bearing);
+                height = Mathf.Lerp(height,benchY,truckBearing);
+                bool inside = MapFollowingSoilSurface.Contains(boundary,point);
+                // Retained border cells extend slightly past the exact clip. Recess their outer vertices
+                // below the untouched map so they cannot form an elevated rim or coplanar flashing strip.
+                if (!inside) height = top[z,x] - .02f;
+                top[z,x] = Mathf.Clamp01((height-origin.y)/size.y);
+                floor[z,x] = Mathf.Clamp01((height-(inside && bearing<.99f && truckBearing<.99f?1.6f:0f)-origin.y)/size.y);
+                if (z<n-1 && x<n-1)
+                {
+                    // Conservatively keep edge cells so the exact Cesium clip never reveals a narrow gap.
+                    bool overlap=true;
+                    for(int edgeIndex=0; edgeIndex<boundary.Length; edgeIndex++)
+                    {
+                        Vector2 a=boundary[edgeIndex], edge=boundary[(edgeIndex+1)%boundary.Length]-a;
+                        float cross=edge.x*(point.y-a.y)-edge.y*(point.x-a.x);
+                        float maximum=cross+Mathf.Max(0f,-edge.y*size.x/(n-1))+Mathf.Max(0f,edge.x*size.z/(n-1));
+                        if(maximum<0f) { overlap=false; break; }
+                    }
+                    holes[z,x]=overlap;
+                }
+            }
         terrain.SetHeights(0, 0, top);
+        terrain.SetHoles(0,0,holes);
         // Read Unity's quantized heights back before recording floor and conservation baseline.
         top = terrain.GetHeights(0, 0, n, n);
         double cell = (double)size.x * size.y * size.z / ((n - 1) * (n - 1));
@@ -144,9 +178,9 @@ public static class MoundTopPreviewBaker
         AssetDatabase.Refresh();
         string terrainPath = DirectoryPath + "/ConstructionSiteTerrain.asset";
         AssetDatabase.CreateAsset(terrain, terrainPath);
-        Texture2D dirtImage = CopyCleanMapSoil(original.terrainData.terrainLayers[1].diffuseTexture);
+        Texture2D dirtImage = CopyCleanMapSoil();
         var dirt = new TerrainLayer { name = "Cesium 同色净土", diffuseTexture = dirtImage,
-            tileSize = new Vector2(6.5f, 6.5f), smoothness = 0f };
+            tileSize = new Vector2(28f, 28f), smoothness = 0f };
         var mapLayer = UnityEngine.Object.Instantiate(dirt);
         mapLayer.name = "Cesium 土方影像";
         AssetDatabase.AddObjectToAsset(dirtImage, terrain);
@@ -166,7 +200,7 @@ public static class MoundTopPreviewBaker
         snapshot.terrainOrigin = origin;
         snapshot.machinePosition = machinePosition;
         snapshot.machineRotation = rotation;
-        snapshot.truckPosition = machinePosition + rotation * new Vector3(-7f, 0f, 0f);
+        snapshot.truckPosition = truckPosition;
         snapshot.truckPosition.y = benchY + original.truckPosition.y - original.selectedTruckGroundY;
         snapshot.truckRotation = Quaternion.Euler(0f, 239.868f, 0f);
         snapshot.workFaceCenter = origin + new Vector3(14f, 0f, 14f);
@@ -180,6 +214,7 @@ public static class MoundTopPreviewBaker
         snapshot.maximumCutDepth = 4.5f;
         snapshot.replacesCesiumSurface = true;
         snapshot.supportsTracksOnTerrain = true;
+        snapshot.replacementPolygonXZ = boundary;
         if (!snapshot.TryValidate(snapshot.sourceMapName, snapshot.georeferenceLatitude,
             snapshot.georeferenceLongitude, snapshot.georeferenceHeight, out string reason))
             throw new InvalidOperationException(reason);
@@ -210,23 +245,36 @@ public static class MoundTopPreviewBaker
         return float.IsFinite(y);
     }
 
-    private static Texture2D CopyCleanMapSoil(Texture2D source)
+    private static Texture2D CopyCleanMapSoil()
     {
-        if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
-            throw new InvalidOperationException("净土影像复制需要图形模式，不能使用 -nographics。");
-        var target = RenderTexture.GetTemporary(256, 256, 0, RenderTextureFormat.ARGB32);
-        RenderTexture previous = RenderTexture.active;
+        var original = new Texture2D(2,2,TextureFormat.RGB24,false);
+        var repaired = new Texture2D(2,2,TextureFormat.RGB24,false);
         try
         {
-            // Reuse a small bare-earth portion of the existing Cesium capture, not the scanned equipment image.
-            Graphics.Blit(source, target, new Vector2(.045f, .045f), new Vector2(.59f, .39f));
-            RenderTexture.active = target;
-            var image = new Texture2D(256, 256, TextureFormat.RGB24, false)
-                { name = "Cesium 净土影像", wrapMode = TextureWrapMode.Mirror };
-            image.ReadPixels(new Rect(0, 0, 256, 256), 0, 0);
-            image.Apply();
-            return image;
+            if(!original.LoadImage(File.ReadAllBytes(DirectoryPath+"/OriginalCorner.png")) ||
+                !repaired.LoadImage(File.ReadAllBytes(DirectoryPath+"/RepairedCorner.png")))
+                throw new InvalidOperationException("缺少原地图及设备清除影像。");
+            Color[] pixels=original.GetPixels();
+            for(int z=0;z<original.height;z++)
+                for(int x=0;x<original.width;x++)
+                {
+                    float u=x/(original.width-1f),v=z/(original.height-1f);
+                    float weight=EquipmentWeight(new Vector2(306.28f+28f*u,337.43f+28f*v));
+                    if(weight>0f) pixels[z*original.width+x]=Color.Lerp(pixels[z*original.width+x],repaired.GetPixelBilinear(u,v),weight);
+                }
+            original.SetPixels(pixels); original.Apply();
+            original.name="原地图局部净土影像"; original.wrapMode=TextureWrapMode.Clamp;
+            return original;
         }
-        finally { RenderTexture.active = previous; RenderTexture.ReleaseTemporary(target); }
+        finally { UnityEngine.Object.DestroyImmediate(repaired); }
+    }
+
+    private static float EquipmentWeight(Vector2 point)
+    {
+        float truck = new Vector2((point.x-316.4f)/6.1f,(point.y-351.7f)/4.6f).magnitude;
+        float excavator = new Vector2((point.x-326.9f)/5.8f,(point.y-346.5f)/4.7f).magnitude;
+        float arm = new Vector2((point.x-332.3f)/1.6f,(point.y-343.6f)/2.4f).magnitude;
+        float scanDebris = new Vector2((point.x-326f)/4f,(point.y-340.5f)/2f).magnitude;
+        return 1f-Mathf.SmoothStep(0f,1f,(Mathf.Min(Mathf.Min(truck,excavator,arm),scanDebris)-.85f)/.15f);
     }
 }

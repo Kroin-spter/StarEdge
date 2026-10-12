@@ -32,7 +32,7 @@ namespace ExcavatorControls.Tests
                 float deadline = Time.realtimeSinceStartup + 12f;
                 while (!site.IsReady && Time.realtimeSinceStartup < deadline) yield return null;
                 Assert.That(site.IsReady, Is.True, site.Status);
-                Assert.That(site.machine.transform.position.x, Is.EqualTo(320.28f).Within(.2f));
+                Assert.That(site.machine.transform.position.x, Is.EqualTo(site.bakedSite.machinePosition.x).Within(.2f));
                 Assert.That(site.soil.HasSurfaceAt(site.bakedSite.machinePosition), Is.True);
                 TerrainData data = site.soil.Terrain.terrainData;
                 Assert.That(data, Is.Not.SameAs(site.bakedSite.terrainData));
@@ -46,6 +46,8 @@ namespace ExcavatorControls.Tests
                 site.soil.ResetSoil();
                 if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
                 {
+                    // Streaming uses real time; a fast batch editor can render 240 frames before tiles settle.
+                    yield return new WaitForSecondsRealtime(10f);
                     for (int frame = 0; frame < 240; frame++) yield return null;
                     Camera camera = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
                         .First(candidate => candidate.CompareTag("MainCamera"));
