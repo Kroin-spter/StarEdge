@@ -36,6 +36,75 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void BucketCannotRelocateLoosePileFromTwelveMetresAway()
+        {
+            var cutter = CreateLoosePileSource();
+            var pileObject = new GameObject("landed loose soil");
+            try
+            {
+                var pile = FillLoosePile(pileObject, cutter, new Vector3(2, 1, 2));
+                Vector3 anchor = pile.transform.position;
+                double held = cutter.VolumeM3, emitted = cutter.EmittedVolumeM3;
+                bucket.transform.position = anchor + new Vector3(12, .03f, 0);
+                cutter.SamplePose(); // Position jump establishes a new baseline without cutting.
+                bucket.transform.position += Vector3.forward * .1f;
+                cutter.SamplePose();
+                Assert.That(pile.VolumeM3, Is.EqualTo(.02).Within(1e-9));
+                Assert.That(pile.transform.position, Is.EqualTo(anchor));
+                Assert.That(cutter.VolumeM3, Is.EqualTo(held).Within(1e-9));
+                Assert.That(cutter.EmittedVolumeM3, Is.EqualTo(emitted).Within(1e-9));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(pileObject); }
+        }
+
+        [Test]
+        public void ActualBladeWidthCanReexcavatePileMissedByToothCentre()
+        {
+            var cutter = CreateLoosePileSource();
+            var pileObject = new GameObject("off-centre loose soil");
+            try
+            {
+                var pile = FillLoosePile(pileObject, cutter, new Vector3(2.34f, 1, 2));
+                double held = cutter.VolumeM3;
+                double emitted = cutter.EmittedVolumeM3;
+                bucket.transform.position = new Vector3(2, 1.05f, 1.8f);
+                cutter.SamplePose();
+                bucket.transform.position += Vector3.forward * .4f;
+                cutter.SamplePose();
+                Assert.That(pile.VolumeM3, Is.LessThan(.02), "Actual steel width must participate in loose-soil contact.");
+                Assert.That(cutter.VolumeM3 - held, Is.EqualTo(.02 - pile.VolumeM3).Within(1e-9));
+                Assert.That(cutter.EmittedVolumeM3, Is.EqualTo(emitted).Within(1e-9));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(pileObject); }
+        }
+
+        private BucketSoilCutter CreateLoosePileSource()
+        {
+            bucket = new GameObject("loose-soil cutting tool");
+            var cutter = bucket.AddComponent<BucketSoilCutter>();
+            cutter.soil = (DeformableSoilTerrain)soil;
+            cutter.tipLocalPosition = Vector3.zero;
+            cutter.cutDirectionLocal = Vector3.forward;
+            bucket.transform.position = new Vector3(2, .6f, 1);
+            cutter.SamplePose();
+            bucket.transform.position += Vector3.forward * .3f;
+            cutter.SamplePose();
+            return cutter;
+        }
+
+        private static SoilReceivingZone FillLoosePile(GameObject target, BucketSoilCutter cutter, Vector3 position)
+        {
+            target.transform.position = position;
+            var pile = target.AddComponent<SoilReceivingZone>();
+            pile.isGroundPile = true;
+            pile.size = new Vector2(100, 100);
+            pile.capacityM3 = 100000;
+            pile.maximumFillHeight = 100;
+            Assert.That(cutter.TransferTo(pile, .02), Is.EqualTo(.02).Within(1e-9));
+            return pile;
+        }
+
+        [Test]
         public void LooseGroundPileBaseFollowsSlopingSoilSurface()
         {
             var terrain = (DeformableSoilTerrain)soil;

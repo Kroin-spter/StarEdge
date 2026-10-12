@@ -44,6 +44,68 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void LoosePileCannotBeExcavatedFromDistantBucketPosition()
+        {
+            var pile = CreateLoosePile();
+            double before = pile.VolumeM3;
+            Vector3 anchor = pile.transform.position;
+            double removed = pile.ExcavateLoose(anchor + new Vector3(12, .03f, 0),
+                Vector3.forward * .1f, .01);
+            Assert.That(removed, Is.Zero, "The 100m accounting bed is not the visible pile footprint.");
+            Assert.That(pile.VolumeM3, Is.EqualTo(before));
+            Assert.That(pile.transform.position, Is.EqualTo(anchor));
+        }
+
+        [Test]
+        public void LoosePileRequiresActualCuttingTravel()
+        {
+            var pile = CreateLoosePile();
+            double before = pile.VolumeM3;
+            Assert.That(pile.ExcavateLoose(pile.transform.position + Vector3.up * .03f,
+                Vector3.zero, .01), Is.Zero);
+            Assert.That(pile.VolumeM3, Is.EqualTo(before));
+        }
+
+        [Test]
+        public void LoosePileSweepMustTouchRenderedSoilNotItsBoundingCorner()
+        {
+            var pile = CreateLoosePile();
+            Vector3 maximum = receiver.GetComponent<MeshFilter>().sharedMesh.bounds.max;
+            Vector3 point = pile.transform.position + new Vector3(maximum.x * .9f, .03f, maximum.z * .9f);
+            double before = pile.VolumeM3;
+            Assert.That(pile.ExcavateLoose(point, Vector3.forward * .01f, .01), Is.Zero,
+                "A cone's empty bounding-box corner is not soil.");
+            Assert.That(pile.VolumeM3, Is.EqualTo(before));
+        }
+
+        [Test]
+        public void LoosePileCanBeReexcavatedBySweepCrossingItsVisibleBody()
+        {
+            var pile = CreateLoosePile();
+            double before = pile.VolumeM3;
+            double massBefore = pile.MassKg;
+            Vector3 end = pile.transform.position + new Vector3(.6f, .03f, 0);
+            double removed = pile.ExcavateLoose(end, Vector3.right * 1.2f, .005);
+            Assert.That(removed, Is.GreaterThan(0));
+            Assert.That(removed, Is.LessThanOrEqualTo(.005));
+            Assert.That(before - pile.VolumeM3, Is.EqualTo(removed).Within(1e-9));
+            Assert.That(massBefore - pile.MassKg,
+                Is.EqualTo(removed * cutter.SoilDensityKgPerM3).Within(.00001));
+        }
+
+        private SoilReceivingZone CreateLoosePile()
+        {
+            receiver.transform.position = new Vector3(2, 1, 2);
+            var pile = receiver.AddComponent<SoilReceivingZone>();
+            pile.isGroundPile = true;
+            pile.size = new Vector2(100, 100);
+            pile.capacityM3 = 100000;
+            pile.maximumFillHeight = 100;
+            Assert.That(cutter.TransferTo(pile, .02), Is.EqualTo(.02).Within(1e-9));
+            return pile;
+        }
+
+        [Test]
         public void ShallowTiltKeepsCollectedSoilUntilDumpGateOpens()
         {
             var visual = new GameObject("bucket fill");

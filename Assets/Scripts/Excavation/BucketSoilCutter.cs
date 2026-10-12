@@ -162,9 +162,9 @@ public sealed class BucketSoilCutter : MonoBehaviour
         double removed = soil.CutBladeSweep(from, corners, available);
         if (removed < available)
         {
-            Vector3 sweep = current - previous;
             foreach (var pile in FindObjectsByType<SoilReceivingZone>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                removed += pile.ExcavateLoose(current, sweep, available - removed);
+                if (pile.gameObject.scene == gameObject.scene)
+                    removed += pile.ExcavateLoose(from, corners, available - removed);
         }
         CollectionEfficiency = EstimateCollectionEfficiency(frameMovement.magnitude > jitterBudget ? frameMovement : movement);
         double collected = removed * CollectionEfficiency;

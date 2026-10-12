@@ -20,20 +20,121 @@ public sealed class SoilReceivingZone : MonoBehaviour
     private readonly List<TransferRecord> records = new List<TransferRecord>();
     private Mesh mesh;
 
-    /// <summary>Remove loose ground-pile soil at a tooth sweep and return the volume removed.</summary>
+    /// <summary>Reexcavate loose soil only when a moving tooth intersects the displayed pile.</summary>
+    /// <param name="tooth">Current world-space tooth position.</param>
+    /// <param name="sweep">Actual world-space displacement from the preceding sample.</param>
+    /// <param name="requested">Maximum removable volume in cubic metres.</param>
+    /// <returns>Volume removed; zero for stationary, distant or nonintersecting teeth.</returns>
     public double ExcavateLoose(Vector3 tooth, Vector3 sweep, double requested)
     {
-        if (!isGroundPile || requested <= 0 || !isActiveAndEnabled || VolumeM3 <= 0) return 0;
-        Vector3 local = transform.InverseTransformPoint(tooth);
-        float radius = Mathf.Max(.08f, Mathf.Min(size.x, size.y) * .18f);
-        if (Mathf.Abs(local.x) > size.x * .5f + radius || Mathf.Abs(local.z) > size.y * .5f + radius ||
-            tooth.y > SurfaceY + .12f || tooth.y < transform.position.y - .2f) return 0;
+        if (!CanExcavate(requested) || !Finite(tooth) || !Finite(sweep) || sweep.sqrMagnitude < 1e-10f) return 0;
+        if (!TouchesPile(transform.InverseTransformPoint(tooth - sweep),
+            transform.InverseTransformPoint(tooth), mesh.vertices, mesh.triangles)) return 0;
+        return RemoveLooseVolume(requested);
+    }
+
+    /// <summary>Test the actual tooth box across its width before reexcavating a loose pile.</summary>
+    /// <param name="previousBlade">Eight world corners of the preceding cutting-edge box.</param>
+    /// <param name="currentBlade">Eight world corners of the current cutting-edge box.</param>
+    /// <param name="requested">Maximum removable volume in cubic metres.</param>
+    /// <returns>Removed volume, or zero when the moving cutting edge misses the displayed pile.</returns>
+    public double ExcavateLoose(Vector3[] previousBlade, Vector3[] currentBlade, double requested)
+    {
+        if (!CanExcavate(requested) || previousBlade == null || currentBlade == null ||
+            previousBlade.Length != 8 || currentBlade.Length != 8) return 0;
+        Bounds sweptBounds = new Bounds(transform.InverseTransformPoint(previousBlade[0]), Vector3.zero);
+        for (int i = 0; i < 8; i++)
+        {
+            if (!Finite(previousBlade[i]) || !Finite(currentBlade[i])) return 0;
+            sweptBounds.Encapsulate(transform.InverseTransformPoint(previousBlade[i]));
+            sweptBounds.Encapsulate(transform.InverseTransformPoint(currentBlade[i]));
+        }
+        if (!sweptBounds.Intersects(mesh.bounds)) return 0;
+        Vector3[] vertices = mesh.vertices;
+        int[] triangles = mesh.triangles;
+        // The box corner ordering uses bit 0 for width. Probe each moving edge
+        // across its width so narrow piles between the corner markers are not missed.
+        for (int edge = 0; edge < 8; edge += 2)
+        {
+            int samples = Mathf.Max(2, Mathf.CeilToInt(Vector3.Distance(
+                currentBlade[edge], currentBlade[edge + 1]) / .025f));
+            for (int sample = 0; sample <= samples; sample++)
+            {
+                float fraction = (float)sample / samples;
+                Vector3 start = transform.InverseTransformPoint(Vector3.Lerp(
+                    previousBlade[edge], previousBlade[edge + 1], fraction));
+                Vector3 end = transform.InverseTransformPoint(Vector3.Lerp(
+                    currentBlade[edge], currentBlade[edge + 1], fraction));
+                if ((end - start).sqrMagnitude >= 1e-10f && TouchesPile(start, end, vertices, triangles))
+                    return RemoveLooseVolume(requested);
+            }
+        }
+        return 0;
+    }
+
+    private bool CanExcavate(double requested) => isGroundPile && isActiveAndEnabled &&
+        double.IsFinite(requested) && requested > 0 && VolumeM3 > 0 && mesh != null;
+
+    private double RemoveLooseVolume(double requested)
+    {
+        double density = MassKg / VolumeM3;
         double removed = Math.Min(requested, VolumeM3);
         VolumeM3 -= removed;
-        MassKg = Math.Max(0, MassKg - removed * (records.Count > 0 ? records[0].MassKg / Math.Max(.000001, records[0].VolumeM3) : 1600));
+        MassKg = Math.Max(0, MassKg - removed * density);
         RefreshMesh();
         return removed;
     }
+
+    private bool TouchesPile(Vector3 start, Vector3 end, Vector3[] vertices, int[] triangles)
+    {
+        Vector3 travel = end - start;
+        float length = travel.magnitude;
+        var ray = new Ray(start, travel / length);
+        if (!mesh.bounds.Contains(start) &&
+            (!mesh.bounds.IntersectRay(ray, out float distance) || distance > length)) return false;
+        if (PointInsidePile(start, vertices, triangles) || PointInsidePile(end, vertices, triangles)) return true;
+        for (int i = 0; i < triangles.Length; i += 3)
+        {
+            Vector3 a = vertices[triangles[i]], b = vertices[triangles[i + 1]], c = vertices[triangles[i + 2]];
+            Vector3 edge1 = b - a, edge2 = c - a;
+            Vector3 cross = Vector3.Cross(ray.direction, edge2);
+            float determinant = Vector3.Dot(edge1, cross);
+            if (Mathf.Abs(determinant) < 1e-8f) continue;
+            float inverse = 1f / determinant;
+            Vector3 offset = start - a;
+            float u = Vector3.Dot(offset, cross) * inverse;
+            if (u < 0 || u > 1) continue;
+            Vector3 q = Vector3.Cross(offset, edge1);
+            float v = Vector3.Dot(ray.direction, q) * inverse;
+            if (v < 0 || u + v > 1) continue;
+            float hit = Vector3.Dot(edge2, q) * inverse;
+            if (hit >= 0 && hit <= length) return true;
+        }
+        return false;
+    }
+
+    private static bool PointInsidePile(Vector3 point, Vector3[] vertices, int[] triangles)
+    {
+        float minimum = float.PositiveInfinity, maximum = float.NegativeInfinity;
+        // Top and bottom fans share the same XZ footprint, including their sampled
+        // slope elevations. Compare their actual vertical interval, not SurfaceY.
+        for (int i = 0; i < triangles.Length; i += 3)
+        {
+            Vector3 a = vertices[triangles[i]], b = vertices[triangles[i + 1]], c = vertices[triangles[i + 2]];
+            float denominator = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+            if (Mathf.Abs(denominator) < 1e-8f) continue;
+            float u = ((b.z - c.z) * (point.x - c.x) + (c.x - b.x) * (point.z - c.z)) / denominator;
+            float v = ((c.z - a.z) * (point.x - c.x) + (a.x - c.x) * (point.z - c.z)) / denominator;
+            if (u < -.00001f || v < -.00001f || u + v > 1.00001f) continue;
+            float height = u * a.y + v * b.y + (1 - u - v) * c.y;
+            minimum = Mathf.Min(minimum, height);
+            maximum = Mathf.Max(maximum, height);
+        }
+        return point.y >= minimum && point.y <= maximum;
+    }
+
+    private static bool Finite(Vector3 value) => float.IsFinite(value.x) &&
+        float.IsFinite(value.y) && float.IsFinite(value.z);
 
     /// <summary>Immutable receipt for one accepted transfer; mass uses the source's captured density.</summary>
     public sealed class TransferRecord
