@@ -75,34 +75,6 @@ namespace ExcavatorControls.Tests
             finally { UnityEngine.Object.DestroyImmediate(pile); }
         }
 
-        /// <summary>The cutting proxy must include measured tooth steel contact points while excluding the bucket back.</summary>
-        [Test]
-        public void PhysicalToothProxyIncludesMeasuredSteelContacts()
-        {
-            bucket = new GameObject("calibrated ZX200 teeth");
-            var cutter = bucket.AddComponent<BucketSoilCutter>();
-            Vector3[] corners = cutter.GetBladeWorldCorners();
-            Vector3 forward = new Vector3(0, -1.25f, .82f).normalized;
-            Vector3 thickness = Vector3.Cross(forward, Vector3.right).normalized;
-            foreach (Vector3 point in new[] { new Vector3(-.45f, .88f, 1.28f),
-                         new Vector3(-.50f, .90f, 1.23f), new Vector3(.45f, .88f, 1.28f) })
-            {
-                foreach (Vector3 axis in new[] { Vector3.right, forward, thickness })
-                {
-                    float low = float.PositiveInfinity, high = float.NegativeInfinity;
-                    foreach (Vector3 corner in corners)
-                    {
-                        low = Mathf.Min(low, Vector3.Dot(corner, axis));
-                        high = Mathf.Max(high, Vector3.Dot(corner, axis));
-                    }
-                    Assert.That(Vector3.Dot(point, axis), Is.InRange(low - .0001f, high + .0001f),
-                        "Measured tooth contact lies outside the cutting geometry: " + point);
-                }
-            }
-            Assert.That(Vector3.Distance(corners[0], new Vector3(0, .5f, -.2f)), Is.GreaterThan(1f),
-                "Back-plate contact must not be treated as cutting teeth.");
-        }
-
         [Test]
         public void PreparedSurfacePreservesSourceAndBecomesResetAndVolumeBaseline()
         {
@@ -275,9 +247,8 @@ namespace ExcavatorControls.Tests
             Assert.That(IndependentVolume(), Is.GreaterThan(0), "低速连续切削不能因单帧位移小而永远失效");
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void PhysicalSoilCollision_PreservesOtherPairsAndRestoresOriginalState(bool originallyIgnored)
+        [Test]
+        public void CollisionException_IsLimitedToSoil_AndRestoredWhenCutterIsDestroyed()
         {
             bucket = new GameObject("collision bucket");
             var bucketCollider = bucket.AddComponent<BoxCollider>();
@@ -289,14 +260,12 @@ namespace ExcavatorControls.Tests
                 Assert.That(type, Is.Not.Null);
                 Component cutter = bucket.AddComponent(type);
                 type.GetField("soil").SetValue(cutter, soil);
-                var terrainCollider = ground.GetComponent<TerrainCollider>();
-                Physics.IgnoreCollision(bucketCollider, terrainCollider, originallyIgnored);
                 Call(cutter, "SamplePose");
-                Assert.That(Physics.GetIgnoreCollision(bucketCollider, terrainCollider), Is.False,
-                    "切削器不能关闭铲斗与剩余土层的实体碰撞");
+                var terrainCollider = ground.GetComponent<TerrainCollider>();
+                Assert.That(Physics.GetIgnoreCollision(bucketCollider, terrainCollider), Is.True);
                 Assert.That(Physics.GetIgnoreCollision(bucketCollider, otherCollider), Is.False);
                 UnityEngine.Object.DestroyImmediate(cutter);
-                Assert.That(Physics.GetIgnoreCollision(bucketCollider, terrainCollider), Is.EqualTo(originallyIgnored),
+                Assert.That(Physics.GetIgnoreCollision(bucketCollider, terrainCollider), Is.False,
                     "销毁切削器必须恢复该铲斗与土区的原碰撞状态");
             }
             finally { UnityEngine.Object.DestroyImmediate(other); }

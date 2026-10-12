@@ -83,54 +83,6 @@ namespace ExcavatorControls.Tests
             Assert.That(bounds.size.z, Is.LessThan(terrainData.size.z));
         }
 
-        /// <summary>Convoy support checks use the immutable surveyed map floor, not excavatable soil heights.</summary>
-        [Test]
-        public void GroundSamplerInterpolatesBakedCesiumFloorAndRejectsOutsidePositions()
-        {
-            Assert.That(baked.TrySampleGroundWorldY(new Vector3(12f, 0f, 22f), out float center), Is.True);
-            Assert.That(center, Is.EqualTo(7.4f).Within(.0001f));
-            Assert.That(baked.TrySampleGroundWorldY(new Vector3(9.99f, 0f, 22f), out _), Is.False);
-            Assert.That(baked.TrySampleGroundWorldY(new Vector3(14.01f, 0f, 22f), out _), Is.False);
-
-            baked.groundHeights[16 * 33 + 16] = .3f;
-            Assert.That(baked.TrySampleGroundWorldY(new Vector3(12f, 0f, 22f), out center), Is.True);
-            Assert.That(center, Is.EqualTo(7.6f).Within(.0001f));
-        }
-
-        /// <summary>A fine local soil patch must retain the surveyed floor, appearance mapping and untouched source.</summary>
-        [Test]
-        public void LocalSlopeSnapshotResolvesTeethWithoutMovingMapFloor()
-        {
-            var method = typeof(BakedConstructionSiteData).GetMethod("CreateLocalSlopeSnapshot");
-            Assert.That(method, Is.Not.Null, "Local blade contact needs a fine slope patch rather than the coarse whole-wall height field.");
-            BakedConstructionSiteData local = null;
-            try
-            {
-                local = (BakedConstructionSiteData)method.Invoke(baked,
-                    new object[] { new Vector3(12, 0, 22), new Vector2(2, 2), 257 });
-                Assert.That(local.terrainData.size.x / (local.terrainData.heightmapResolution - 1), Is.LessThan(.015f));
-                Assert.That(local.TrySampleGroundWorldY(new Vector3(12, 0, 22), out float floor), Is.True);
-                Assert.That(floor, Is.EqualTo(7.4f).Within(.0001f));
-                Assert.That(local.terrainData.GetHeight(128, 128), Is.EqualTo(.8f).Within(.0001f));
-                Assert.That(local.terrainData.IsHole(0, 0), Is.True, "The patch boundary must reveal the untouched map.");
-                Assert.That(local.TryValidate("example-map", 43.5, 81.5, 1322.8, out string reason), Is.True, reason);
-                Assert.That(terrainData.size, Is.EqualTo(new Vector3(4, 2, 4)));
-                Assert.That(baked.groundHeights[16 * 33 + 16], Is.EqualTo(.2f));
-                Assert.That(local.terrainData.terrainLayers[1], Is.Not.SameAs(mapLayer));
-                Assert.That(local.terrainData.terrainLayers[1].tileOffset - mapLayer.tileOffset,
-                    Is.EqualTo(new Vector2(1, 1)));
-            }
-            finally
-            {
-                if (local != null)
-                {
-                    foreach (TerrainLayer layer in local.terrainData.terrainLayers) Object.DestroyImmediate(layer);
-                    Object.DestroyImmediate(local.terrainData);
-                    Object.DestroyImmediate(local);
-                }
-            }
-        }
-
         [Test]
         public void CorruptBaselineAndWrongMapAreRejectedWithReasons()
         {

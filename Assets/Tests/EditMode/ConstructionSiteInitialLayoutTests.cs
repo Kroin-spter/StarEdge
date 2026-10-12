@@ -36,9 +36,9 @@ namespace ExcavatorControls.Tests
                 "Most cuttable soil must lie on the ascending wall, not on flat road or lower bench.");
         }
 
-        /// <summary>The local foundation patch resolves the teeth and leaves the lower bench to Cesium.</summary>
+        /// <summary>The authored soil follows the long exposed wall while the lower bench remains Cesium.</summary>
         [Test]
-        public void BakedLocalSlopeResolvesTeethButNotTheLowerBench()
+        public void BakedSlopeCoversTheLongWallButNotTheLowerBench()
         {
             BakedConstructionSiteData site = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
                 "Assets/ConstructionSite/Baked/SenceTest/ConstructionSite.asset");
@@ -46,11 +46,8 @@ namespace ExcavatorControls.Tests
             TerrainData terrain = site.terrainData;
             Assert.That(terrain, Is.Not.Null);
             int n = terrain.heightmapResolution;
-            Assert.That(terrain.size.x / (n - 1f), Is.LessThan(.015f));
-            Assert.That(terrain.size.z / (n - 1f), Is.LessThan(.015f));
-            foreach (float fraction in new[] { .2f, .5f, .8f })
+            foreach (float worldX in new[] { 230f, 255f, 280f, 305f })
             {
-                float worldX = site.terrainOrigin.x + terrain.size.x * fraction;
                 int x = Mathf.RoundToInt((worldX - site.terrainOrigin.x) /
                     terrain.size.x * (n - 1));
                 int active = 0;
@@ -63,7 +60,7 @@ namespace ExcavatorControls.Tests
                 }
                 Assert.That(active, Is.GreaterThan(8), $"The wall at map X={worldX} must be cuttable.");
                 Assert.That(IsSolidAt(terrain, site.terrainOrigin,
-                    new Vector3(worldX, 0f, site.machinePosition.z)), Is.False,
+                    new Vector3(worldX, 0f, site.terrainOrigin.z + 2f)), Is.False,
                     "The lower bench must remain original Cesium at every wall segment.");
             }
         }
@@ -98,8 +95,8 @@ namespace ExcavatorControls.Tests
                 Assert.That(ConstructionSiteFootprint.ContainsHorizontal(site.truck.position, clip.workAreaCenter,
                     clip.workAreaRotation, clip.workAreaSize), Is.False,
                     "The dump truck must remain supported by the original Cesium ground.");
-                Assert.That(site.bakedSite.workFaceSize.x, Is.LessThanOrEqualTo(10f),
-                    "Foundation acceptance uses a fine local patch before expanding to the whole wall.");
+                Assert.That(site.bakedSite.workFaceSize.x, Is.GreaterThanOrEqualTo(120f),
+                    "The soil must span the long outlined wall, not just the active bucket reach.");
                 Assert.That(site.bakedSite.workFaceSize.y, Is.LessThanOrEqualTo(10f),
                     "The replacement must stay on the wall without extending onto the lower bench.");
                 Assert.That(Vector2.Distance(new Vector2(trackBase.position.x, trackBase.position.z),
@@ -114,7 +111,7 @@ namespace ExcavatorControls.Tests
                 Assert.That(site.minimumSurfaceNormalY, Is.EqualTo(.55f).Within(.001f));
                 Assert.That(site.minimumReadyTipClearanceMeters, Is.EqualTo(.5f).Within(.001f));
                 Assert.That(clip.enabled, Is.False,
-                    "Preview keeps the source map until runtime validates and clips the exact solid soil coverage.");
+                    "The original Cesium face, road and lower bench must remain visible under the thin soil layer.");
                 Zx200DigController dig = behaviours.OfType<Zx200DigController>().Single();
                 Assert.That(dig.approachPose.boom, Is.GreaterThan(-45f),
                     "The cut approach must not lift the boom to the old high -60 degree pose.");
@@ -145,9 +142,8 @@ namespace ExcavatorControls.Tests
                         maximumSolidSoilWeight = Mathf.Max(maximumSolidSoilWeight, surfaceWeights[z, x, 0]);
                         maximumMapWeight = Mathf.Max(maximumMapWeight, surfaceWeights[z, x, 1]);
                     }
-                Assert.That(maximumSolidSoilWeight, Is.LessThanOrEqualTo(.01f),
-                    "The local physical slope keeps the sampled map colour instead of an opaque brown coating.");
-                Assert.That(maximumMapWeight, Is.GreaterThanOrEqualTo(.99f));
+                Assert.That(maximumSolidSoilWeight, Is.InRange(.3f, .45f),
+                    "Keep most Cesium aerial detail in the soil blend so the slope colour matches the surrounding map.");
                 Bounds expectedWorkArea = site.bakedSite.GetWorkFaceBounds();
                 Assert.That(Vector3.Distance(clip.workArea.center, expectedWorkArea.center), Is.LessThan(.01f));
                 Assert.That(Vector3.Distance(clip.workArea.size, expectedWorkArea.size), Is.LessThan(.01f));

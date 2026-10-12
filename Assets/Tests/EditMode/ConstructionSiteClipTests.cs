@@ -7,57 +7,6 @@ namespace ExcavatorControls.Tests
 {
     public class ConstructionSiteClipTests
     {
-        /// <summary>Only solid replacement cells may hide Cesium; Terrain holes must retain map rendering and support.</summary>
-        [Test]
-        public void SoilCoverageClipsSlopeButKeepsMapUnderTerrainHoles()
-        {
-            var data = new TerrainData { heightmapResolution = 33, size = new Vector3(4, 2, 4) };
-            var holes = new bool[32, 32];
-            for (int z = 12; z < 20; z++)
-                for (int x = 12; x < 20; x++) holes[z, x] = true;
-            data.SetHoles(0, 0, holes);
-            var ground = Terrain.CreateTerrainGameObject(data);
-            var root = new GameObject("coverage clip");
-            var tile = new GameObject("source map");
-            var source = new Mesh
-            {
-                vertices = new[] { new Vector3(-1, .1f, -1), new Vector3(5, .1f, -1),
-                    new Vector3(5, .1f, 5), new Vector3(-1, .1f, 5) },
-                triangles = new[] { 0, 2, 1, 0, 3, 2 }
-            };
-            tile.AddComponent<MeshFilter>().sharedMesh = source;
-            tile.AddComponent<MeshRenderer>();
-            var collider = tile.AddComponent<MeshCollider>();
-            collider.sharedMesh = source;
-            try
-            {
-                var clip = root.AddComponent<ConstructionSiteMapClip>();
-                var field = typeof(ConstructionSiteMapClip).GetField("replacementTerrain");
-                Assert.That(field, Is.Not.Null, "Map replacement needs the actual Terrain coverage rather than a broad rectangular cut.");
-                field.SetValue(clip, ground.GetComponent<Terrain>());
-                clip.SetWorkFaceFootprint(new Vector3(2, 0, 2), Quaternion.identity,
-                    new Vector2(6, 6), -1, 3);
-                clip.ClipTile(tile);
-                Mesh result = tile.GetComponent<MeshFilter>().sharedMesh;
-                Assert.That(HorizontalArea(result), Is.EqualTo(35f).Within(.001f),
-                    "A 1x1 solid soil patch replaces exactly 1 m²; map outside the Terrain canvas stays intact.");
-                Assert.That(HasDownwardMapHit(collider, new Vector3(-.5f, 2, 2)), Is.True);
-                Assert.That(HasDownwardMapHit(collider, new Vector3(2, 2, 2)), Is.False);
-                Assert.That(HasDownwardMapHit(collider, new Vector3(1, 2, 2)), Is.True);
-                Assert.That(HasDownwardMapHit(collider, new Vector3(2, 2, 1)), Is.True);
-                Assert.That(HasDownwardMapHit(collider, new Vector3(3, 2, 2)), Is.True);
-                Assert.That(source.triangles.Length, Is.EqualTo(6));
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(root);
-                UnityEngine.Object.DestroyImmediate(tile);
-                UnityEngine.Object.DestroyImmediate(ground);
-                UnityEngine.Object.DestroyImmediate(source);
-                UnityEngine.Object.DestroyImmediate(data);
-            }
-        }
-
         /// <summary>Expired sampling must release clipping while preserving the original soil baseline.</summary>
         [Test]
         public void SamplingTimeoutRestoresClippingWithoutChangingSoil()

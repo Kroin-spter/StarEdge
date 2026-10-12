@@ -152,14 +152,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
         float minimumY = terrain.transform.position.y;
         float maximumY = minimumY + terrain.terrainData.size.y;
         clip.SetWorkFaceFootprint(WorkFaceCenter, WorkFaceRotation, WorkFaceSize, minimumY, maximumY);
-        // Terrain holes describe the surveyed slope precisely. Replace those solid
-        // cells only, leaving the original road and lower bench visible and physical.
-        clip.replacementTerrain = terrain;
-        clip.useOrientedWorkArea = false;
-        clip.workArea = new Bounds(terrain.transform.position + terrain.terrainData.size * .5f,
-            terrain.terrainData.size);
-        clip.enabled = true;
-        clip.RefreshLoadedTiles();
+        // The terrain is a thin coating on the Cesium face, not a replacement of the
+        // vertical map column. Keep the map (and its road/bench collision) underneath.
+        clip.enabled = false;
     }
     private Zx200KeyboardController keyboard;
     private ArticulationBody root;

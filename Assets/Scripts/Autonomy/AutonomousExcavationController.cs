@@ -866,26 +866,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 yield return MoveToPose(clearance, "履带回位前铲斗脱坡超时");
                 if (!IsRunning || !stageSucceeded) yield break;
             }
-            // An empty machine already at its parked or work-ready pose can make a short
-            // lower-bench return without spending several seconds curling into carry pose.
-            // Loaded or low-tooth starts still use the full protective stow.
-            bool clearEmptyTravelPose = cutter.VolumeM3 <= GetBucketResidualToleranceM3() &&
-                cutter.TipWorldPosition.y >=
-                    Mathf.Max(
-                        cutter.soil.Terrain.SampleHeight(cutter.TipWorldPosition) +
-                        cutter.soil.transform.position.y,
-                        cutter.soil.GetFloorWorldY(cutter.TipWorldPosition)) + .5f &&
-                (machine.IsPoseWithinTolerance(machine.workReadyPose, 8f) ||
-                 machine.IsPoseWithinTolerance(machine.parkedPose, 8f)) &&
-                FindTruckPenetration() == null;
-            if (!clearEmptyTravelPose)
-            {
-                Zx200JointPose stowed = machine.carryPose;
-                stowed.swing = 0f;
-                stowed.duration = Mathf.Max(stowed.duration, 2f);
-                yield return MoveToPose(stowed, "履带回位前收拢工作装置超时");
-                if (!IsRunning || !stageSucceeded) yield break;
-            }
+            Zx200JointPose stowed = machine.carryPose;
+            stowed.swing = 0f;
+            stowed.duration = Mathf.Max(stowed.duration, 2f);
+            yield return MoveToPose(stowed, "履带回位前收拢工作装置超时");
+            if (!IsRunning || !stageSucceeded) yield break;
 
             ApplyBaseDriveMode(false);
             float deadline = Time.realtimeSinceStartup + 50f;
@@ -1618,9 +1603,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
             float floor = cutter.soil.GetFloorWorldY(tip);
             float safeLowerBound = Mathf.Max(surface - adaptiveEntryDepth, floor + floorClearance);
-            // Solid soil prevents a suppressed bucket from plunging to a virtual
-            // depth. Begin the coordinated scoop at real shell contact instead.
-            if (tip.y <= safeLowerBound || cutter.HasPhysicalSoilContact)
+            if (tip.y <= safeLowerBound)
             {
                 reachedSafeEntry = true;
                 break;

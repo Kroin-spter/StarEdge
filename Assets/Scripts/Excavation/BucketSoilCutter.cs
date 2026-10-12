@@ -21,10 +21,10 @@ public sealed class BucketSoilCutter : MonoBehaviour
     [Min(0f)] public float allowedUpwardTravel = .002f;
     [Header("Physical tooth-edge proxy (bucket local)")]
     [Tooltip("Offset behind the ZX200 tooth marker, calibrated from the imported mesh.")]
-    public Vector3 bladeCenterOffset = new Vector3(0, .044f, .013f);
+    public Vector3 bladeCenterOffset = new Vector3(0, .025f, -.016f);
     public Vector3 bladeForwardLocal = new Vector3(0, -1.25f, .82f);
-    [Min(.001f)] public float bladeThickness = .08f;
-    [Min(.001f)] public float bladeLength = .12f;
+    [Min(.001f)] public float bladeThickness = .03f;
+    [Min(.001f)] public float bladeLength = .06f;
     [Min(.001f)] public float bladeHalfWidth = .5f;
     public bool showCuttingGeometry;
     public Transform fillVisual;
@@ -62,27 +62,13 @@ public sealed class BucketSoilCutter : MonoBehaviour
     /// <summary>Whether the physical machine has settled at its initial work-ready pose so cutting may be counted.</summary>
     public bool StartupReady => startupReady;
     private Zx200DigController machine;
-    private uint manualRevisionAtEnable;
     private Vector3 previous;
     private Vector3 lastObserved;
     private TerrainCollider ignoredTerrain;
     private BucketSoilFill fill;
     private bool cuttingSuppressed;
-    private float lastPhysicalSoilContact = float.NegativeInfinity;
-    /// <summary>Whether the real bucket shell contacted this soil within the last two physics steps.</summary>
-    public bool HasPhysicalSoilContact => Application.isPlaying &&
-        Time.fixedTime - lastPhysicalSoilContact <= Time.fixedDeltaTime * 2.5f;
     private readonly List<Collider> ignored = new List<Collider>();
     private readonly List<bool> originalIgnore = new List<bool>();
-
-    private void OnCollisionEnter(Collision collision) => RecordSoilContact(collision);
-    private void OnCollisionStay(Collision collision) => RecordSoilContact(collision);
-
-    private void RecordSoilContact(Collision collision)
-    {
-        if (soil != null && collision.collider == soil.SoilCollider)
-            lastPhysicalSoilContact = Time.fixedTime;
-    }
 
     private void FixedUpdate()
     {
@@ -90,10 +76,8 @@ public sealed class BucketSoilCutter : MonoBehaviour
     }
     private void OnEnable()
     {
-        lastPhysicalSoilContact = float.NegativeInfinity;
         hasPrevious = false;
         machine = GetComponentInParent<Zx200DigController>();
-        manualRevisionAtEnable = machine != null ? machine.ManualPoseRevision : 0;
         if (machine == null || IsMachineReady()) startupReady = true;
     }
     private void Update()
@@ -113,33 +97,21 @@ public sealed class BucketSoilCutter : MonoBehaviour
         {
             hasPrevious = false;
             previousBlade = null;
-            Status = "切削暂停，保留实体土面碰撞";
+            Status = "切削暂停，保留土面碰撞过滤";
             UpdateFill();
             return 0;
         }
-        // Before site preparation, teleporting the machine across soil must not count as a cut.
-        // Once the site is ready, an explicit manual command unlocks cutting even if the
-        // operator never waited at the narrow automatic work-ready pose.
+        // 初次定位会经过土区，只有设备实际到达待机姿态后才允许计量作业。
+        // 已在待机位置添加的采样器可立即启用，复位土区也不要求重做机械初始化。
         if (!startupReady)
         {
-            // WebDelivery depends on ExcavatorControls, so keep this optional site
-            // readiness check by name instead of introducing a circular assembly reference.
-            Component site = soil.transform.parent != null
-                ? soil.transform.parent.GetComponent("CesiumMoundSite") : null;
-            bool siteReady = site == null ||
-                site.GetType().GetProperty("IsReady")?.GetValue(site) is true;
-            bool manualWorkStarted = machine != null &&
-                machine.ManualPoseRevision != manualRevisionAtEnable &&
-                siteReady;
-            if (!IsMachineReady() && !manualWorkStarted)
+            if (!IsMachineReady())
             {
                 hasPrevious = false;
                 Status = "等待设备初始姿态稳定";
                 return 0;
             }
             startupReady = true;
-            hasPrevious = false;
-            previousBlade = null;
         }
         Vector3 current = TipWorldPosition;
         Vector3[] corners = GetBladeWorldCorners();
@@ -374,23 +346,21 @@ public sealed class BucketSoilCutter : MonoBehaviour
             if (collider == target || collider.isTrigger || (owner != null && collider.attachedArticulationBody != owner)) continue;
             ignored.Add(collider);
             originalIgnore.Add(Physics.GetIgnoreCollision(collider, target));
-            // The imported bucket already has decomposed convex shell colliders. Keep
-            // those solid against uncut Terrain; only actual blade sweeps remove soil.
-            Physics.IgnoreCollision(collider, target, false);
+            Physics.IgnoreCollision(collider, target, true);
         }
     }
 
-    /// <summary>Whether automatic soil removal is suppressed while bucket/Terrain contact stays active.</summary>
+    /// <summary>Whether automatic soil removal is suppressed while bucket/map collision filtering stays active.</summary>
     public bool IsCuttingSuppressed => cuttingSuppressed;
 
-    /// <summary>Pause or resume soil accounting without disabling physical bucket/Terrain contact.</summary>
+    /// <summary>Pause or resume soil accounting without disabling the bucket's non-penetrating TerrainCollider pairs.</summary>
     /// <param name="suppressed">True during transfer motions; false when normal measured cutting may resume.</param>
     public void SetCuttingSuppressed(bool suppressed)
     {
         cuttingSuppressed = suppressed;
         hasPrevious = false;
         previousBlade = null;
-        if (suppressed) Status = "切削暂停，保留实体土面碰撞";
+        if (suppressed) Status = "切削暂停，保留土面碰撞过滤";
     }
 
     private void RestoreCollisionPairs()
