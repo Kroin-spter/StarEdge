@@ -1872,9 +1872,10 @@ MonoBehaviour:
   tractionCoefficient: 0.8
   commandTimeout: 0.25
   parkingFriction: 0.9
-  probeHeight: 0.15
-  contactTolerance: 0.06
+  probeHeight: 0.35
+  contactTolerance: 0.18
   maxGroundAngle: 45
+  groundedAngularDamping: 1.5
 --- !u!1 &7721952145820669058
 GameObject:
   m_ObjectHideFlags: 0

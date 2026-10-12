@@ -24,9 +24,11 @@ public class Zx200TrackDrive : MonoBehaviour
     [Range(0f, 1f)] public float parkingFriction = 0.9f;
 
     [Header("接地检测")]
-    [Min(0.01f)] public float probeHeight = 0.15f;
-    [Min(0.001f)] public float contactTolerance = 0.06f;
+    [Min(0.01f)] public float probeHeight = 0.35f;
+    [Min(0.001f)] public float contactTolerance = 0.18f;
     [Range(0f, 80f)] public float maxGroundAngle = 45f;
+    [Tooltip("接地时增加角阻尼以削弱土面小起伏引起的弹跳；不锁定底盘姿态。")]
+    [Min(0f)] public float groundedAngularDamping = 1.5f;
 
     /// <summary>获取当前物理步实际检测到的有效履带接地点数量。</summary>
     public int GroundContactCount { get; private set; }
@@ -45,6 +47,9 @@ public class Zx200TrackDrive : MonoBehaviour
     private float commandTime = float.NegativeInfinity;
     private readonly Vector3[] filteredNormals = new Vector3[6];
     private readonly bool[] hasFilteredContacts = new bool[6];
+    private readonly RaycastHit[] contacts = new RaycastHit[6];
+    private readonly float[] contactTargetSpeeds = new float[6];
+    private float originalAngularDamping;
 
     private void Awake()
     {
@@ -75,6 +80,7 @@ public class Zx200TrackDrive : MonoBehaviour
         if (keyboard == null) keyboard = GetComponent<Zx200KeyboardController>();
         if (keyboard == null || !keyboard.ResolveArticulationRoot()) return false;
         rootBody = keyboard.articulationRoot;
+        originalAngularDamping = rootBody.angularDamping;
         bodies = GetComponentsInChildren<ArticulationBody>(true);
         foreach (Collider collider in rootBody.GetComponentsInChildren<Collider>())
         {
@@ -158,17 +164,28 @@ public class Zx200TrackDrive : MonoBehaviour
             {
                 Vector3 local = new Vector3(localBounds.center.x + side * halfWidth,
                     localBounds.min.y, localBounds.center.z + sample * localBounds.size.z * 0.35f);
-                ApplyContact(local, targetSpeed, mass / 6f, (side + 1) / 2 * 3 + sample + 1);
+                int index = (side + 1) / 2 * 3 + sample + 1;
+                if (!TryFindContact(local, index, out RaycastHit contact)) continue;
+                contacts[GroundContactCount] = contact;
+                contactTargetSpeeds[GroundContactCount] = targetSpeed;
+                GroundContactCount++;
             }
         }
+        rootBody.angularDamping = GroundContactCount > 0
+            ? Mathf.Max(originalAngularDamping, groundedAngularDamping) : originalAngularDamping;
+        // Redistribute support across contacts; cap each point at one third of total mass.
+        // An airborne chassis has no valid contacts and receives no drive or gravity compensation.
+        if (GroundContactCount == 0) return;
+        for (int i = 0; i < GroundContactCount; i++)
+            ApplyContact(contacts[i], contactTargetSpeeds[i], mass / Mathf.Max(3, GroundContactCount));
     }
 
-    private void ApplyContact(Vector3 localPoint, float targetSpeed, float supportedMass, int contactIndex)
+    private bool TryFindContact(Vector3 localPoint, int contactIndex, out RaycastHit nearest)
     {
         Transform root = rootBody.transform;
         Vector3 point = root.TransformPoint(localPoint);
         Vector3 up = root.up;
-        RaycastHit nearest = default;
+        nearest = default;
         float distance = float.PositiveInfinity;
         foreach (RaycastHit hit in Physics.RaycastAll(point + up * probeHeight, -up,
                      probeHeight + contactTolerance, keyboard.groundLayers, QueryTriggerInteraction.Ignore))
@@ -181,9 +198,8 @@ public class Zx200TrackDrive : MonoBehaviour
         if (float.IsPositiveInfinity(distance))
         {
             hasFilteredContacts[contactIndex] = false;
-            return;
+            return false;
         }
-        GroundContactCount++;
         float smoothing = 1f - Mathf.Exp(-Time.fixedDeltaTime / .12f);
         // 每个履带采样点独立滤波。施力点始终使用真实接地点，保留左右差速的力臂。
         filteredNormals[contactIndex] = hasFilteredContacts[contactIndex]
@@ -191,6 +207,12 @@ public class Zx200TrackDrive : MonoBehaviour
             : nearest.normal;
         hasFilteredContacts[contactIndex] = true;
         nearest.normal = filteredNormals[contactIndex];
+        return true;
+    }
+
+    private void ApplyContact(RaycastHit nearest, float targetSpeed, float supportedMass)
+    {
+        Transform root = rootBody.transform;
         Vector3 forward = Vector3.ProjectOnPlane(root.forward, nearest.normal).normalized;
         Vector3 right = Vector3.Cross(nearest.normal, forward).normalized;
         Vector3 velocity = rootBody.GetPointVelocity(nearest.point);
@@ -221,6 +243,7 @@ public class Zx200TrackDrive : MonoBehaviour
     {
         Stop();
         System.Array.Clear(hasFilteredContacts, 0, hasFilteredContacts.Length);
+        if (rootBody != null) rootBody.angularDamping = originalAngularDamping;
         RestoreMaterials();
     }
 

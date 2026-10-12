@@ -14,6 +14,7 @@ namespace ExcavatorControls.Tests
         private GameObject wall;
         private Zx200KeyboardController keyboard;
         private ArticulationBody body;
+        private TerrainData unevenTerrain;
 
         private IEnumerator CreateRobot(bool withGround, float slope = 0f)
         {
@@ -122,6 +123,68 @@ namespace ExcavatorControls.Tests
             Assert.That(Vector3.Dot(body.transform.up, ground.transform.up), Is.GreaterThan(0.95f));
         }
 
+        /// <summary>Descending a usable soil slope must not strand the physical chassis at its lower end.</summary>
+        /// <returns>Settling, downhill driving, braking and an uphill return under real ground collision.</returns>
+        [UnityTest]
+        public IEnumerator DescendsAndReturnsUpWorkingSlope()
+        {
+            yield return CreateRobot(true, 20f);
+            Vector3 start = body.transform.position;
+            yield return Drive(-1f, 0f, 150);
+            Vector3 lower = body.transform.position;
+            Assert.That(lower.z, Is.LessThan(start.z - 1f), "必须先真实下坡，不能原地声称往返");
+            Assert.That(lower.y, Is.LessThan(start.y - .3f));
+            yield return Drive(0f, 0f, 60);
+            Vector3 stopped = body.transform.position;
+            yield return Drive(0f, 0f, 60);
+            Assert.That(Vector3.Distance(body.transform.position, stopped), Is.LessThan(.3f), "松开油门应保持稳定");
+            yield return Drive(1f, 0f, 220);
+            Debug.Log($"SLOPE ROUNDTRIP start={start} lower={lower} returned={body.transform.position} " +
+                $"contacts={robot.GetComponent<Zx200TrackDrive>().GroundContactCount}");
+            Assert.That(body.transform.position.z, Is.GreaterThan(start.z - .5f), "下坡后必须能靠履带牵引回到起点附近");
+            Assert.That(body.transform.position.y, Is.GreaterThan(start.y - .2f));
+            Assert.That(Vector3.Dot(body.transform.up, ground.transform.up), Is.GreaterThan(.9f));
+        }
+
+        /// <summary>Small soil ridges must not remove traction when the solid track hull still has support.</summary>
+        /// <returns>Physical settling and an uphill run across a twenty-degree undulating Terrain ramp.</returns>
+        [UnityTest]
+        public IEnumerator ClimbsUnevenWorkingSlope()
+        {
+            unevenTerrain = new TerrainData { heightmapResolution = 257, size = new Vector3(40f, 18f, 40f) };
+            var heights = new float[257, 257];
+            for (int z = 0; z < 257; z++)
+                for (int x = 0; x < 257; x++)
+                {
+                    float worldZ = -20f + z * 40f / 256f;
+                    // Start on a level bench like the saved scene, then enter the rough ramp naturally.
+                    float rampZ = Mathf.Max(0f, worldZ - 3f);
+                    float height = Mathf.Tan(20f * Mathf.Deg2Rad) * rampZ +
+                        .16f * Mathf.SmoothStep(0f, 1f, rampZ) * Mathf.Cos(rampZ * Mathf.PI / 1.5f);
+                    heights[z, x] = (height + 9f) / 18f;
+                }
+            unevenTerrain.SetHeights(0, 0, heights);
+            ground = Terrain.CreateTerrainGameObject(unevenTerrain);
+            ground.transform.position = new Vector3(-20f, -9f, -20f);
+            yield return CreateRobot(false);
+            // Isolate track travel from a lowered bucket bulldozing into the rising ground.
+            keyboard.fixedBase = true;
+            robot.GetComponent<Zx200FixedBasePhysics>().Configure();
+            var dig = robot.GetComponent<Zx200DigController>();
+            Assert.That(dig.StartAutomaticPose(dig.carryPose), Is.True);
+            for (int frame = 0; frame < 240 && dig.IsBusy; frame++) yield return new WaitForFixedUpdate();
+            Assert.That(dig.LastAutomaticMotionSucceeded, Is.True, "行驶前机械臂应收至运输姿态");
+            keyboard.fixedBase = false;
+            robot.GetComponent<Zx200FixedBasePhysics>().Configure();
+            for (int frame = 0; frame < 60; frame++) yield return new WaitForFixedUpdate();
+            Vector3 start = body.transform.position;
+            yield return Drive(1f, 0f, 220);
+            Debug.Log($"UNEVEN SLOPE start={start} finish={body.transform.position} contacts={robot.GetComponent<Zx200TrackDrive>().GroundContactCount}");
+            Assert.That(body.transform.position.z, Is.GreaterThan(start.z + 4.5f), "必须进入起伏坡面，而非只在初始平地移动");
+            Assert.That(body.transform.position.y, Is.GreaterThan(start.y + .5f));
+            Assert.That(Vector3.Dot(body.transform.up, Vector3.up), Is.GreaterThan(.8f));
+        }
+
         /// <summary>验证输入中断后不会持续加速，固定模式能重新锁定底盘。</summary>
         /// <returns>输入中断、制动及固定模式的物理帧。</returns>
         [UnityTest]
@@ -175,6 +238,7 @@ namespace ExcavatorControls.Tests
             if (robot != null) Object.DestroyImmediate(robot);
             if (ground != null) Object.DestroyImmediate(ground);
             if (wall != null) Object.DestroyImmediate(wall);
+            if (unevenTerrain != null) Object.DestroyImmediate(unevenTerrain);
         }
     }
 }
