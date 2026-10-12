@@ -348,16 +348,33 @@ public class Zx200DigController : MonoBehaviour
         if (IsBusy || !enabled || !ResolveJoints()) return false;
 
         Zx200JointPose current = ReadTargetPose();
+        Zx200JointPose actual = ReadActualPose();
         ApplyPose(new Zx200JointPose(
-            current.swing + swingDelta,
-            current.boom + boomDelta,
-            current.arm + armDelta,
-            current.bucket + bucketDelta,
+            ManualJointTarget(swingJoint, actual.swing, current.swing, swingDelta, ref targetVelocities.x),
+            ManualJointTarget(boomJoint, actual.boom, current.boom, boomDelta, ref targetVelocities.y),
+            ManualJointTarget(armJoint, actual.arm, current.arm, armDelta, ref targetVelocities.z),
+            ManualJointTarget(bucketJoint, actual.bucket, current.bucket, bucketDelta, ref targetVelocities.w),
             0f));
         if (Mathf.Abs(swingDelta) + Mathf.Abs(boomDelta) + Mathf.Abs(armDelta) +
             Mathf.Abs(bucketDelta) > .00001f)
             ManualPoseRevision++;
         return true;
+    }
+
+    private static float ManualJointTarget(ArticulationBody joint, float actual, float target,
+        float delta, ref float velocity)
+    {
+        float trackingError = Mathf.DeltaAngle(actual, target);
+        // A solid obstacle can hold the actual joint while the held key accumulates
+        // targets. Reverse input must cancel that backlog immediately, without
+        // rewriting the physical joint pose or waiting to unwind many degrees.
+        if (Application.isPlaying && Mathf.Abs(trackingError) > 3f && trackingError * delta < 0f)
+        {
+            velocity = 0f;
+            SetTarget(joint, actual);
+            target = actual;
+        }
+        return target + delta;
     }
 
     /// <summary>

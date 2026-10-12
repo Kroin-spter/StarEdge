@@ -332,7 +332,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 7.2077844
+      value: 7.2051663
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.y
@@ -340,7 +340,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -0.7776886
+      value: -0.77664375
       objectReference: {fileID: 0}
     - target: {fileID: 6476351545431719175, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: m_LocalRotation.w
@@ -503,10 +503,10 @@ MonoBehaviour:
   maximumTravelPerSample: 0.5
   minimumDirectionDot: 0.1
   allowedUpwardTravel: 0.002
-  bladeCenterOffset: {x: 0, y: 0.025, z: -0.016}
+  bladeCenterOffset: {x: 0, y: 0.044, z: 0.013}
   bladeForwardLocal: {x: 0, y: -1.25, z: 0.82}
-  bladeThickness: 0.03
-  bladeLength: 0.06
+  bladeThickness: 0.08
+  bladeLength: 0.12
   bladeHalfWidth: 0.5
   showCuttingGeometry: 0
   fillVisual: {fileID: 1527798162}
@@ -533,7 +533,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 351.55537
+      value: 351.55536
       objectReference: {fileID: 0}
     - target: {fileID: 5863705431184634746, guid: 5c069f17779f6271eaea478ed92b7fd6, type: 3}
       propertyPath: m_LocalRotation.w
@@ -1358,7 +1358,7 @@ Transform:
   m_GameObject: {fileID: 1186474629}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 188.89423, y: -3.8562005, z: 345.33102}
+  m_LocalPosition: {x: 287.436, y: -3.8562005, z: 358.757}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1399,7 +1399,7 @@ TerrainCollider:
   m_ProvidesContacts: 0
   m_Enabled: 0
   serializedVersion: 2
-  m_TerrainData: {fileID: 15600000, guid: 443b11c53959a8af9a8460b0ddafe83f, type: 2}
+  m_TerrainData: {fileID: 15600000, guid: a3c1a3e02a8b6c04482f9d02a9d4647e, type: 2}
   m_EnableTreeColliders: 1
 --- !u!218 &1186474633
 Terrain:
@@ -1410,7 +1410,7 @@ Terrain:
   m_GameObject: {fileID: 1186474629}
   m_Enabled: 1
   serializedVersion: 6
-  m_TerrainData: {fileID: 15600000, guid: 443b11c53959a8af9a8460b0ddafe83f, type: 2}
+  m_TerrainData: {fileID: 15600000, guid: a3c1a3e02a8b6c04482f9d02a9d4647e, type: 2}
   m_TreeDistance: 5000
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
@@ -1644,12 +1644,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: WebDelivery.Runtime::ConstructionSiteMapClip
   workArea:
-    m_Center: {x: 263.89423, y: 2.6369605, z: 375.33102}
-    m_Extent: {x: 59.641693, y: 6.4931607, z: 35.13437}
+    m_Center: {x: 291.436, y: 2.6369605, z: 362.757}
+    m_Extent: {x: 4, y: 6.4931607, z: 4}
   useOrientedWorkArea: 1
-  workAreaCenter: {x: 263.89423, y: -3.3076713, z: 375.33102}
-  workAreaRotation: {x: 0.056009557, y: 0.24331477, z: -0.014075168, w: 0.9682266}
-  workAreaSize: {x: 130, y: 10}
+  workAreaCenter: {x: 291.436, y: -3.8562005, z: 362.757}
+  workAreaRotation: {x: 0, y: 0, z: 0, w: 1}
+  workAreaSize: {x: 8, y: 8}
+  replacementTerrain: {fileID: 0}
 --- !u!1 &1633613320
 GameObject:
   m_ObjectHideFlags: 0

@@ -1618,7 +1618,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
             float floor = cutter.soil.GetFloorWorldY(tip);
             float safeLowerBound = Mathf.Max(surface - adaptiveEntryDepth, floor + floorClearance);
-            if (tip.y <= safeLowerBound)
+            // Solid soil prevents a suppressed bucket from plunging to a virtual
+            // depth. Begin the coordinated scoop at real shell contact instead.
+            if (tip.y <= safeLowerBound || cutter.HasPhysicalSoilContact)
             {
                 reachedSafeEntry = true;
                 break;

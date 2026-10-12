@@ -16,11 +16,16 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
     public Vector3 workAreaCenter;
     public Quaternion workAreaRotation = Quaternion.identity;
     public Vector2 workAreaSize;
+    [Tooltip("When assigned, replace only solid Terrain cells; holes retain the original map and its collision.")]
+    public Terrain replacementTerrain;
 
     private Cesium3DTileset tileset;
     private readonly List<Replacement> replacements = new List<Replacement>();
     private CesiumTerrainConformer conformer;
     private CesiumMoundSite moundSite;
+    private bool[,] replacementCoverage;
+    private Vector3 replacementOrigin;
+    private Vector3 replacementSize;
 
     private sealed class Replacement
     {
@@ -139,6 +144,15 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
     {
         if (tile == null || (moundSite != null && !MoundSurfaceAvailable())) return;
         if (conformer != null && !conformer.SurfaceReady) return;
+        replacementCoverage = replacementTerrain != null && replacementTerrain.terrainData != null
+            ? replacementTerrain.terrainData.GetHoles(0, 0,
+                replacementTerrain.terrainData.holesResolution, replacementTerrain.terrainData.holesResolution)
+            : null;
+        if (replacementCoverage != null)
+        {
+            replacementOrigin = replacementTerrain.transform.position;
+            replacementSize = replacementTerrain.terrainData.size;
+        }
 
         foreach (MeshFilter filter in tile.GetComponentsInChildren<MeshFilter>(true))
         {
@@ -184,6 +198,12 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
 
     private Bounds ReplacementBounds()
     {
+        if (replacementTerrain != null && replacementTerrain.terrainData != null)
+        {
+            useOrientedWorkArea = false;
+            Vector3 size = replacementTerrain.terrainData.size;
+            return new Bounds(replacementTerrain.transform.position + size * .5f, size);
+        }
         if (!Application.isPlaying && moundSite.bakedSite != null && moundSite.bakedSite.terrainData != null)
         {
             BakedConstructionSiteData baked = moundSite.bakedSite;
@@ -293,7 +313,7 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
                     continue;
                 }
 
-                if (IsTriangleInsideWorkArea(a, b, c, workAreaPlanes))
+                if (replacementCoverage == null && IsTriangleInsideWorkArea(a, b, c, workAreaPlanes))
                 {
                     changed = true;
                     continue;
@@ -319,6 +339,17 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
                 {
                     AddOriginalTriangle(retained, aIndex, bIndex, cIndex);
                     continue;
+                }
+
+                if (replacementCoverage != null)
+                {
+                    List<List<ClipVertex>> uncovered = KeepTerrainHoles(inside, out bool replaced);
+                    if (!replaced)
+                    {
+                        AddOriginalTriangle(retained, aIndex, bIndex, cIndex);
+                        continue;
+                    }
+                    outsidePieces.AddRange(uncovered);
                 }
 
                 changed = true;
@@ -351,6 +382,63 @@ public sealed class ConstructionSiteMapClip : MonoBehaviour
             result.SetIndices(retainedBySubmesh[i], outputTopologies[i], i, false, 0);
         result.RecalculateBounds();
         return result;
+    }
+
+    // Partition only triangles touching the soil band. Group adjacent hole cells into
+    // row runs so roads and the lower bench remain intact without a coarse rectangular cut.
+    private List<List<ClipVertex>> KeepTerrainHoles(List<ClipVertex> polygon, out bool replaced)
+    {
+        replaced = false;
+        var retained = new List<List<ClipVertex>>();
+        // Coverage only owns its own canvas. Keep any map fragments outside it,
+        // even when a larger clipping footprint overlaps the same source triangle.
+        var canvasPlanes = new[]
+        {
+            new ClipPlane(Vector3.right, replacementOrigin.x, true),
+            new ClipPlane(Vector3.right, replacementOrigin.x + replacementSize.x, false),
+            new ClipPlane(Vector3.forward, replacementOrigin.z, true),
+            new ClipPlane(Vector3.forward, replacementOrigin.z + replacementSize.z, false)
+        };
+        foreach (ClipPlane plane in canvasPlanes)
+        {
+            List<ClipVertex> outside = ClipPolygon(polygon, plane, !plane.keepGreater);
+            if (PolygonArea(outside) > 1e-8f) retained.Add(outside);
+            polygon = ClipPolygon(polygon, plane, plane.keepGreater);
+            if (PolygonArea(polygon) <= 1e-8f) return retained;
+        }
+        int rows = replacementCoverage.GetLength(0), columns = replacementCoverage.GetLength(1);
+        float dx = replacementSize.x / columns, dz = replacementSize.z / rows;
+        float minX = polygon.Min(v => v.world.x), maxX = polygon.Max(v => v.world.x);
+        float minZ = polygon.Min(v => v.world.z), maxZ = polygon.Max(v => v.world.z);
+        int x0 = Mathf.Clamp(Mathf.FloorToInt((minX - replacementOrigin.x) / dx), 0, columns - 1);
+        int x1 = Mathf.Clamp(Mathf.FloorToInt((maxX - replacementOrigin.x) / dx), 0, columns - 1);
+        int z0 = Mathf.Clamp(Mathf.FloorToInt((minZ - replacementOrigin.z) / dz), 0, rows - 1);
+        int z1 = Mathf.Clamp(Mathf.FloorToInt((maxZ - replacementOrigin.z) / dz), 0, rows - 1);
+        for (int z = z0; z <= z1; z++)
+        {
+            List<ClipVertex> row = ClipPolygon(polygon,
+                new ClipPlane(Vector3.forward, replacementOrigin.z + z * dz, true), true);
+            row = ClipPolygon(row,
+                new ClipPlane(Vector3.forward, replacementOrigin.z + (z + 1) * dz, false), false);
+            if (PolygonArea(row) <= 1e-8f) continue;
+            for (int x = x0; x <= x1;)
+            {
+                bool solid = replacementCoverage[z, x];
+                int end = x + 1;
+                while (end <= x1 && replacementCoverage[z, end] == solid) end++;
+                List<ClipVertex> piece = ClipPolygon(row,
+                    new ClipPlane(Vector3.right, replacementOrigin.x + x * dx, true), true);
+                piece = ClipPolygon(piece,
+                    new ClipPlane(Vector3.right, replacementOrigin.x + end * dx, false), false);
+                if (PolygonArea(piece) > 1e-8f)
+                {
+                    if (solid) replaced = true;
+                    else retained.Add(piece);
+                }
+                x = end;
+            }
+        }
+        return retained;
     }
 
     private ClipPlane[] GetWorkAreaPlanes()

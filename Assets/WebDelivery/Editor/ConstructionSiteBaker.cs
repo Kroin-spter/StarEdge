@@ -38,6 +38,45 @@ public static class ConstructionSiteBaker
             }
     }
 
+    /// <summary>Bake an 8 m local slope at tooth-scale resolution and apply it to the authored test scene.</summary>
+    /// <remarks>The original full-wall Terrain asset is retained. The canonical snapshot and scene reference the local patch.</remarks>
+    [MenuItem("Tools/Excavator/Construction Site/Bake Local Slope Foundation")]
+    public static void BakeLocalSlopeFoundation()
+    {
+        if (EditorApplication.isPlaying) throw new InvalidOperationException("请先退出 Play，再烘焙局部坡面。");
+        string snapshotPath = AssetDirectory + "/ConstructionSite.asset";
+        string terrainPath = AssetDirectory + "/LocalSlopeTerrain.asset";
+        BakedConstructionSiteData source = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(snapshotPath);
+        if (source == null || !source.TryValidate(source.sourceMapName, source.georeferenceLatitude,
+            source.georeferenceLongitude, source.georeferenceHeight, out _))
+            throw new InvalidOperationException("缺少有效的原始坡面烘焙数据。");
+        if (AssetDatabase.LoadAssetAtPath<TerrainData>(terrainPath) != null)
+            throw new InvalidOperationException("局部坡面资源已经存在；请直接应用现有烘焙资源。");
+        Vector3 center = source.machinePosition + new Vector3(4f, 0f, 7f);
+        BakedConstructionSiteData local = source.CreateLocalSlopeSnapshot(center, new Vector2(8, 8), 1025);
+        if (!local.TryValidate(local.sourceMapName, local.georeferenceLatitude,
+            local.georeferenceLongitude, local.georeferenceHeight, out string reason))
+            throw new InvalidOperationException(reason);
+        local.terrainData.name = "Local slope foundation (8m, tooth-resolution)";
+        TerrainLayer[] localLayers = local.terrainData.terrainLayers;
+        float[,,] localWeights = local.terrainData.GetAlphamaps(0, 0, 128, 128);
+        AssetDatabase.CreateAsset(local.terrainData, terrainPath);
+        foreach (TerrainLayer layer in localLayers)
+            AssetDatabase.AddObjectToAsset(layer, local.terrainData);
+        local.terrainData.terrainLayers = localLayers;
+        local.terrainData.SetAlphamaps(0, 0, localWeights);
+        EditorUtility.SetDirty(local.terrainData);
+        EditorUtility.CopySerialized(local, source);
+        source.name = "ConstructionSite";
+        EditorUtility.SetDirty(source);
+        AssetDatabase.SaveAssets();
+        UnityEngine.Object.DestroyImmediate(local);
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        Selection.activeObject = source;
+        ApplySelectedBakedSite();
+        Debug.Log($"局部基础坡面已烘焙；网格间距={8f / 1024:F4}m，初始土量={source.initialSoilVolumeM3:F3}m³。");
+    }
+
     /// <summary>Save the measured untouched work face as portable data plus a standalone Terrain asset.</summary>
     [MenuItem("Tools/Excavator/Construction Site/Bake Ready Dynamic Site")]
     public static void BakeReadyDynamicSite()

@@ -9,6 +9,23 @@ using UnityEngine.TestTools;
 
 namespace ExcavatorControls.Tests
 {
+    internal sealed class SlopeContactProbe : MonoBehaviour
+    {
+        internal TerrainCollider soil;
+        internal BucketSoilCutter cutter;
+        private int contacts;
+
+        private void OnCollisionStay(Collision collision)
+        {
+            if (collision.collider != soil || contacts++ % 80 != 0) return;
+            foreach (ContactPoint point in collision.contacts)
+                Debug.Log($"SOIL CONTACT local={transform.InverseTransformPoint(point.point)}, " +
+                    $"toothDistance={Vector3.Distance(point.point, cutter.TipWorldPosition):F3}, " +
+                    $"separation={point.separation:F4}, impulse={collision.impulse.magnitude:F2}, " +
+                    $"root={cutter.GetComponentInParent<Zx200DigController>().transform.position}");
+        }
+    }
+
     /// <summary>Verifies autonomous excavation against the real Cesium main-scene soil ledger.</summary>
     public class AutonomousExcavationPlayModeTests
     {
@@ -16,6 +33,122 @@ namespace ExcavatorControls.Tests
         private const string CesiumTilesetMissingHint =
             " Set CESIUM_TILESET_DIR or place the map beside the project.";
         private static bool expectedInitialSceneWarnings;
+
+        /// <summary>Manual cutting must leave a measured pit while the physical bucket still collides with uncut soil.</summary>
+        /// <returns>Site loading, manual contact, cutting and withdrawal physics frames.</returns>
+        [UnityTest]
+        public IEnumerator ManualSlopeCutKeepsPhysicalCollisionAndLeavesPit()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var machine = FindInScene<Zx200DigController>(scene);
+                var cutter = FindInScene<BucketSoilCutter>(scene);
+                cutter.GetComponent<BucketSoilUnloader>().enabled = false;
+                var contactProbe = machine.bucketJoint.gameObject.AddComponent<SlopeContactProbe>();
+                contactProbe.soil = cutter.soil.SoilCollider;
+                contactProbe.cutter = cutter;
+                foreach (Collider collider in cutter.GetComponentsInChildren<Collider>())
+                    if (!collider.isTrigger && collider.attachedArticulationBody == machine.bucketJoint)
+                        Debug.Log($"BUCKET COLLIDER {collider.name}: type={collider.GetType().Name}, " +
+                            $"localBounds={machine.bucketJoint.transform.InverseTransformPoint(collider.bounds.center)}, " +
+                            $"size={collider.bounds.size}, ignored={Physics.GetIgnoreCollision(collider, cutter.soil.SoilCollider)}");
+                for (int frame = 0; frame < 400; frame++)
+                {
+                    Zx200JointPose actual = machine.ReadActualPose();
+                    // On a rising face, teeth must lead into the soil before the back
+                    // plate. The old near-vertical pose reached the slope shell-first.
+                    Zx200JointPose approach = new Zx200JointPose(0, -34, 40, -30, 0);
+                    float boom = Mathf.DeltaAngle(actual.boom, approach.boom);
+                    float arm = Mathf.DeltaAngle(actual.arm, approach.arm);
+                    float bucket = Mathf.DeltaAngle(actual.bucket, approach.bucket);
+                    if (Mathf.Abs(boom) < .5f && Mathf.Abs(arm) < .5f && Mathf.Abs(bucket) < .5f) break;
+                    machine.AdjustManualPose(0, Mathf.Clamp(boom, -.3f, .3f),
+                        Mathf.Clamp(arm, -.3f, .3f), Mathf.Clamp(bucket, -.3f, .3f));
+                    yield return new WaitForFixedUpdate();
+                }
+                TerrainData terrain = cutter.soil.Terrain.terrainData;
+                Debug.Log($"CONTACT APPROACH tip={cutter.TipWorldPosition}, floor={cutter.soil.GetFloorWorldY(cutter.TipWorldPosition):F3}, " +
+                    $"size={terrain.size}, resolution={terrain.heightmapResolution}, boom={machine.ReadActualPose().boom:F2}, " +
+                    $"arm={machine.ReadActualPose().arm:F2}, bucket={machine.ReadActualPose().bucket:F2}, " +
+                    $"toothDirection={cutter.transform.TransformDirection(cutter.bladeForwardLocal).normalized}");
+                if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+                    CaptureHandoffFrame(machine.GetComponent<Zx200CameraController>().targetCamera, "PhysicalApproach");
+                int n = terrain.heightmapResolution;
+                float[,] before = terrain.GetHeights(0, 0, n, n);
+                for (int frame = 0; frame < 250 && cutter.VolumeM3 < .05; frame++)
+                {
+                    machine.AdjustManualPose(0, 10 * Time.fixedDeltaTime, 0, 0);
+                    yield return new WaitForFixedUpdate();
+                    if (cutter.ExcavatedVolumeM3 > .001) break;
+                }
+                for (int frame = 0; frame < 300 && cutter.VolumeM3 < .05; frame++)
+                {
+                    // Follow the visible face with coordinated manual commands:
+                    // curling alone raises the teeth out of contact on this slope.
+                    Vector3 tip = cutter.TipWorldPosition;
+                    float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+                    float boomRate = tip.y > surface + .03f ? 6f :
+                        tip.y < surface - .10f ? -3f : 0f;
+                    machine.AdjustManualPose(0, boomRate * Time.fixedDeltaTime,
+                        6 * Time.fixedDeltaTime, 8 * Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                    if (frame % 60 == 0) Debug.Log($"CONTACT CURL {frame}: tip={cutter.TipWorldPosition}, " +
+                        $"floor={cutter.soil.GetFloorWorldY(cutter.TipWorldPosition):F3}, " +
+                        $"surface={terrain.GetInterpolatedHeight((cutter.TipWorldPosition.x - cutter.soil.transform.position.x) / terrain.size.x, (cutter.TipWorldPosition.z - cutter.soil.transform.position.z) / terrain.size.z) + cutter.soil.transform.position.y:F3}, " +
+                        $"guard={machine.bucketJoint.GetComponent<BucketSoilResistance>().BlockReason}");
+                }
+                float[,] after = terrain.GetHeights(0, 0, n, n);
+                float deepestPit = 0;
+                for (int z = 0; z < n; z++)
+                    for (int x = 0; x < n; x++)
+                        deepestPit = Mathf.Max(deepestPit, (before[z, x] - after[z, x]) * terrain.size.y);
+                Debug.Log($"PHYSICAL SLOPE CUT volume={cutter.VolumeM3:F6}, removed={cutter.ExcavatedVolumeM3:F6}, " +
+                    $"pit={deepestPit:F3}, boom={machine.ReadActualPose().boom:F2}, arm={machine.ReadActualPose().arm:F2}, " +
+                    $"bucket={machine.ReadActualPose().bucket:F2}, tip={cutter.TipWorldPosition}, " +
+                    $"surface={cutter.soil.Terrain.SampleHeight(cutter.TipWorldPosition) + cutter.soil.transform.position.y:F3}, " +
+                    $"tipLocal={cutter.transform.InverseTransformPoint(cutter.TipWorldPosition)}, status={cutter.Status}");
+                if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+                    CaptureHandoffFrame(machine.GetComponent<Zx200CameraController>().targetCamera, "PhysicalCut");
+                Assert.That(deepestPit, Is.GreaterThan(.03f), "Excavation must deform real geometry rather than just display soil.");
+                int physicalColliders = 0;
+                foreach (Collider collider in cutter.GetComponentsInChildren<Collider>())
+                {
+                    if (!collider.enabled || collider.isTrigger || collider.attachedArticulationBody != machine.bucketJoint) continue;
+                    physicalColliders++;
+                    Assert.That(Physics.GetIgnoreCollision(collider, cutter.soil.SoilCollider), Is.False,
+                        "Bucket shell must physically contact the remaining soil: " + collider.name);
+                }
+                Assert.That(physicalColliders, Is.GreaterThan(0));
+                Vector3 startTip = cutter.TipWorldPosition;
+                for (int frame = 0; frame < 150; frame++)
+                {
+                    machine.AdjustManualPose(0, -8 * Time.fixedDeltaTime, 0, 0);
+                    yield return new WaitForFixedUpdate();
+                }
+                Debug.Log($"PHYSICAL WITHDRAW start={startTip}, end={cutter.TipWorldPosition}, " +
+                    $"actual={machine.ReadActualPose()}, " +
+                    $"drive={machine.boomJoint.xDrive.target}, sleeping={machine.boomJoint.IsSleeping()}, " +
+                    $"force={machine.boomJoint.xDrive.forceLimit}, actualBoom={machine.ReadActualPose().boom:F2}, " +
+                    $"guard={machine.bucketJoint.GetComponent<BucketSoilResistance>().BlockReason}");
+                Assert.That(cutter.TipWorldPosition.y, Is.GreaterThan(startTip.y + .3f), "Physical contact must allow withdrawal.");
+                Assert.That(cutter.VolumeM3, Is.GreaterThanOrEqualTo(.05));
+                ManualSoilTestMotion.AssertBalance(cutter, .0005);
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
 
         /// <summary>A held manual command at automatic start must not cancel the new job until it returns to neutral.</summary>
         /// <returns>One site load and control handoff frames.</returns>
