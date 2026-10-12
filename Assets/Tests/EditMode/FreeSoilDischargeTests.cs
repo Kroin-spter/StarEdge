@@ -47,6 +47,33 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void SteepTerrainKeepsLooseSoilMovingUntilItReachesTheFoot()
+        {
+            var heights = new float[33, 33];
+            for (int z = 0; z < 33; z++)
+                for (int x = 0; x < 33; x++)
+                    heights[z, x] = .1f + .7f * Mathf.Clamp01((z / 8f - 1) / 1f);
+            var runtime = cutter.soil.Terrain.terrainData;
+            runtime.SetHeights(0, 0, heights);
+            Physics.SyncTransforms();
+            bucket.transform.position = new Vector3(2, 1.3f, 1.6f);
+            double initial = cutter.VolumeM3;
+            unloader.Step(.02f);
+            unloader.Step(.25f);
+            Assert.That(cutter.DeliveredVolumeM3, Is.Zero, "A steep slope must not pin loose soil in place.");
+            Assert.That(unloader.SurfacePendingVolumeM3, Is.Zero);
+            Assert.That(unloader.AirborneVolumeM3, Is.GreaterThan(0));
+            Drain();
+            Assert.That(cutter.DeliveredVolumeM3, Is.EqualTo(initial).Within(1e-8));
+            Assert.That(unloader.AirborneVolumeM3 + unloader.SurfacePendingVolumeM3, Is.Zero);
+            Assert.That(runtime.GetInterpolatedHeight(.5f, .4f), Is.EqualTo(1.04f).Within(.001f),
+                "The steep cutting face must not receive stationary spoil.");
+            foreach (var pile in Object.FindObjectsByType<SoilReceivingZone>(FindObjectsSortMode.None))
+                if (pile.isGroundPile)
+                    Assert.That(pile.transform.position.z, Is.LessThan(1.15f));
+        }
+
+        [Test]
         public void OffMapFlightDoesNotPreventLaterTerrainResidueFromSettling()
         {
             bucket.transform.position = new Vector3(10, 20, 0);
@@ -83,6 +110,31 @@ namespace ExcavatorControls.Tests
             Assert.That(cutter.soil.RecalculateRemovedVolumeM3(), Is.Zero.Within(1e-6));
             Assert.That(cutter.ExcavatedVolumeM3 + cutter.EmittedVolumeM3 + cutter.DeliveredVolumeM3, Is.Zero);
             Assert.That(GroundPileVolume(), Is.Zero);
+        }
+
+        [Test]
+        public void NearbyShallowLandingsMergeWithoutLosingVolume()
+        {
+            var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                floor.transform.position = new Vector3(10, -.5f, 0);
+                floor.transform.localScale = new Vector3(10, 1, 10);
+                cutter.innerMouthHalfWidth = .02f;
+                bucket.transform.position = new Vector3(10, 2, 0);
+                Physics.SyncTransforms();
+                double initial = cutter.VolumeM3;
+                unloader.Step(.1f);
+                bucket.transform.position += Vector3.right * .25f;
+                Drain();
+                int count = 0;
+                foreach (var zone in Object.FindObjectsByType<SoilReceivingZone>(FindObjectsSortMode.None))
+                    if (zone.isGroundPile && zone.VolumeM3 > 0) count++;
+                Assert.That(count, Is.EqualTo(1), "Neighbouring foot deposits should form one pile, not scattered fragments.");
+                Assert.That(GroundPileVolume(), Is.EqualTo(initial).Within(1e-8));
+                Assert.That(unloader.AirborneVolumeM3 + unloader.SurfacePendingVolumeM3, Is.Zero);
+            }
+            finally { Object.DestroyImmediate(floor); }
         }
 
         [Test]

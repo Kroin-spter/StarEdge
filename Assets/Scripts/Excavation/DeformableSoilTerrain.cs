@@ -272,6 +272,10 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
     /// <param name="volumeM3">Maximum soil volume to add in cubic metres.</param>
     /// <returns>Actual read-back volume added, never above the request; invalid or sub-quantum requests return zero.</returns>
     public double Deposit(Vector3 worldPoint, float radius, double volumeM3)
+        => Deposit(worldPoint, radius, volumeM3, 0);
+
+    // Flight deposits must not spread their radial footprint back up an unstable face.
+    internal double Deposit(Vector3 worldPoint, float radius, double volumeM3, float minimumNormalY)
     {
         if (!Finite(worldPoint) || !float.IsFinite(radius) || radius <= 0 ||
             double.IsNaN(volumeM3) || double.IsInfinity(volumeM3) || volumeM3 <= 0) return 0;
@@ -299,6 +303,8 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
                 double ox = (x + x0) * dx - centerX, oz = (z + z0) * dz - centerZ;
                 double weight = Math.Max(0, 1 - (ox * ox + oz * oz) / radiusSquared);
                 if (weight <= 0 || VertexTouchesHole(x + x0, z + z0)) continue;
+                if (minimumNormalY > 0 && runtime.GetInterpolatedNormal(
+                    (float)(x + x0) / (n - 1), (float)(z + z0) / (n - 1)).y < minimumNormalY) continue;
                 weights[z, x] = weight;
                 double room = 1.0 - before[z, x];
                 capacity += room * vertexVolume;

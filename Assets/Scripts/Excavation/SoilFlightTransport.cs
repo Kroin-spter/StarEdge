@@ -42,6 +42,8 @@ public sealed class SoilFlightTransport : MonoBehaviour
     private BucketSoilCutter cutter;
     private GameObject visual;
     private Mesh mesh;
+    // Match the loose-pile repose angle. Steeper faces transport spoil, not support it.
+    private static readonly float MinimumStableNormalY = Mathf.Cos(32 * Mathf.Deg2Rad);
 
     /// <summary>Add all outlet parcels and rebuild the shared visual mesh once.</summary>
     internal void EmitBatch(IReadOnlyList<Emission> emissions)
@@ -113,6 +115,13 @@ public sealed class SoilFlightTransport : MonoBehaviour
                 float height = source.Terrain.SampleHeight(start) + source.transform.position.y;
                 if (start.y <= height)
                 {
+                    Vector3 normal = source.Terrain.terrainData.GetInterpolatedNormal(
+                        local.x / size.x, local.z / size.z);
+                    if (normal.y < MinimumStableNormalY)
+                    {
+                        SlideOnSurface(parcel, new Vector3(start.x, height, start.z), normal, dt);
+                        return false;
+                    }
                     Settle(parcel, new Vector3(start.x, height, start.z), source);
                     return true;
                 }
@@ -153,10 +162,11 @@ public sealed class SoilFlightTransport : MonoBehaviour
         if (hasCollision)
         {
             var terrain = collision.collider.GetComponent<DeformableSoilTerrain>();
-            if (collision.normal.y < .45f && terrain == null)
+            // Restrict the new repose rule to soil Terrain; preserve vehicle/map collision behavior.
+            if (terrain != null ? collision.normal.y < MinimumStableNormalY : collision.normal.y < .45f)
             {
                 parcel.position = collision.point + collision.normal * .025f;
-                parcel.velocity = Vector3.ProjectOnPlane(parcel.velocity, collision.normal) * .5f;
+                parcel.velocity = Vector3.ProjectOnPlane(parcel.velocity, collision.normal) * (terrain != null ? 1 : .5f);
                 return false;
             }
             Settle(parcel, collision.point, terrain);
@@ -164,6 +174,15 @@ public sealed class SoilFlightTransport : MonoBehaviour
         }
         parcel.position = next;
         return false;
+    }
+
+    private static void SlideOnSurface(Parcel parcel, Vector3 point, Vector3 normal, float dt)
+    {
+        // Integrate tangential gravity even when the parcel begins inside Terrain.
+        // Frame-independent damping avoids the old per-impact halving that pinned spoil.
+        parcel.velocity = Vector3.ProjectOnPlane(parcel.velocity + Physics.gravity * dt, normal)
+            * Mathf.Exp(-1.5f * dt);
+        parcel.position = point + normal * .025f + parcel.velocity * dt;
     }
 
     private static SoilReceivingZone FindEngulfingReceiver(Vector3 position, SoilReceivingZone[] receivers)
@@ -229,7 +248,7 @@ public sealed class SoilFlightTransport : MonoBehaviour
             if (!settleRemainder && pending.volume < .01) continue;
             if (cutter.soil != null)
             {
-                double added = cutter.soil.Deposit(pending.position, .65f, pending.volume);
+                double added = cutter.soil.Deposit(pending.position, .65f, pending.volume, MinimumStableNormalY);
                 cutter.RecordLanding(cutter.soil, added);
                 pending.volume -= added;
             }
