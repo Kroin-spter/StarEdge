@@ -26,6 +26,10 @@ public sealed class BakedConstructionSiteData : ScriptableObject
     public float readyTipClearanceMeters;
     public float selectedSurfaceNormalY;
     public float maximumCutDepth;
+    [Tooltip("This snapshot replaces Cesium geometry only inside its fully filled Terrain footprint.")]
+    public bool replacesCesiumSurface;
+    [Tooltip("Tracks stand on the baked mound rather than the original Cesium lower bench.")]
+    public bool supportsTracksOnTerrain;
     public double initialSoilVolumeM3;
     // Row-major [z * resolution + x]. These are source-ground elevations and the authored soil-band mask.
     public float[] groundHeights;

@@ -154,7 +154,9 @@ public sealed class CesiumMoundSite : MonoBehaviour
         clip.SetWorkFaceFootprint(WorkFaceCenter, WorkFaceRotation, WorkFaceSize, minimumY, maximumY);
         // The terrain is a thin coating on the Cesium face, not a replacement of the
         // vertical map column. Keep the map (and its road/bench collision) underneath.
-        clip.enabled = false;
+        clip.enabled = siteMode == SitePreparationMode.Baked && bakedSite != null &&
+            bakedSite.replacesCesiumSurface;
+        if (clip.enabled) clip.RefreshLoadedTiles();
     }
     private Zx200KeyboardController keyboard;
     private ArticulationBody root;
@@ -511,13 +513,17 @@ public sealed class CesiumMoundSite : MonoBehaviour
         while (Time.realtimeSinceStartup < deadline)
         {
             MeshCollider[] map = GetLoadedMapColliders();
-            if (TryTrackSupport(map, out float support) &&
+            bool supportAvailable = bakedSite.supportsTracksOnTerrain
+                ? TryBakedTerrainTrackSupport(out float support)
+                : TryTrackSupport(map, out support);
+            if (supportAvailable &&
                 Mathf.Abs(support - selectedSupportY) <= .65f)
             {
                 if (++stableSupportFrames >= 3) break;
             }
             else stableSupportFrames = 0;
-            Status = $"等待原 Cesium 履带支撑地面；当前碰撞瓦片={map.Length}";
+            Status = bakedSite.supportsTracksOnTerrain ? "等待烘焙土堆履带承载区" :
+                $"等待原 Cesium 履带支撑地面；当前碰撞瓦片={map.Length}";
             yield return new WaitForSecondsRealtime(.25f);
         }
         if (stableSupportFrames < 3)
@@ -559,6 +565,25 @@ public sealed class CesiumMoundSite : MonoBehaviour
         RestoreSceneViewCameraSetting();
         Status = "本地烘焙施工区已就绪";
         Debug.Log($"[ZX200] {Status}；初始土量={bakedSite.initialSoilVolumeM3:F3}m³", this);
+    }
+
+    private bool TryBakedTerrainTrackSupport(out float support)
+    {
+        support = float.NegativeInfinity;
+        float minimum = float.PositiveInfinity;
+        Bounds tracks = TrackBounds();
+        foreach (float x in new[] { -.65f, 0f, .65f })
+            foreach (float z in new[] { -.65f, 0f, .65f })
+            {
+                Vector3 point = tracks.center + new Vector3(tracks.extents.x * x, 0f, tracks.extents.z * z);
+                Ray ray = new Ray(new Vector3(point.x, bakedSite.terrainOrigin.y +
+                    bakedSite.terrainData.size.y + 5f, point.z), Vector3.down);
+                if (!soil.SoilCollider.Raycast(ray, out RaycastHit hit, bakedSite.terrainData.size.y + 10f))
+                    return false;
+                support = Mathf.Max(support, hit.point.y);
+                minimum = Mathf.Min(minimum, hit.point.y);
+            }
+        return support - minimum <= .35f;
     }
 
     /// <summary>Capture a ready, untouched dynamic work face into a persistent snapshot being assembled by the editor.</summary>

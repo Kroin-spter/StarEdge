@@ -152,7 +152,7 @@ public static class ConstructionSiteBaker
         keyboard.ResolveArticulationRoot();
         Transform machineRoot = keyboard.articulationRoot.transform;
         Undo.RecordObjects(new UnityEngine.Object[] { site, terrain, collider, site.soil.transform,
-            machineRoot, site.truck }, "Apply baked construction site");
+            machineRoot, site.machine.transform, site.truck }, "Apply baked construction site");
         site.bakedSite = data;
         site.siteMode = CesiumMoundSite.SitePreparationMode.Baked;
         site.soil.transform.position = data.terrainOrigin;
@@ -165,7 +165,14 @@ public static class ConstructionSiteBaker
         if (clip == null) clip = Undo.AddComponent<ConstructionSiteMapClip>(site.tileset.gameObject);
         clip.SetWorkFaceFootprint(data.workFaceCenter, data.workFaceRotation, data.workFaceSize,
             data.terrainOrigin.y, data.terrainOrigin.y + data.terrainData.size.y);
-        clip.enabled = false;
+        clip.enabled = data.replacesCesiumSurface;
+        if (clip.enabled) clip.RefreshLoadedTiles();
+        // Mound preview anchors describe the visible equipment container as well as its articulation root.
+        if (data.supportsTracksOnTerrain && machineRoot != site.machine.transform)
+        {
+            site.machine.transform.SetPositionAndRotation(data.machinePosition, data.machineRotation);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(site.machine.transform);
+        }
         machineRoot.SetPositionAndRotation(data.machinePosition, data.machineRotation);
         site.truck.SetPositionAndRotation(data.truckPosition, data.truckRotation);
         PrefabUtility.RecordPrefabInstancePropertyModifications(machineRoot);
