@@ -28,6 +28,62 @@ namespace ExcavatorControls.Tests
         [TearDown]
         public void TearDown() => Object.DestroyImmediate(root);
 
+        /// <summary>Manual cutting remains disabled during site preparation, but works outside work-ready once ready.</summary>
+        /// <param name="sitePreparing">Whether an actual construction-site component is still unready.</param>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ManualCuttingUnlockRequiresReadySiteAndCutsRealTerrain(bool sitePreparing)
+        {
+            controller.ResolveJoints();
+            var data = new TerrainData { heightmapResolution = 33, size = new Vector3(4, 2, 4) };
+            var heights = new float[33, 33];
+            for (int z = 0; z < 33; z++)
+                for (int x = 0; x < 33; x++) heights[z, x] = .5f;
+            data.SetHeights(0, 0, heights);
+            GameObject ground = Terrain.CreateTerrainGameObject(data);
+            GameObject siteRoot = null;
+            try
+            {
+                if (sitePreparing)
+                {
+                    siteRoot = new GameObject("Unready construction site");
+                    siteRoot.AddComponent<CesiumMoundSite>().enabled = false;
+                    ground.transform.SetParent(siteRoot.transform);
+                }
+                var soil = ground.AddComponent<DeformableSoilTerrain>();
+                var cutter = controller.bucketJoint.gameObject.AddComponent<BucketSoilCutter>();
+                cutter.soil = soil;
+                cutter.tipLocalPosition = Vector3.zero;
+                cutter.cutDirectionLocal = Vector3.forward;
+                cutter.transform.position = new Vector3(2, .9f, 1.5f);
+                cutter.SamplePose();
+                Assert.That(cutter.StartupReady, Is.False);
+                controller.AdjustManualPose(0, 0, 0, 0);
+                cutter.SamplePose();
+                Assert.That(cutter.StartupReady, Is.False);
+                Assert.That(controller.AdjustManualPose(0, 0, 1f, 0), Is.True);
+                cutter.SamplePose();
+                Assert.That(cutter.StartupReady, Is.EqualTo(!sitePreparing));
+                cutter.transform.position += Vector3.forward * .3f;
+                cutter.SamplePose();
+                if (sitePreparing)
+                    Assert.That(cutter.ExcavatedVolumeM3, Is.Zero);
+                else
+                {
+                    Assert.That(cutter.VolumeM3, Is.GreaterThan(.001));
+                    Assert.That(soil.RecalculateRemovedVolumeM3(),
+                        Is.EqualTo(cutter.ExcavatedVolumeM3).Within(.00001));
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(controller.bucketJoint.GetComponent<BucketSoilCutter>());
+                Object.DestroyImmediate(ground);
+                if (siteRoot != null) Object.DestroyImmediate(siteRoot);
+                Object.DestroyImmediate(data);
+            }
+        }
+
         [Test]
         public void Defaults_UseNormalWorkReadyPose()
         {

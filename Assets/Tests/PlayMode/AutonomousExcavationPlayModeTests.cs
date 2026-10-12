@@ -17,6 +17,45 @@ namespace ExcavatorControls.Tests
             " Set CESIUM_TILESET_DIR or place the map beside the project.";
         private static bool expectedInitialSceneWarnings;
 
+        /// <summary>Ready-site manual input must unlock cutting without visiting the automatic work-ready pose.</summary>
+        /// <returns>Scene preparation and the first accepted manual physics command.</returns>
+        [UnityTest]
+        public IEnumerator ManualCommandUnlocksParkedSceneWithoutWorkReady()
+        {
+            Scene previous = SceneManager.GetActiveScene();
+            ExpectFirstSceneLoadMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath,
+                new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(ScenePath);
+            AsyncOperation unload;
+            try
+            {
+                SceneManager.SetActiveScene(scene);
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var machine = FindInScene<Zx200DigController>(scene);
+                var cutter = FindInScene<BucketSoilCutter>(scene);
+                Assert.That(machine.IsPoseWithinTolerance(machine.workReadyPose, 4f), Is.False,
+                    "This regression must start outside the old fixed-pose unlock gate.");
+                Assert.That(cutter.StartupReady, Is.False);
+                Assert.That(machine.AdjustManualPose(0, 0, 0, 0), Is.True);
+                cutter.SamplePose();
+                Assert.That(cutter.StartupReady, Is.False, "Neutral input is not an operator command.");
+                Assert.That(machine.AdjustManualPose(0, 0, .1f, 0), Is.True);
+                yield return new WaitForFixedUpdate();
+                cutter.SamplePose();
+                Assert.That(cutter.StartupReady, Is.True,
+                    "A manual operator must not visit the automatic work-ready waypoint to enable cutting.");
+                Assert.That(cutter.ExcavatedVolumeM3, Is.Zero,
+                    "Unlocking must reset the sweep baseline, not excavate the positioning journey.");
+            }
+            finally
+            {
+                if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
+                unload = SceneManager.UnloadSceneAsync(scene);
+            }
+            if (unload != null) yield return unload;
+        }
+
         /// <summary>A held manual command at automatic start must not cancel the new job until it returns to neutral.</summary>
         /// <returns>One site load and control handoff frames.</returns>
         [UnityTest]

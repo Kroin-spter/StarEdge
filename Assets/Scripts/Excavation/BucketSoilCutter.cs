@@ -59,9 +59,10 @@ public sealed class BucketSoilCutter : MonoBehaviour
     public string Status { get; private set; } = "等待刃口运动";
     private bool hasPrevious;
     private bool startupReady;
-    /// <summary>Whether the physical machine has settled at its initial work-ready pose so cutting may be counted.</summary>
+    /// <summary>Whether cutting is unlocked by a settled work-ready pose or explicit manual input at a ready site.</summary>
     public bool StartupReady => startupReady;
     private Zx200DigController machine;
+    private uint manualRevisionAtEnable;
     private Vector3 previous;
     private Vector3 lastObserved;
     private TerrainCollider ignoredTerrain;
@@ -78,6 +79,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
     {
         hasPrevious = false;
         machine = GetComponentInParent<Zx200DigController>();
+        manualRevisionAtEnable = machine != null ? machine.ManualPoseRevision : 0;
         if (machine == null || IsMachineReady()) startupReady = true;
     }
     private void Update()
@@ -101,17 +103,28 @@ public sealed class BucketSoilCutter : MonoBehaviour
             UpdateFill();
             return 0;
         }
-        // 初次定位会经过土区，只有设备实际到达待机姿态后才允许计量作业。
-        // 已在待机位置添加的采样器可立即启用，复位土区也不要求重做机械初始化。
+        // Automatic initialization keeps its settled-pose gate. A manual operator
+        // may start from the compact parked pose once site positioning has finished.
         if (!startupReady)
         {
-            if (!IsMachineReady())
+            // WebDelivery depends on ExcavatorControls; avoid a circular assembly
+            // dependency when querying the optional construction-site component.
+            Component site = soil.transform.parent != null
+                ? soil.transform.parent.GetComponent("CesiumMoundSite") : null;
+            bool siteReady = site == null ||
+                site.GetType().GetProperty("IsReady")?.GetValue(site) is true;
+            bool manualWorkStarted = machine != null && siteReady &&
+                machine.ManualPoseRevision != manualRevisionAtEnable;
+            if (!IsMachineReady() && !manualWorkStarted)
             {
                 hasPrevious = false;
                 Status = "等待设备初始姿态稳定";
                 return 0;
             }
             startupReady = true;
+            // Positioning travel is not excavation: begin a fresh measured sweep.
+            hasPrevious = false;
+            previousBlade = null;
         }
         Vector3 current = TipWorldPosition;
         Vector3[] corners = GetBladeWorldCorners();
