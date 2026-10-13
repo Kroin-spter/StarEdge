@@ -65,6 +65,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private const float MaximumAdaptiveBoomLiftDegrees = 4f;
     private string openingSweepBlockReason = string.Empty;
     private float openingSweepMaximumDepth;
+    private double loadBeforeEntry;
 
     private struct ScoopVolumeSample
     {
@@ -1123,7 +1124,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 if (currentFloorClearance <= floorStopClearance)
                 {
                     machine.StopContinuousPoseControl(false);
-                    if (currentVolume - before >= minimumLoadVolumeM3)
+                    if (HasUsefulCutLoad(currentVolume))
                         yield return FinishPartialBucketCurl(minimumCurlDegrees, target.bucket);
                     else
                     {
@@ -1252,12 +1253,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                         yield return FinishFullBucketCurl(minimumCurlDegrees, target.bucket);
                         yield break;
                     }
-                    if (currentVolume - before >= minimumLoadVolumeM3 && bucketMostlyCurled)
+                    if (HasUsefulCutLoad(currentVolume) && bucketMostlyCurled)
                     {
                         stageSucceeded = true;
                         yield break;
                     }
-                    if (currentVolume - before >= minimumLoadVolumeM3)
+                    if (HasUsefulCutLoad(currentVolume))
                     {
                         yield return FinishPartialBucketCurl(minimumCurlDegrees, target.bucket);
                         yield break;
@@ -1283,12 +1284,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 yield return FinishFullBucketCurl(minimumCurlDegrees, target.bucket);
                 yield break;
             }
-            if (!curlComplete && finalLoad - before >= minimumLoadVolumeM3)
+            if (!curlComplete && HasUsefulCutLoad(finalLoad))
             {
                 yield return FinishPartialBucketCurl(minimumCurlDegrees, target.bucket);
                 yield break;
             }
-            if (finalLoad - before >= minimumLoadVolumeM3)
+            if (HasUsefulCutLoad(finalLoad))
             {
                 stageSucceeded = true;
                 yield break;
@@ -1393,6 +1394,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             EnterFault($"{loadDescription}脱离土面后仍未收斗；实际={closed:F1}°，目标至少={minimumCurlDegrees:F1}°");
     }
 
+    // Count all new material from entry onward, excluding any tolerated previous-cycle residue.
+    private bool HasUsefulCutLoad(double volume) => volume - loadBeforeEntry >= minimumLoadVolumeM3;
+
     private IEnumerator PrepareForCut()
     {
         stageSucceeded = false;
@@ -1407,6 +1411,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             cutter.SetCuttingSuppressed(true);
             cuttingSuppressionPending = true;
         }
+        loadBeforeEntry = cutter.VolumeM3;
         Zx200JointPose actual = machine.ReadActualPose();
         Zx200JointPose approach = machine.approachPose;
         approach.swing = actual.swing;
@@ -1559,6 +1564,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
         // Lower under live floor feedback at a bounded angular rate. A single long boom target
         // can carry the tooth through a thin layer before the next render/physics observation.
+        Terrain entryTerrain = cutter.soil.Terrain;
+        TerrainData entryData = entryTerrain.terrainData;
+        float[,] entryHeights = entryData.GetHeights(0, 0, entryData.heightmapResolution, entryData.heightmapResolution);
+        // Cut during the measured entry, but measure depth against the uncut surface.
+        // Following the newly lowered surface would keep pushing the target toward the floor.
+        RestoreCuttingSuppression();
         Zx200JointPose entryTarget = machine.ReadActualPose();
         entryTarget.duration = 0f;
         if (!machine.StartContinuousPoseControl(entryTarget))
@@ -1574,7 +1585,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             if (!IsRunning) yield break;
             Vector3 tip = cutter.TipWorldPosition;
             if (!cutter.soil.HasSurfaceAt(tip)) break;
-            float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+            float surface = SampleEntrySurface(entryHeights, entryTerrain.transform.position, entryData.size, tip);
             float floor = cutter.soil.GetFloorWorldY(tip);
             float safeLowerBound = Mathf.Max(surface - adaptiveEntryDepth, floor + floorClearance);
             if (tip.y <= safeLowerBound)
@@ -1599,7 +1610,9 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
         if (!IsRunning) yield break;
         machine.StopContinuousPoseControl(reachedSafeEntry);
-        if (reachedSafeEntry)
+        // Entry now owns real cutting. Keep a useful partial load if depth is limited,
+        // rather than classifying it as empty and faulting on residual soil at the next point.
+        if (reachedSafeEntry || HasUsefulCutLoad(cutter.VolumeM3))
         {
             stageSucceeded = true;
             yield break;
@@ -1612,6 +1625,18 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             $"当前挖点未能到达安全切深，检查下一个挖点；目标切深={adaptiveEntryDepth:F3}m，" +
             $"斗尖={failedTip}，土面={failedSurface:F2}，底面={failedFloor:F2}");
         stageSucceeded = true;
+    }
+
+    private static float SampleEntrySurface(float[,] heights, Vector3 origin, Vector3 size, Vector3 point)
+    {
+        int last = heights.GetLength(0) - 1;
+        float x = Mathf.Clamp01((point.x - origin.x) / size.x) * last;
+        float z = Mathf.Clamp01((point.z - origin.z) / size.z) * last;
+        int ix = Mathf.Min(Mathf.FloorToInt(x), last - 1);
+        int iz = Mathf.Min(Mathf.FloorToInt(z), last - 1);
+        float height = Mathf.Lerp(Mathf.Lerp(heights[iz, ix], heights[iz, ix + 1], x - ix),
+            Mathf.Lerp(heights[iz + 1, ix], heights[iz + 1, ix + 1], x - ix), z - iz);
+        return origin.y + height * size.y;
     }
 
     private IEnumerator WaitForDump()

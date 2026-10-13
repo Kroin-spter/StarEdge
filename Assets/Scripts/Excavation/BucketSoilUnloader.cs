@@ -30,7 +30,6 @@ public sealed class BucketSoilUnloader : MonoBehaviour
     private SoilFlightTransport flight;
     private float dwell;
     private bool angleLatched;
-    private Vector3 surfaceUp;
     private int emissionSequence;
     private bool flowPaused;
     private readonly List<Outlet> openOutlets = new List<Outlet>(5);
@@ -52,7 +51,7 @@ public sealed class BucketSoilUnloader : MonoBehaviour
     private void FixedUpdate() => Step(Time.fixedDeltaTime);
     private void OnDisable() => ResetGate();
 
-    /// <summary>Advance airborne soil, orient the fill against gravity, then emit according to actual pose.</summary>
+    /// <summary>Advance airborne soil and emit according to actual pose; the fill owns surface orientation.</summary>
     /// <param name="deltaSeconds">Finite elapsed seconds, greater than zero and at most one.</param>
     /// <returns>Newly released cubic metres, not the amount landed this frame.</returns>
     public double Step(float deltaSeconds)
@@ -61,15 +60,9 @@ public sealed class BucketSoilUnloader : MonoBehaviour
         Prepare();
         if (soilStream != null) soilStream.enabled = false;
         flight.Advance(deltaSeconds, receivers, obstructionMask);
-        var fill = cutter.fillVisual != null ? cutter.fillVisual.GetComponent<BucketSoilFill>() : null;
         if (Physics.gravity.sqrMagnitude < 1e-8f || openingNormalLocal.sqrMagnitude < 1e-8f ||
             Vector3.Dot(Physics.gravity.normalized, Vector3.down) < .9999f)
         { ResetGate(); Status = "重力或斗口配置无效"; return 0; }
-        Vector3 localUp = transform.InverseTransformDirection(-Physics.gravity.normalized);
-        Vector3 equilibrium = Vector3.RotateTowards(localUp, openingNormalLocal.normalized, reposeAngle * Mathf.Deg2Rad, 0);
-        if (surfaceUp.sqrMagnitude < 1e-8f) surfaceUp = equilibrium;
-        surfaceUp = Vector3.Slerp(surfaceUp, equilibrium, 1 - Mathf.Exp(-deltaSeconds / Mathf.Max(.01f, surfaceResponseSeconds))).normalized;
-        if (fill != null) fill.SetSurfaceNormal(surfaceUp);
         if (cutter.VolumeM3 <= 0)
         { ResetGate(); State = UnloadingState.Empty; Status = AirborneVolumeM3 > 0 ? "空斗，土方下落中" : "空斗"; return 0; }
         float angle = Vector3.Angle(transform.TransformDirection(openingNormalLocal), Physics.gravity);
@@ -187,7 +180,6 @@ public sealed class BucketSoilUnloader : MonoBehaviour
     {
         dwell = 0;
         angleLatched = false;
-        surfaceUp = Vector3.zero;
         emissionSequence = 0;
         flowPaused = false;
         State = cutter != null && cutter.VolumeM3 > 0 ? UnloadingState.Loaded : UnloadingState.Empty;

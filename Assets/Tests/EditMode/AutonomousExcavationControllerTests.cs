@@ -7,6 +7,28 @@ namespace ExcavatorControls.Tests
     /// <summary>Validates autonomous boundaries and geometric collision predictions without loading Cesium.</summary>
     public class AutonomousExcavationControllerTests
     {
+        /// <summary>Old residual soil must not qualify a new cut, but newly collected entry soil must count.</summary>
+        [TestCase(.008, .008, false)]
+        [TestCase(.008, .032, true)]
+        [TestCase(0, .024, true)]
+        public void UsefulCutLoadCountsEntryButExcludesPriorResidual(double baseline, double current, bool expected)
+        {
+            var root = new GameObject("cut-load boundary");
+            try
+            {
+                var controller = root.AddComponent<AutonomousExcavationController>();
+                var field = typeof(AutonomousExcavationController).GetField("loadBeforeEntry",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                var method = typeof(AutonomousExcavationController).GetMethod("HasUsefulCutLoad",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                Assert.That(field, Is.Not.Null, "Load accounting needs a baseline captured before entry, not before curl.");
+                Assert.That(method, Is.Not.Null);
+                field.SetValue(controller, baseline);
+                Assert.That((bool)method.Invoke(controller, new object[] { current }), Is.EqualTo(expected));
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
         [Test]
         public void ReturnSlewDurationBoundsPeakSpeedForLargeAngles()
         {

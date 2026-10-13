@@ -13,6 +13,87 @@ namespace ExcavatorControls.Tests
     {
         private static bool loadedLegacyTerrain;
 
+        /// <summary>Entry soil must remain a valid load even when the later scoop cannot remove more soil.</summary>
+        /// <returns>Real entry, interrupted cutting, transfer and cleanup.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator SavedPreviewTransfersEntryLoadWhenScoopAddsNoSoil()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                automatic.cutTimeoutSeconds = .2f;
+                double received = automatic.receiver.VolumeM3;
+                Assert.That(automatic.StartAutonomousJob(.01), Is.True, automatic.Status);
+                float deadline = Time.realtimeSinceStartup + 100f;
+                while (automatic.IsRunning && automatic.State != AutonomousExcavationState.FillBucket &&
+                    Time.realtimeSinceStartup < deadline) yield return new WaitForFixedUpdate();
+                Assert.That(automatic.State, Is.EqualTo(AutonomousExcavationState.FillBucket), automatic.FaultReason);
+                Assert.That(automatic.cutter.VolumeM3, Is.GreaterThan(.01));
+                automatic.cutter.SetCuttingSuppressed(true);
+                while (automatic.IsRunning && Time.realtimeSinceStartup < deadline)
+                    yield return new WaitForFixedUpdate();
+                Assert.That(automatic.State, Is.EqualTo(AutonomousExcavationState.Completed), automatic.FaultReason);
+                Assert.That(automatic.receiver.VolumeM3 - received, Is.GreaterThanOrEqualTo(.01));
+            }
+            finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
+        }
+
+        /// <summary>Entry must open a real cut below the original surface before the scoop phase.</summary>
+        /// <returns>Saved scene entry, geometry assertions and scene cleanup.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator SavedPreviewCutsIntoSoilBeforeScooping()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            TerrainData original = null;
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                Terrain terrain = automatic.cutter.soil.Terrain;
+                original = Object.Instantiate(terrain.terrainData);
+                Assert.That(automatic.StartAutonomousJob(.1), Is.True, automatic.Status);
+                float deadline = Time.realtimeSinceStartup + 100f;
+                while (automatic.IsRunning && automatic.State != AutonomousExcavationState.FillBucket &&
+                    Time.realtimeSinceStartup < deadline) yield return new WaitForFixedUpdate();
+                Assert.That(automatic.State, Is.EqualTo(AutonomousExcavationState.FillBucket), automatic.FaultReason);
+                Vector3 tip = automatic.cutter.TipWorldPosition;
+                Vector3 local = tip - terrain.transform.position;
+                float originalSurface = terrain.transform.position.y + original.GetInterpolatedHeight(
+                    local.x / original.size.x, local.z / original.size.z);
+                float depth = originalSurface - tip.y;
+                Debug.Log($"实际切入验收：原面切深={depth:F3}m，入口切除={automatic.cutter.ExcavatedVolumeM3:F5}m³，斗内={automatic.cutter.VolumeM3:F5}m³");
+                Camera camera = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
+                    .First(candidate => candidate.CompareTag("MainCamera"));
+                Capture(camera, tip + automatic.machine.transform.right * 5f + Vector3.up * 1f,
+                    tip + Vector3.up * .5f, "Diagnostics/cut-entry-side.png");
+                Assert.That(depth, Is.GreaterThanOrEqualTo(.24f), "厚土层应让斗口切入，而不只轻触表面。");
+                Assert.That(automatic.cutter.ExcavatedVolumeM3, Is.GreaterThan(.001), "下压切入必须已经开槽，不能先穿入再补挖。");
+                Assert.That(tip.y, Is.GreaterThan(automatic.cutter.soil.GetFloorWorldY(tip) + .03f));
+                for (int i = 0; i < 75 && automatic.State == AutonomousExcavationState.FillBucket; i++)
+                    yield return new WaitForFixedUpdate();
+                tip = automatic.cutter.TipWorldPosition;
+                Capture(camera, tip + automatic.machine.transform.right * 5f + Vector3.up,
+                    tip + Vector3.up * .5f, "Diagnostics/cut-scoop-side.png");
+            }
+            finally
+            {
+                if (original != null) Object.Destroy(original);
+                if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene);
+            }
+        }
+
         private static void ExpectLegacyTerrainMessages()
         {
             // Unity validates the cached legacy Terrain tree prototypes only on its first load.
@@ -269,10 +350,19 @@ namespace ExcavatorControls.Tests
                 float deadline = Time.realtimeSinceStartup + 480f;
                 int cycles = 0;
                 double receipt = initial;
+                var fill = automatic.cutter.fillVisual.GetComponent<BucketSoilFill>();
+                Vector3 previousSurface = fill.SurfaceNormalLocal;
+                double previousLoad = 0;
+                float maximumSurfaceStep = 0;
                 AutonomousExcavationState measuredState = automatic.State;
                 float stateStarted = Time.time;
                 while (automatic.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
+                    if (previousLoad > .001 && automatic.cutter.VolumeM3 > .001)
+                        maximumSurfaceStep = Mathf.Max(maximumSurfaceStep,
+                            Vector3.Angle(previousSurface, fill.SurfaceNormalLocal));
+                    previousLoad = automatic.cutter.VolumeM3;
+                    previousSurface = fill.SurfaceNormalLocal;
                     if (automatic.State != measuredState)
                     {
                         Debug.Log($"阶段耗时：斗数={cycles}，阶段={measuredState}，模拟秒={Time.time - stateStarted:F2}");
@@ -292,6 +382,8 @@ namespace ExcavatorControls.Tests
                 }
                 Assert.That(automatic.State, Is.EqualTo(AutonomousExcavationState.Completed), automatic.FaultReason + " / " + automatic.Status);
                 Assert.That(automatic.CompletedCycles, Is.GreaterThanOrEqualTo(3));
+                Assert.That(maximumSurfaceStep, Is.LessThan(15f), "装土、回转和启用卸料不能突然重置土面。");
+                Debug.Log($"连续土面验收：最大单物理步法线变化={maximumSurfaceStep:F3}°");
                 Assert.That(automatic.receiver.VolumeM3 - initial, Is.GreaterThanOrEqualTo(1.0), "必须装到目标量而非提前停止。");
                 Debug.Log($"完整持续装车通过：斗数={automatic.CompletedCycles}，车厢增量={automatic.receiver.VolumeM3 - initial:F5}m³");
                 if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)

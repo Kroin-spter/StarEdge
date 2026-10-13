@@ -464,7 +464,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: db6aacb0db1e5d085ad8ffcbc4152284, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ExcavatorControls::BucketSoilResistance
-  maximumPenetration: 0.18
+  maximumPenetration: 0.38
   contactMargin: 0.03
   cuttingSpeedDegrees: 18
   floorBrakingLookAheadSeconds: 0.22
@@ -1118,7 +1118,7 @@ MonoBehaviour:
   cutTimeoutSeconds: 8
   dumpTimeoutSeconds: 12
   soilFloorMargin: 0.04
-  cutEntryDepthMeters: 0.2
+  cutEntryDepthMeters: 0.3
   dumpClearanceMarginMeters: 0.25
   bucketCloseDeltaDegrees: 35
   boomEntryStepDegrees: 7

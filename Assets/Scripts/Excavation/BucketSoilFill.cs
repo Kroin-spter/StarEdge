@@ -19,6 +19,7 @@ public sealed class BucketSoilFill : MonoBehaviour
     private Mesh mesh;
     private double lastVolume = double.NaN;
     private Vector3 surfaceNormal = new Vector3(0, FillNormal.x, FillNormal.y);
+    private BucketSoilUnloader unloader;
 
     /// <summary>Maximum geometric volume of the calibrated cavity in cubic metres at unit scale.</summary>
     public double CapacityM3 => Area(cavityProfile) * innerHalfWidth * 2;
@@ -28,6 +29,25 @@ public sealed class BucketSoilFill : MonoBehaviour
 
     /// <summary>Current bucket-local upward surface normal; defaults to the opening direction.</summary>
     public Vector3 SurfaceNormalLocal => surfaceNormal;
+
+    private void FixedUpdate()
+    {
+        if (lastVolume <= 1e-7 || double.IsNaN(lastVolume) || Physics.gravity.sqrMagnitude < 1e-8f ||
+            Vector3.Dot(Physics.gravity.normalized, Vector3.down) < .9999f) return;
+        if (unloader == null) unloader = GetComponentInParent<BucketSoilUnloader>();
+        Vector3 opening = unloader != null
+            ? transform.InverseTransformDirection(unloader.transform.TransformDirection(unloader.openingNormalLocal))
+            : OpeningNormalLocal;
+        if (opening.sqrMagnitude < 1e-8f) return;
+
+        Vector3 localUp = transform.InverseTransformDirection(-Physics.gravity.normalized);
+        float repose = unloader != null ? unloader.reposeAngle : 30f;
+        float response = unloader != null ? unloader.surfaceResponseSeconds : .2f;
+        Vector3 equilibrium = Vector3.RotateTowards(localUp, opening.normalized,
+            repose * Mathf.Deg2Rad, 0f);
+        float blend = 1 - Mathf.Exp(-Time.fixedDeltaTime / Mathf.Max(.01f, response));
+        SetSurfaceNormal(Vector3.Slerp(surfaceNormal, equilibrium, blend).normalized);
+    }
 
     /// <summary>Immediately rotate the free surface while preserving the displayed volume.</summary>
     /// <param name="localUp">Finite, nonzero gravity-opposing direction in bucket-local coordinates.</param>

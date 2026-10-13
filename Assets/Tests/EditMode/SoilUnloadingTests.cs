@@ -125,6 +125,69 @@ namespace ExcavatorControls.Tests
             Assert.That(unloader.AirborneVolumeM3, Is.Zero);
         }
 
+        /// <summary>Disabling soil emission must neither freeze leveling nor reset the carried surface on enable.</summary>
+        [Test]
+        public void DisabledUnloaderDoesNotFreezeOrSnapCarriedFillSurface()
+        {
+            var visual = new GameObject("carried bucket fill");
+            visual.transform.SetParent(bucket.transform, false);
+            var fill = visual.AddComponent<BucketSoilFill>();
+            cutter.fillVisual = visual.transform;
+            double carriedVolume = cutter.VolumeM3;
+            fill.SetVolume(carriedVolume);
+            var unloader = bucket.AddComponent<BucketSoilUnloader>();
+            unloader.enabled = false;
+            bucket.transform.rotation = Quaternion.Euler(-45f, 0f, 0f);
+
+            Vector3 before = fill.SurfaceNormalLocal;
+            Vector3 localUp = visual.transform.InverseTransformDirection(-Physics.gravity.normalized);
+            Vector3 equilibrium = Vector3.RotateTowards(localUp, unloader.openingNormalLocal.normalized,
+                unloader.reposeAngle * Mathf.Deg2Rad, 0f);
+            typeof(BucketSoilFill).GetMethod("FixedUpdate", System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)?.Invoke(fill, null);
+            Vector3 duringCarry = fill.SurfaceNormalLocal;
+
+            Assert.That(Vector3.Angle(duringCarry, equilibrium),
+                Is.LessThan(Vector3.Angle(before, equilibrium)), "Carried soil must keep leveling while unloading is disabled.");
+            Assert.That(Vector3.Angle(duringCarry, equilibrium), Is.GreaterThan(1f),
+                "The first carry step should preserve the surface response smoothing.");
+            Assert.That(cutter.VolumeM3, Is.EqualTo(carriedVolume).Within(1e-10));
+
+            unloader.enabled = true;
+            Assert.That(unloader.Step(Time.fixedDeltaTime), Is.Zero);
+            Assert.That(Vector3.Angle(fill.SurfaceNormalLocal, duringCarry), Is.LessThan(.001f),
+                "The unloader must not reinitialize or update the surface again in the same step.");
+            Assert.That(cutter.VolumeM3, Is.EqualTo(carriedVolume).Within(1e-10));
+        }
+
+        /// <summary>A rotated visual child uses the bucket mouth direction transformed into its own frame.</summary>
+        [Test]
+        public void RotatedFillUsesOpeningDirectionInItsOwnLocalCoordinates()
+        {
+            var visual = new GameObject("rotated bucket fill");
+            visual.transform.SetParent(bucket.transform, false);
+            visual.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+            var fill = visual.AddComponent<BucketSoilFill>();
+            fill.SetVolume(cutter.VolumeM3);
+            var unloader = bucket.AddComponent<BucketSoilUnloader>();
+            unloader.enabled = false;
+            bucket.transform.rotation = Quaternion.Euler(-45f, 0f, 0f);
+
+            Vector3 before = fill.SurfaceNormalLocal;
+            Vector3 localUp = visual.transform.InverseTransformDirection(-Physics.gravity.normalized);
+            Vector3 openingInFill = visual.transform.InverseTransformDirection(
+                unloader.transform.TransformDirection(unloader.openingNormalLocal)).normalized;
+            Vector3 equilibrium = Vector3.RotateTowards(localUp, openingInFill,
+                unloader.reposeAngle * Mathf.Deg2Rad, 0f);
+            float blend = 1 - Mathf.Exp(-Time.fixedDeltaTime / unloader.surfaceResponseSeconds);
+            Vector3 expected = Vector3.Slerp(before, equilibrium, blend).normalized;
+
+            typeof(BucketSoilFill).GetMethod("FixedUpdate", System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)?.Invoke(fill, null);
+
+            Assert.That(Vector3.Angle(fill.SurfaceNormalLocal, expected), Is.LessThan(.01f));
+        }
+
         [Test]
         public void TipInsideExternalSolidCannotUnloadThroughIt()
         {
