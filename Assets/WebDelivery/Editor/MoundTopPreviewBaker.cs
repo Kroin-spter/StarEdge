@@ -99,6 +99,21 @@ public static class MoundTopPreviewBaker
     /// <summary>Open the preview scene and wait for local Cesium tiles before baking, then exit the batch editor.</summary>
     public static void BakeBatch()
     {
+        restoringParking = false;
+        StartMapSurvey();
+    }
+
+    private static bool restoringParking;
+
+    /// <summary>Resample original map heights and remove both authored truck pads without reshaping the track core.</summary>
+    public static void RestoreNaturalParkingBatch()
+    {
+        restoringParking = true;
+        StartMapSurvey();
+    }
+
+    private static void StartMapSurvey()
+    {
         EditorSceneManager.OpenScene(ScenePath);
         CesiumMoundSite site = UnityEngine.Object.FindFirstObjectByType<CesiumMoundSite>();
         foreach (ConstructionSiteMapClip clip in site.tileset.GetComponents<ConstructionSiteMapClip>()) clip.enabled = false;
@@ -125,7 +140,12 @@ public static class MoundTopPreviewBaker
             EditorApplication.timeSinceStartup > deadline - 70)
         {
             EditorApplication.update -= WaitForMap;
-            try { Bake(); EditorApplication.Exit(0); }
+            try
+            {
+                if (restoringParking) RestoreNaturalParking();
+                else Bake();
+                EditorApplication.Exit(0);
+            }
             catch (Exception exception) { Debug.LogException(exception); EditorApplication.Exit(1); }
         }
         else if (EditorApplication.timeSinceStartup > deadline)
@@ -134,6 +154,168 @@ public static class MoundTopPreviewBaker
             Debug.LogError("土堆预览烘焙未获得 Cesium 碰撞瓦片；没有保存任何替换资源。");
             EditorApplication.Exit(1);
         }
+    }
+
+    private static void RestoreNaturalParking()
+    {
+        var site = UnityEngine.Object.FindFirstObjectByType<CesiumMoundSite>();
+        var snapshot = site.bakedSite;
+        TerrainData data = snapshot.terrainData;
+        int n = data.heightmapResolution;
+        float[,] before = data.GetHeights(0, 0, n, n);
+        float[,] sampled = new float[n, n];
+        bool[,] equipment = new bool[n, n];
+        bool[,] restore = new bool[n, n];
+        float[,] restoreWeight = new float[n, n];
+        MeshCollider[] map = site.tileset.GetComponentsInChildren<MeshCollider>()
+            .Where(collider => collider.enabled && collider.sharedMesh != null).ToArray();
+        Physics.SyncTransforms();
+        Quaternion inverse = Quaternion.Inverse(Quaternion.Euler(0f, 239.868f, 0f));
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                Vector3 world = snapshot.terrainOrigin + new Vector3(x * data.size.x / (n - 1), 0f,
+                    z * data.size.z / (n - 1));
+                if (!SampleMap(map, world, out float height))
+                    throw new InvalidOperationException("原地图采样不完整，不保存停车地形。");
+                sampled[z, x] = (height + .015f - snapshot.terrainOrigin.y) / data.size.y;
+                Vector2 point = new Vector2(world.x, world.z);
+                equipment[z, x] = EquipmentWeight(point) > 0f || IsFrontShardArea(point);
+                Vector3 oldLocal = inverse * (world - new Vector3(316.28f, 0f, 352.43f));
+                Vector3 newLocal = inverse * (world - snapshot.truckPosition);
+                float oldPad = Mathf.Max(Mathf.Abs(oldLocal.x) / 1.7f, Mathf.Abs(oldLocal.z) / 3.8f);
+                float newPad = Mathf.Max(Mathf.Abs(newLocal.x) / 1.7f, Mathf.Abs(newLocal.z - .8f) / 4.8f);
+                bool scanTruck = new Vector2((world.x - 316.4f) / 6.1f, (world.z - 351.7f) / 4.6f).sqrMagnitude < 1f;
+                float machineDistance = Vector2.Distance(point,
+                    new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z));
+                restore[z, x] = machineDistance >= 3.5f && (oldPad < 1.3f || newPad < 1.3f || scanTruck);
+                float padWeight = 1f - Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(1f, 1.3f, Mathf.Min(oldPad, newPad)));
+                float scanRadius = new Vector2((world.x - 316.4f) / 6.1f, (world.z - 351.7f) / 4.6f).magnitude;
+                float scanWeight = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.85f, 1f, scanRadius));
+                float trackWeight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(3.5f, 4.5f, machineDistance));
+                restoreWeight[z, x] = Mathf.Max(padWeight, scanWeight) * trackWeight;
+            }
+        float[,] natural = MapFollowingSoilSurface.RepairHeights(sampled, equipment);
+        float[,] after = (float[,])before.Clone();
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+                if (restore[z, x]) after[z, x] = Mathf.Lerp(before[z, x], Mathf.Clamp01(natural[z, x]), restoreWeight[z, x]);
+        data.SetHeights(0, 0, after);
+        after = data.GetHeights(0, 0, n, n);
+        snapshot.initialSoilVolumeM3 = 0;
+        double cell = (double)data.size.x * data.size.y * data.size.z / ((n - 1) * (n - 1));
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                int index = z * n + x;
+                float thickness = Mathf.Max(0f, before[z, x] - snapshot.groundHeights[index]);
+                snapshot.groundHeights[index] = Mathf.Max(0f, after[z, x] - thickness);
+                snapshot.soilMask[index] = thickness > .00001f ? 1f : 0f;
+                snapshot.initialSoilVolumeM3 += (after[z, x] - snapshot.groundHeights[index]) * cell *
+                    (x == 0 || x == n - 1 ? .5 : 1) * (z == 0 || z == n - 1 ? .5 : 1);
+            }
+        FitTruckToNaturalGround(site, snapshot);
+        Vector3 center = snapshot.truckPosition;
+        if (!snapshot.TryValidate(snapshot.sourceMapName, snapshot.georeferenceLatitude,
+            snapshot.georeferenceLongitude, snapshot.georeferenceHeight, out string reason))
+            throw new InvalidOperationException(reason);
+        EditorUtility.SetDirty(data);
+        EditorUtility.SetDirty(snapshot);
+        AssetDatabase.SaveAssets();
+        if (surveyCamera != null)
+            CesiumForUnity.CesiumCameraManager.GetOrCreate(site.tileset.gameObject).additionalCameras.Remove(surveyCamera);
+        Selection.activeObject = snapshot;
+        ConstructionSiteBaker.ApplySelectedBakedSite();
+        Debug.Log($"自然停车地面已恢复，矿车位置={center}，姿态={snapshot.truckRotation.eulerAngles}");
+    }
+
+    /// <summary>Fit the saved truck's real wheel colliders to natural terrain without modifying terrain heights.</summary>
+    public static void FitNaturalTruckParkingBatch()
+    {
+        EditorSceneManager.OpenScene(ScenePath);
+        var site = UnityEngine.Object.FindFirstObjectByType<CesiumMoundSite>();
+        FitTruckToNaturalGround(site, site.bakedSite);
+        EditorUtility.SetDirty(site.bakedSite);
+        AssetDatabase.SaveAssets();
+        Selection.activeObject = site.bakedSite;
+        ConstructionSiteBaker.ApplySelectedBakedSite();
+    }
+
+    private static void FitTruckToNaturalGround(CesiumMoundSite site, BakedConstructionSiteData snapshot)
+    {
+        Collider[] wheels = site.truck.GetComponentsInChildren<Collider>().Where(wheel =>
+            wheel.enabled && wheel.name.ToLowerInvariant().Contains("wheel") && wheel.name.Contains("collision")).ToArray();
+        if (wheels.Length < 4) throw new InvalidOperationException("缺少轮胎实体，不能保存停车布局。");
+        TerrainData data = snapshot.terrainData;
+        float Surface(Vector3 world) => snapshot.terrainOrigin.y + data.GetInterpolatedHeight(
+            (world.x - snapshot.terrainOrigin.x) / data.size.x,
+            (world.z - snapshot.terrainOrigin.z) / data.size.z);
+        Vector3 origin = snapshot.truckPosition;
+        Vector3 bestPosition = origin;
+        Quaternion bestRotation = snapshot.truckRotation;
+        float bestPitch = 0f, bestRoll = 0f, bestScore = float.PositiveInfinity, bestGap = float.PositiveInfinity;
+        void Consider(Vector3 position, float pitch, float roll)
+        {
+            float distance = Vector2.Distance(new Vector2(position.x, position.z),
+                new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z));
+            if (distance < 5.5f || distance > 6.5f) return;
+            position.y = 0f;
+            Quaternion rotation = Quaternion.Euler(pitch, 239.868f, roll);
+            site.truck.SetPositionAndRotation(position, rotation);
+            Physics.SyncTransforms();
+            float highest = float.NegativeInfinity, lowest = float.PositiveInfinity;
+            foreach (Collider wheel in wheels)
+            {
+                var box = wheel as BoxCollider;
+                if (box == null) throw new InvalidOperationException("轮胎支撑拟合需要当前矿卡的盒碰撞体。");
+                float required = float.NegativeInfinity;
+                for (int x = -4; x <= 4; x++)
+                    for (int z = -8; z <= 8; z++)
+                    {
+                        Vector3 bottom = box.transform.TransformPoint(box.center +
+                            new Vector3(x * box.size.x / 8f, -box.size.y * .5f, z * box.size.z / 16f));
+                        required = Mathf.Max(required, Surface(bottom) - bottom.y);
+                    }
+                highest = Mathf.Max(highest, required);
+                lowest = Mathf.Min(lowest, required);
+            }
+            float gap = highest - lowest;
+            Vector2 offset = new Vector2(position.x - origin.x, position.z - origin.z);
+            float score = gap + offset.sqrMagnitude * .005f;
+            if (score >= bestScore) return;
+            bestScore = score;
+            bestGap = gap;
+            position.y = highest + .01f; // Reserve 1 cm for terrain triangle interpolation between samples.
+            bestPosition = position;
+            bestRotation = rotation;
+            bestPitch = pitch;
+            bestRoll = roll;
+        }
+        // Search a small nearby parking region using actual wheel support, not a center-point slope estimate.
+        for (int x = -4; x <= 4; x++)
+            for (int z = -4; z <= 4; z++)
+                for (int pitch = -18; pitch <= 18; pitch += 3)
+                    for (int roll = -12; roll <= 12; roll += 3)
+                        Consider(origin + new Vector3(x * .6f, 0f, z * .6f), pitch, roll);
+        Vector3 coarsePosition = bestPosition;
+        float coarsePitch = bestPitch, coarseRoll = bestRoll;
+        for (int x = -1; x <= 1; x++)
+            for (int z = -1; z <= 1; z++)
+                for (int pitch = -2; pitch <= 2; pitch++)
+                    for (int roll = -2; roll <= 2; roll++)
+                        Consider(coarsePosition + new Vector3(x * .2f, 0f, z * .2f), coarsePitch + pitch, coarseRoll + roll);
+        if (bestGap >= .14f)
+        {
+            site.truck.SetPositionAndRotation(origin, snapshot.truckRotation);
+            throw new InvalidOperationException($"附近自然地形无法满足轮胎支撑，最大离地={bestGap:F3}m；不保存悬空停车布局。");
+        }
+        snapshot.truckPosition = bestPosition;
+        snapshot.truckRotation = bestRotation;
+        snapshot.selectedTruckGroundY = Surface(bestPosition);
+        site.truck.SetPositionAndRotation(bestPosition, bestRotation);
+        Physics.SyncTransforms();
+        Debug.Log($"自然轮胎支撑：矿车={bestPosition}，姿态={bestRotation.eulerAngles}，最大轮间支撑差={bestGap:F4}m");
     }
 
     /// <summary>Sample original map elevations, repair scanned equipment and save the independently baked preview.</summary>

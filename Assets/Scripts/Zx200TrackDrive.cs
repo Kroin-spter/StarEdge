@@ -16,7 +16,12 @@ public class Zx200TrackDrive : MonoBehaviour
     [Header("牵引与制动")]
     [Min(0.01f)] public float responseTime = 0.4f;
     [Min(0f)] public float maxAcceleration = 3f;
+    [Tooltip("左右履带指令速度的变化上限；起步与反向先渐变，而非瞬间给满牵引。")]
+    [Min(0.01f)] public float trackSpeedSlewRate = 1f;
     [Min(0f)] public float lateralGrip = 2f;
+    [Tooltip("无转向输入时，以有限左右履带牵引差纠正坡面造成的偏航；不写入底盘旋转。")]
+    [Min(0f)] public float headingHoldGain = 2f;
+    [Min(0f)] public float maximumHeadingCorrectionSpeed = .5f;
     [Tooltip("转向输入拉满时使用完整履带速度进行原地差速转向；关闭后采用 turnSpeed 限制。")]
     public bool fullSpeedPivotTurn = true;
     [Range(0f, 1f)] public float tractionCoefficient = 0.8f;
@@ -28,7 +33,7 @@ public class Zx200TrackDrive : MonoBehaviour
     [Min(0.001f)] public float contactTolerance = 0.18f;
     [Range(0f, 80f)] public float maxGroundAngle = 45f;
     [Tooltip("接地时增加角阻尼以削弱土面小起伏引起的弹跳；不锁定底盘姿态。")]
-    [Min(0f)] public float groundedAngularDamping = 1.5f;
+    [Min(0f)] public float groundedAngularDamping = 6f;
 
     /// <summary>获取当前物理步实际检测到的有效履带接地点数量。</summary>
     public int GroundContactCount { get; private set; }
@@ -49,7 +54,12 @@ public class Zx200TrackDrive : MonoBehaviour
     private readonly bool[] hasFilteredContacts = new bool[6];
     private readonly RaycastHit[] contacts = new RaycastHit[6];
     private readonly float[] contactTargetSpeeds = new float[6];
+    private readonly float[] trackTargetSpeeds = new float[2];
+    private readonly int[] trackContactCounts = new int[2];
+    private readonly int[] contactTracks = new int[6];
     private float originalAngularDamping;
+    private Vector3 driveHeading;
+    private bool hasDriveHeading;
 
     private void Awake()
     {
@@ -134,6 +144,7 @@ public class Zx200TrackDrive : MonoBehaviour
     private void FixedUpdate()
     {
         GroundContactCount = 0;
+        System.Array.Clear(trackContactCounts, 0, trackContactCounts.Length);
         if (!Initialize()) return;
         bool fixedBase = keyboard.fixedBase;
         if (rootBody.immovable != fixedBase)
@@ -142,15 +153,42 @@ public class Zx200TrackDrive : MonoBehaviour
             rootBody.useGravity = !fixedBase;
             Stop();
         }
-        if (fixedBase) return;
+        if (fixedBase)
+        {
+            System.Array.Clear(trackTargetSpeeds, 0, trackTargetSpeeds.Length);
+            hasDriveHeading = false;
+            return;
+        }
         float forward = Time.time - commandTime <= commandTimeout ? forwardInput : 0f;
         float steering = Time.time - commandTime <= commandTimeout ? steeringInput : 0f;
-        bool driving = Mathf.Abs(forward) > 0.001f || Mathf.Abs(steering) > 0.001f;
+        // Do not switch to high-friction parking while a heavy chassis is still braking.
+        bool driving = Mathf.Abs(forward) > 0.001f || Mathf.Abs(steering) > 0.001f ||
+            Vector3.ProjectOnPlane(rootBody.linearVelocity, Vector3.up).magnitude > .15f ||
+            Mathf.Abs(trackTargetSpeeds[0]) > .01f || Mathf.Abs(trackTargetSpeeds[1]) > .01f;
         ApplyContactMaterial(driving ? trackMaterial : parkingMaterial);
         float mass = 0f;
         foreach (ArticulationBody body in bodies)
             if (body != null && body.gameObject.activeInHierarchy) mass += body.mass;
         float halfWidth = localBounds.size.x * 0.35f;
+        float headingCorrection = 0f;
+        // Keep the finite straight-line correction during gradual braking: releasing throttle
+        // must not remove yaw control while the tracks are still applying braking forces on a slope.
+        if (Mathf.Abs(steering) <= .001f &&
+            (Mathf.Abs(forward) > .001f || (hasDriveHeading && driving)))
+        {
+            Vector3 heading = Vector3.ProjectOnPlane(rootBody.transform.forward, Vector3.up).normalized;
+            if (!hasDriveHeading)
+            {
+                driveHeading = heading;
+                hasDriveHeading = true;
+            }
+            float yawError = Vector3.SignedAngle(heading, driveHeading, Vector3.up) * Mathf.Deg2Rad;
+            float desiredYawRate = Mathf.Clamp(yawError * headingHoldGain,
+                -keyboard.turnSpeed * Mathf.Deg2Rad, keyboard.turnSpeed * Mathf.Deg2Rad);
+            headingCorrection = Mathf.Clamp((desiredYawRate - Vector3.Dot(rootBody.angularVelocity, Vector3.up)) * halfWidth,
+                -maximumHeadingCorrectionSpeed, maximumHeadingCorrectionSpeed);
+        }
+        else hasDriveHeading = false;
         for (int side = -1; side <= 1; side += 2)
         {
             // 右转时左履带更快；沿本地 +X 的右履带相应减速。
@@ -158,8 +196,12 @@ public class Zx200TrackDrive : MonoBehaviour
                 Mathf.Min(keyboard.moveSpeed, keyboard.turnSpeed * Mathf.Deg2Rad * halfWidth);
             // 保留左右履带输入的和差关系；满舵原地反转，复合输入逐侧限速。
             float turningSpeed = steering * turnTrackSpeed;
-            float targetSpeed = Mathf.Clamp(forward * keyboard.moveSpeed - side * turningSpeed,
+            float requestedSpeed = Mathf.Clamp(forward * keyboard.moveSpeed - side * turningSpeed,
                 -keyboard.moveSpeed, keyboard.moveSpeed);
+            int trackIndex = (side + 1) / 2;
+            trackTargetSpeeds[trackIndex] = Mathf.MoveTowards(trackTargetSpeeds[trackIndex], requestedSpeed,
+                trackSpeedSlewRate * Time.fixedDeltaTime);
+            float targetSpeed = trackTargetSpeeds[trackIndex];
             for (int sample = -1; sample <= 1; sample++)
             {
                 Vector3 local = new Vector3(localBounds.center.x + side * halfWidth,
@@ -168,16 +210,22 @@ public class Zx200TrackDrive : MonoBehaviour
                 if (!TryFindContact(local, index, out RaycastHit contact)) continue;
                 contacts[GroundContactCount] = contact;
                 contactTargetSpeeds[GroundContactCount] = targetSpeed;
+                contactTracks[GroundContactCount] = trackIndex;
+                trackContactCounts[trackIndex]++;
                 GroundContactCount++;
             }
         }
         rootBody.angularDamping = GroundContactCount > 0
             ? Mathf.Max(originalAngularDamping, groundedAngularDamping) : originalAngularDamping;
-        // Redistribute support across contacts; cap each point at one third of total mass.
+        // Equal throttle must not create unequal left/right thrust just because one track has fewer probes.
+        // Contacts on each supported track share its half of the chassis load. Fewer probes do not
+        // mean the physical chassis has lost weight; one point remains capped at half the total load.
         // An airborne chassis has no valid contacts and receives no drive or gravity compensation.
         if (GroundContactCount == 0) return;
+        float trackMass = mass * .5f;
         for (int i = 0; i < GroundContactCount; i++)
-            ApplyContact(contacts[i], contactTargetSpeeds[i], mass / Mathf.Max(3, GroundContactCount));
+            ApplyContact(contacts[i], contactTargetSpeeds[i], trackMass / trackContactCounts[contactTracks[i]],
+                (1 - 2 * contactTracks[i]) * headingCorrection / Mathf.Max(responseTime, Time.fixedDeltaTime));
     }
 
     private bool TryFindContact(Vector3 localPoint, int contactIndex, out RaycastHit nearest)
@@ -210,7 +258,7 @@ public class Zx200TrackDrive : MonoBehaviour
         return true;
     }
 
-    private void ApplyContact(RaycastHit nearest, float targetSpeed, float supportedMass)
+    private void ApplyContact(RaycastHit nearest, float targetSpeed, float supportedMass, float headingAcceleration)
     {
         Transform root = rootBody.transform;
         Vector3 forward = Vector3.ProjectOnPlane(root.forward, nearest.normal).normalized;
@@ -222,6 +270,9 @@ public class Zx200TrackDrive : MonoBehaviour
         else if (otherArticulation != null) velocity -= otherArticulation.GetPointVelocity(nearest.point);
         float acceleration = Mathf.Clamp((targetSpeed - Vector3.Dot(velocity, forward)) /
             Mathf.Max(responseTime, Time.fixedDeltaTime), -maxAcceleration, maxAcceleration);
+        // Apply the differential after the speed-loop clamp: at low uphill speed both loops can
+        // saturate, making a speed-target-only heading correction ineffective.
+        acceleration = Mathf.Clamp(acceleration + headingAcceleration, -maxAcceleration, maxAcceleration);
         Vector3 force = supportedMass * (forward * acceleration - right *
             Vector3.Dot(velocity, right) * lateralGrip - Vector3.ProjectOnPlane(Physics.gravity, nearest.normal));
         float maxForce = supportedMass * Physics.gravity.magnitude * tractionCoefficient;
@@ -243,6 +294,8 @@ public class Zx200TrackDrive : MonoBehaviour
     {
         Stop();
         System.Array.Clear(hasFilteredContacts, 0, hasFilteredContacts.Length);
+        System.Array.Clear(trackTargetSpeeds, 0, trackTargetSpeeds.Length);
+        hasDriveHeading = false;
         if (rootBody != null) rootBody.angularDamping = originalAngularDamping;
         RestoreMaterials();
     }

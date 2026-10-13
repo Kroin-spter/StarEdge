@@ -11,6 +11,220 @@ namespace ExcavatorControls.Tests
 {
     public sealed class MoundTopPreviewTests
     {
+        private static bool loadedLegacyTerrain;
+
+        private static void ExpectLegacyTerrainMessages()
+        {
+            // Unity validates the cached legacy Terrain tree prototypes only on its first load.
+            if (loadedLegacyTerrain) return;
+            loadedLegacyTerrain = true;
+            for (int i = 0; i < 3; i++) LogAssert.Expect(LogType.Error, $"Tree prefab at index {i} is missing.");
+        }
+
+        /// <summary>Drive the saved preview chassis downhill and back using real articulation forces.</summary>
+        /// <returns>Scene preparation, travel posture, manual descent and ascent, then teardown.</returns>
+        [UnityTest]
+        public IEnumerator SavedMoundAllowsDownhillAndReturn()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var dig = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<Zx200DigController>(true)).Single();
+                var keyboard = dig.GetComponent<Zx200KeyboardController>();
+                Assert.That(dig.StartAutomaticPose(dig.carryPose), Is.True);
+                for (int i = 0; i < 360 && dig.IsBusy; i++) yield return new WaitForFixedUpdate();
+                Assert.That(dig.LastAutomaticMotionSucceeded, Is.True);
+                keyboard.fixedBase = false;
+                keyboard.enabled = false;
+                keyboard.GetComponent<Zx200FixedBasePhysics>().Configure();
+                for (int i = 0; i < 100; i++) yield return new WaitForFixedUpdate();
+                Vector3 start = keyboard.articulationRoot.transform.position;
+                var drive = keyboard.GetComponent<Zx200TrackDrive>();
+                var physics = keyboard.GetComponent<Zx200FixedBasePhysics>();
+                Debug.Log($"实际底盘配置：惯量={keyboard.articulationRoot.inertiaTensor}，重心={keyboard.articulationRoot.worldCenterOfMass}，上车重心={physics.swingBody.worldCenterOfMass}，起始角度={keyboard.articulationRoot.transform.eulerAngles}");
+                float heading = keyboard.articulationRoot.transform.eulerAngles.y;
+                for (int i = 0; i < 200; i++)
+                {
+                    keyboard.MoveArticulationRoot(-1f, 0f, Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                    if (i % 50 == 49) Debug.Log($"DOWN {i}: position={keyboard.articulationRoot.transform.position}, angle={keyboard.articulationRoot.transform.eulerAngles}, angularVelocity={keyboard.articulationRoot.angularVelocity}, contacts={drive.GroundContactCount}");
+                }
+                // Capture the lower position only after the gradual brake has actually stopped the descent.
+                for (int i = 0; i < 100; i++)
+                {
+                    keyboard.MoveArticulationRoot(0f, 0f, Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                }
+                Vector3 lower = keyboard.articulationRoot.transform.position;
+                for (int i = 0; i < 350; i++)
+                {
+                    keyboard.MoveArticulationRoot(1f, 0f, Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                    if (i % 50 == 49)
+                    {
+                        int[] contacts = (int[])typeof(Zx200TrackDrive).GetField("trackContactCounts",
+                            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(drive);
+                        Debug.Log($"UP {i}: position={keyboard.articulationRoot.transform.position}, angle={keyboard.articulationRoot.transform.eulerAngles}, angularVelocity={keyboard.articulationRoot.angularVelocity}, contacts={drive.GroundContactCount}, sides={string.Join(",", contacts ?? new int[0])}");
+                    }
+                }
+                Vector3 finish = keyboard.articulationRoot.transform.position;
+                Debug.Log($"实际土堆往返：start={start} lower={lower} finish={finish}");
+                Assert.That(Vector3.Distance(start, lower), Is.GreaterThan(1f));
+                Assert.That(lower.y, Is.LessThan(start.y - .1f), "应真正下坡而非仅在顶面移动");
+                Assert.That(finish.y, Is.GreaterThan(lower.y + .1f), "实际土堆上应能重新爬升");
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(heading, keyboard.articulationRoot.transform.eulerAngles.y)),
+                    Is.LessThan(10f), "直行往返不应因两侧接地点不对称而自行大幅转向");
+                Assert.That(Vector3.Dot(keyboard.articulationRoot.transform.up, Vector3.up), Is.GreaterThan(.8f));
+            }
+            finally
+            {
+                if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene);
+            }
+        }
+
+        /// <summary>Verify that a real hand-dug bucket can reach the closer parked bed without direct soil transfer.</summary>
+        /// <returns>Saved scene startup, manual cutting, loaded automatic handoff and unloading.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator CloserTruckReceivesHandDugBucket()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                var site = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<CesiumMoundSite>(true)).Single();
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                var dig = automatic.machine;
+                var cutter = automatic.cutter;
+                var wheels = site.truck.GetComponentsInChildren<Collider>().Where(candidate =>
+                    candidate.name.ToLowerInvariant().Contains("wheel") && candidate.name.Contains("collision")).ToArray();
+                Assert.That(wheels.Length, Is.GreaterThanOrEqualTo(4), "轮胎碰撞体必须保留。");
+                foreach (Collider wheel in wheels)
+                {
+                    var box = wheel as BoxCollider;
+                    Assert.That(box, Is.Not.Null, "当前矿卡采用实体轮胎盒碰撞体。");
+                    float closestGap = float.PositiveInfinity;
+                    for (int x = -1; x <= 1; x++)
+                        for (int z = -1; z <= 1; z++)
+                        {
+                            Vector3 bottom = box.transform.TransformPoint(box.center +
+                                new Vector3(x * box.size.x * .5f, -box.size.y * .5f, z * box.size.z * .5f));
+                            float surface = site.soil.Terrain.SampleHeight(bottom) + site.soil.transform.position.y;
+                            closestGap = Mathf.Min(closestGap, bottom.y - surface);
+                        }
+                    Debug.Log($"真实轮胎接地：{wheel.name}，最小间隙={closestGap:F4}m");
+                    Assert.That(closestGap, Is.InRange(-.02f, .15f), "轮胎实体不得穿入地面或明显悬空：" + wheel.name);
+                }
+                foreach (BoxCollider box in site.truck.GetComponentsInChildren<BoxCollider>())
+                {
+                    if (!box.enabled) continue;
+                    if (Physics.ComputePenetration(box, box.transform.position, box.transform.rotation,
+                        site.soil.Terrain.GetComponent<TerrainCollider>(), site.soil.transform.position,
+                        site.soil.transform.rotation, out _, out float depth))
+                        Assert.That(depth, Is.LessThanOrEqualTo(.02f), "矿卡底盘或车体不应穿入地形：" + box.name);
+                }
+                double before = automatic.receiver.VolumeM3;
+                // A valid manual joint input releases the compact startup hold without changing saved poses.
+                dig.AdjustManualPose(0f, 0f, .1f, 0f);
+                yield return ManualSoilTestMotion.Scoop(dig, cutter, .03);
+                Debug.Log($"近距装车手挖检查：斗量={cutter.VolumeM3:F5}，切削状态={cutter.Status}，斗尖={cutter.TipWorldPosition}");
+                Assert.That(cutter.VolumeM3, Is.GreaterThan(.005), "必须先实际挖到土，不能伪造斗内土量。");
+                Assert.That(automatic.StartAutonomousJob(.005), Is.True);
+                float deadline = Time.realtimeSinceStartup + 90f;
+                bool capturedDump = false;
+                Camera camera = SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null
+                    ? null : scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
+                        .First(candidate => candidate.CompareTag("MainCamera"));
+                while (automatic.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    if (camera != null && !capturedDump && automatic.State == AutonomousExcavationState.Dump &&
+                        cutter.VolumeM3 < .015)
+                    {
+                        Capture(camera, site.bakedSite.machinePosition + new Vector3(-9f, 7f, -10f),
+                            (site.bakedSite.machinePosition + site.truck.position) * .5f + Vector3.up,
+                            "Diagnostics/near-truck-dump.png");
+                        capturedDump = true;
+                    }
+                    yield return null;
+                }
+                Assert.That(automatic.receiver.VolumeM3 - before, Is.GreaterThan(.005), automatic.Status);
+                Assert.That(automatic.State, Is.EqualTo(AutonomousExcavationState.Completed), automatic.FaultReason);
+                Debug.Log($"近距装车完成：车厢增量={automatic.receiver.VolumeM3 - before:F5}m³，完成斗数={automatic.CompletedCycles}");
+                if (camera != null)
+                    Capture(camera, site.bakedSite.machinePosition + new Vector3(-9f, 7f, -10f),
+                        (site.bakedSite.machinePosition + site.truck.position) * .5f + Vector3.up,
+                        "Diagnostics/near-truck-completed.png");
+            }
+            finally
+            {
+                if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene);
+            }
+        }
+
+        /// <summary>Require three actual excavation receipts from the saved preview, without injected soil.</summary>
+        /// <returns>Scene startup, physical multi-bucket job and cleanup.</returns>
+        [UnityTest]
+        [Timeout(600000)]
+        public IEnumerator SavedPreviewCompletesThreeAutomaticLoads()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                double initial = automatic.receiver.VolumeM3;
+                Assert.That(automatic.StartAutonomousJob(1.0), Is.True, automatic.Status);
+                float deadline = Time.realtimeSinceStartup + 480f;
+                int observedCycles = 0;
+                double lastReceipt = initial;
+                while (automatic.IsRunning && automatic.CompletedCycles < 3 && Time.realtimeSinceStartup < deadline)
+                {
+                    if (automatic.CompletedCycles > observedCycles)
+                    {
+                        Assert.That(automatic.receiver.VolumeM3, Is.GreaterThan(lastReceipt + .005),
+                            "每斗必须实际进入车厢。");
+                        observedCycles = automatic.CompletedCycles;
+                        lastReceipt = automatic.receiver.VolumeM3;
+                        Debug.Log($"连续装车验收：完成斗数={observedCycles}，车厢={lastReceipt:F5}，斗内={automatic.cutter.VolumeM3:F5}");
+                    }
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(automatic.CompletedCycles, Is.GreaterThanOrEqualTo(3), automatic.FaultReason + " / " + automatic.Status);
+                Assert.That(automatic.receiver.VolumeM3, Is.GreaterThan(initial + .015));
+                if (observedCycles < 3)
+                    Assert.That(automatic.receiver.VolumeM3, Is.GreaterThan(lastReceipt + .005),
+                        "第三斗也必须有实际车厢增量。");
+                Debug.Log($"三斗最终验收：斗数={automatic.CompletedCycles}，车厢增量={automatic.receiver.VolumeM3 - initial:F5}m³");
+                if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+                {
+                    Camera camera = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
+                        .First(candidate => candidate.CompareTag("MainCamera"));
+                    Vector3 machinePosition = automatic.machine.transform.position;
+                    Capture(camera, machinePosition + new Vector3(-9f, 7f, -10f),
+                        (machinePosition + automatic.receiver.transform.position) * .5f + Vector3.up,
+                        "Diagnostics/three-loads-completed.png");
+                }
+            }
+            finally
+            {
+                if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene);
+            }
+        }
+
         /// <summary>Verify real baked startup and manual Terrain cutting, then render the saved preview layout.</summary>
         /// <returns>Scene loading, support readiness, cutting assertions, preview capture and scene teardown.</returns>
         [UnityTest]
@@ -18,9 +232,7 @@ namespace ExcavatorControls.Tests
         {
             const string path = "Assets/Scenes/sence_test.unity";
             // The unchanged legacy Terrain elsewhere in sence_test contains three missing tree references.
-            LogAssert.Expect(LogType.Error, "Tree prefab at index 0 is missing.");
-            LogAssert.Expect(LogType.Error, "Tree prefab at index 1 is missing.");
-            LogAssert.Expect(LogType.Error, "Tree prefab at index 2 is missing.");
+            ExpectLegacyTerrainMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
             Scene scene = SceneManager.GetSceneByPath(path);
             CesiumMoundSite site = scene.GetRootGameObjects()

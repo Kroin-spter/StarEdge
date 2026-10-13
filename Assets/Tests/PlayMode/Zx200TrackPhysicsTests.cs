@@ -36,6 +36,25 @@ namespace ExcavatorControls.Tests
             for (int i = 0; i < 200; i++) yield return new WaitForFixedUpdate();
         }
 
+        /// <summary>A heavy chassis must not jump to a high acceleration at the first throttle input.</summary>
+        /// <returns>Settling, a short throttle pulse and a reversal pulse.</returns>
+        [UnityTest]
+        public IEnumerator ThrottleStartsWithBoundedAcceleration()
+        {
+            yield return CreateRobot(true);
+            Vector3 initial = body.linearVelocity;
+            yield return Drive(1f, 0f, 10);
+            float acceleration = (body.linearVelocity.z - initial.z) / (.02f * 10);
+            Debug.Log($"重型起步平均加速度={acceleration:F3}m/s²");
+            Assert.That(acceleration, Is.InRange(0f, 1.2f), "起步不能立即输出接近3m/s²的满牵引加速度");
+            yield return Drive(1f, 0f, 120);
+            Vector3 beforeReversal = body.linearVelocity;
+            Assert.That(beforeReversal.z, Is.GreaterThan(.5f), "渐变起步仍必须实际驱动车辆");
+            yield return Drive(-1f, 0f, 10);
+            float reversal = (body.linearVelocity.z - beforeReversal.z) / (.02f * 10);
+            Assert.That(Mathf.Abs(reversal), Is.LessThan(1.5f), "反向应先平滑制动，不瞬间给满反向牵引");
+        }
+
         /// <summary>验证油门经物理推进，反向指令能倒车，松开后能制动。</summary>
         /// <returns>接地、前进、制动与倒车的物理帧。</returns>
         [UnityTest]
@@ -134,11 +153,18 @@ namespace ExcavatorControls.Tests
             Vector3 lower = body.transform.position;
             Assert.That(lower.z, Is.LessThan(start.z - 1f), "必须先真实下坡，不能原地声称往返");
             Assert.That(lower.y, Is.LessThan(start.y - .3f));
-            yield return Drive(0f, 0f, 60);
+            // Gradual braking is intentional; test parking stability only after the chassis has stopped.
+            for (int frame = 0; frame < 200; frame++)
+            {
+                yield return Drive(0f, 0f, 1);
+                if (body.linearVelocity.magnitude < .1f) break;
+            }
+            Assert.That(body.linearVelocity.magnitude, Is.LessThan(.1f), "必须在有限时间内完成制动");
             Vector3 stopped = body.transform.position;
             yield return Drive(0f, 0f, 60);
             Assert.That(Vector3.Distance(body.transform.position, stopped), Is.LessThan(.3f), "松开油门应保持稳定");
-            yield return Drive(1f, 0f, 220);
+            for (int frame = 0; frame < 400 && body.transform.position.z < start.z; frame++)
+                yield return Drive(1f, 0f, 1);
             Debug.Log($"SLOPE ROUNDTRIP start={start} lower={lower} returned={body.transform.position} " +
                 $"contacts={robot.GetComponent<Zx200TrackDrive>().GroundContactCount}");
             Assert.That(body.transform.position.z, Is.GreaterThan(start.z - .5f), "下坡后必须能靠履带牵引回到起点附近");
@@ -178,7 +204,9 @@ namespace ExcavatorControls.Tests
             robot.GetComponent<Zx200FixedBasePhysics>().Configure();
             for (int frame = 0; frame < 60; frame++) yield return new WaitForFixedUpdate();
             Vector3 start = body.transform.position;
-            yield return Drive(1f, 0f, 220);
+            // Keep the reachable distance/height contract, but allow the new heavy-chassis ramp-up time.
+            for (int frame = 0; frame < 400 && body.transform.position.z < start.z + 6f; frame++)
+                yield return Drive(1f, 0f, 1);
             Debug.Log($"UNEVEN SLOPE start={start} finish={body.transform.position} contacts={robot.GetComponent<Zx200TrackDrive>().GroundContactCount}");
             Assert.That(body.transform.position.z, Is.GreaterThan(start.z + 4.5f), "必须进入起伏坡面，而非只在初始平地移动");
             Assert.That(body.transform.position.y, Is.GreaterThan(start.y + .5f));

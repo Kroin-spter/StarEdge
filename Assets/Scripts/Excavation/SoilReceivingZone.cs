@@ -15,7 +15,8 @@ public sealed class SoilReceivingZone : MonoBehaviour
     public double MassKg { get; private set; }
     public double EffectiveCapacityM3 => Math.Max(0, Math.Min(capacityM3, size.x * size.y * maximumFillHeight));
     public double AvailableM3 => Math.Max(0, EffectiveCapacityM3 - VolumeM3);
-    public float SurfaceY => transform.position.y + (float)(VolumeM3 / Math.Max(.001, size.x * size.y));
+    internal float SurfaceLocalY => (float)(VolumeM3 / Math.Max(.001, size.x * size.y));
+    public float SurfaceY => transform.TransformPoint(Vector3.up * SurfaceLocalY).y;
     public IReadOnlyList<TransferRecord> Records => records.AsReadOnly();
     private readonly List<TransferRecord> records = new List<TransferRecord>();
     private Mesh mesh;
@@ -158,13 +159,18 @@ public sealed class SoilReceivingZone : MonoBehaviour
     /// <param name="worldPoint">Bucket discharge point in world coordinates.</param>
     /// <param name="maximumDrop">Maximum permitted vertical drop in metres.</param>
     /// <param name="landing">Receiving surface position when valid.</param>
-    /// <returns>True only for an enabled, upright, unit-scale bed beneath the point.</returns>
+    /// <returns>True for an enabled unit-scale bed beneath the point, with a stable inclination below 30 degrees.</returns>
     public bool TryGetLanding(Vector3 worldPoint, float maximumDrop, out Vector3 landing)
     {
-        landing = new Vector3(worldPoint.x, SurfaceY, worldPoint.z);
+        landing = worldPoint;
         if (!isActiveAndEnabled || size.x <= 0 || size.y <= 0 || maximumDrop <= 0 ||
-            Vector3.Dot(transform.up, Vector3.up) < .9999f ||
+            Vector3.Dot(transform.up, Vector3.up) <= Mathf.Cos(30f * Mathf.Deg2Rad) ||
             (transform.lossyScale - Vector3.one).sqrMagnitude > .000001f) return false;
+        // Intersect the vertical gravity ray with the actual tilted receiving plane.
+        Vector3 normal = transform.up;
+        Vector3 center = transform.TransformPoint(Vector3.up * SurfaceLocalY);
+        float planeDrop = Vector3.Dot(worldPoint - center, normal) / normal.y;
+        landing = worldPoint - Vector3.up * planeDrop;
         Vector3 local = transform.InverseTransformPoint(landing);
         float drop = worldPoint.y - landing.y;
         return Mathf.Abs(local.x) <= size.x * .5f && Mathf.Abs(local.z) <= size.y * .5f &&

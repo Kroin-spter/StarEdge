@@ -1868,14 +1868,17 @@ MonoBehaviour:
   rootBody: {fileID: 2210553637892966981}
   responseTime: 0.4
   maxAcceleration: 3
+  trackSpeedSlewRate: 1
   lateralGrip: 2
+  headingHoldGain: 2
+  maximumHeadingCorrectionSpeed: 0.5
   tractionCoefficient: 0.8
   commandTimeout: 0.25
   parkingFriction: 0.9
   probeHeight: 0.35
   contactTolerance: 0.18
   maxGroundAngle: 45
-  groundedAngularDamping: 1.5
+  groundedAngularDamping: 6
 --- !u!1 &7721952145820669058
 GameObject:
   m_ObjectHideFlags: 0

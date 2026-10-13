@@ -7,6 +7,56 @@ namespace ExcavatorControls.Tests
 {
     public sealed class MapFollowingSurfaceTests
     {
+        /// <summary>Gravity discharge must intersect the real bed plane when the truck follows a mild slope.</summary>
+        [Test]
+        public void TiltedTruckReceivesOnItsActualPlane()
+        {
+            var root = new GameObject("tilted receiving plane");
+            try
+            {
+                var zone = root.AddComponent<SoilReceivingZone>();
+                zone.size = new Vector2(2f, 4f);
+                root.transform.rotation = Quaternion.Euler(12f, 25f, 2f);
+                Vector3 expected = root.transform.TransformPoint(new Vector3(.3f, 0f, .7f));
+                Assert.That(zone.TryGetLanding(expected + Vector3.up * 2f, 3f, out Vector3 actual), Is.True);
+                Assert.That(Vector3.Distance(expected, actual), Is.LessThan(.0001f));
+                Vector3 outside = root.transform.TransformPoint(new Vector3(1.2f, 0f, .7f));
+                Assert.That(zone.TryGetLanding(outside + Vector3.up * 2f, 3f, out _), Is.False);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        /// <summary>The truck must follow a natural surface, not a broad constant-height parking slab.</summary>
+        [Test]
+        public void TruckParkingRetainsNaturalHeightVariation()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            float minimum = float.PositiveInfinity, maximum = float.NegativeInfinity;
+            for (int z = -2; z <= 2; z++)
+                for (int x = -1; x <= 1; x++)
+                {
+                    Vector3 world = snapshot.truckPosition + snapshot.truckRotation * new Vector3(x * .6f, 0f, z * .7f);
+                    float height = snapshot.terrainData.GetInterpolatedHeight(
+                        (world.x - snapshot.terrainOrigin.x) / snapshot.terrainData.size.x,
+                        (world.z - snapshot.terrainOrigin.z) / snapshot.terrainData.size.z);
+                    minimum = Mathf.Min(minimum, height);
+                    maximum = Mathf.Max(maximum, height);
+                }
+            Assert.That(maximum - minimum, Is.GreaterThan(.03f), "不能重新生成矩形等高停车平台。");
+        }
+
+        /// <summary>The relocated receiving bed must sit closer without consuming the protected track-bearing core.</summary>
+        [Test]
+        public void PreviewTruckIsInsideNearLoadingRange()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            float distance = Vector2.Distance(new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z),
+                new Vector2(snapshot.truckPosition.x, snapshot.truckPosition.z));
+            Assert.That(distance, Is.InRange(5.5f, 6.5f), "车厢距离须兼顾实际斗尖可达范围和设备净距");
+        }
+
         /// <summary>Opaque image alpha must never make baked mine soil polished in Unity 6.</summary>
         [Test]
         public void PreviewSoilUsesConstantMatteSmoothness()
