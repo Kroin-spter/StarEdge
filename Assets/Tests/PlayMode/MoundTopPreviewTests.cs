@@ -491,6 +491,12 @@ namespace ExcavatorControls.Tests
                     // Streaming uses real time; a fast batch editor can render 240 frames before tiles settle.
                     yield return new WaitForSecondsRealtime(10f);
                     for (int frame = 0; frame < 240; frame++) yield return null;
+                    Assert.That(site.MapSurfacePrepared, Is.True, "施工区校验通过后才能裁剪原始扫描网格。");
+                    var clip = site.tileset.GetComponent<ConstructionSiteMapClip>();
+                    Assert.That(clip != null && clip.isActiveAndEnabled, Is.True);
+                    Assert.That(site.tileset.GetComponentsInChildren<MeshFilter>(true).Any(filter =>
+                        filter.sharedMesh != null && filter.sharedMesh.name.Contains("work area clipped")), Is.True,
+                        "必须实际替换已加载的 Cesium 网格，不能仅检查组件开关。");
                     Camera camera = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
                         .First(candidate => candidate.CompareTag("MainCamera"));
                     Capture(camera, site.bakedSite.machinePosition + new Vector3(-18f, 16f, -19f),

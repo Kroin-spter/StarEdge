@@ -4,6 +4,97 @@ using UnityEngine;
 /// <summary>Grades only the rear and side travel band of an already baked mound height field.</summary>
 public static class RearTravelTerrainGrade
 {
+    /// <summary>Remove local ridges from a rear access patch while retaining its broad downhill trend and protected ground.</summary>
+    /// <param name="before">Normalized Terrain heights indexed [z,x].</param>
+    /// <param name="origin">Terrain world origin.</param>
+    /// <param name="size">Terrain world size.</param>
+    /// <param name="center">Access patch center in world X/Z.</param>
+    /// <param name="radius">Access patch radius in metres.</param>
+    /// <param name="machine">Machine center in world X/Z.</param>
+    /// <param name="truck">Truck center in world X/Z.</param>
+    /// <param name="machineRotation">Machine heading used to identify its forward work face.</param>
+    /// <param name="boundary">Existing replacement polygon in world X/Z.</param>
+    /// <param name="scope">Output cells in the weighted patch, including its feather, for seam-aware slope checks.</param>
+    /// <returns>A smoothed height-field copy; the input and protected cells are unchanged.</returns>
+    public static float[,] SmoothAccessPatch(float[,] before, Vector3 origin, Vector3 size,
+        Vector2 center, float radius, Vector2 machine, Vector2 truck, Quaternion machineRotation,
+        Vector2[] boundary, out bool[,] scope)
+    {
+        if (before == null || before.GetLength(0) != before.GetLength(1) || before.GetLength(0) < 3 ||
+            size.x <= 0f || size.y <= 0f || size.z <= 0f || radius <= 1.5f ||
+            boundary == null || boundary.Length < 3)
+            throw new ArgumentException("Invalid access patch inputs.");
+        int n = before.GetLength(0);
+        float stepX = size.x / (n - 1), stepZ = size.z / (n - 1);
+        var after = (float[,])before.Clone();
+        scope = new bool[n, n];
+        Quaternion inverse = Quaternion.Inverse(machineRotation);
+        int reachX = Mathf.CeilToInt(1.5f / stepX), reachZ = Mathf.CeilToInt(1.5f / stepZ);
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                Vector2 point = new Vector2(origin.x + x * stepX, origin.z + z * stepZ);
+                float patchDistance = Vector2.Distance(point, center);
+                float machineDistance = Vector2.Distance(point, machine);
+                float truckDistance = Vector2.Distance(point, truck);
+                float localForward = (inverse * new Vector3(point.x - machine.x, 0f, point.y - machine.y)).z;
+                if (patchDistance >= radius || machineDistance <= 2.5f || truckDistance <= 3f ||
+                    localForward >= 1f || !MapFollowingSoilSurface.Contains(boundary, point)) continue;
+                float edgeDistance = DistanceToPolygon(boundary, point);
+                if (edgeDistance <= 1f) continue;
+
+                // Every protected edge tapers to zero over at least 1.5 m; no fixed-height pad is introduced.
+                float weight = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((radius - patchDistance) / 1.5f));
+                weight *= Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((machineDistance - 2.5f) / 1.5f));
+                weight *= Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((truckDistance - 3f) / 1.5f));
+                weight *= Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((1f - localForward) / 1.5f));
+                weight *= Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((edgeDistance - 1f) / 1.5f));
+                if (weight <= 0f) continue;
+
+                // Symmetric Gaussian averaging removes high-frequency ledges but reproduces a linear slope.
+                float sum = 0f, total = 0f;
+                for (int dz = -reachZ; dz <= reachZ; dz++)
+                    for (int dx = -reachX; dx <= reachX; dx++)
+                    {
+                        int sx = x + dx, sz = z + dz;
+                        float distanceSquared = dx * dx * stepX * stepX + dz * dz * stepZ * stepZ;
+                        if (sx < 0 || sx >= n || sz < 0 || sz >= n || distanceSquared > 2.25f) continue;
+                        float kernel = Mathf.Exp(-distanceSquared / 1.125f);
+                        sum += before[sz, sx] * kernel;
+                        total += kernel;
+                    }
+                after[z, x] = Mathf.Clamp01(Mathf.Lerp(before[z, x], sum / total, weight));
+                scope[z, x] = true;
+            }
+
+        // Back off the entire edit if its feather would create a steeper adjacent-cell seam.
+        float originalPeak = PeakTouchingScope(before, size, scope);
+        for (int attempt = 0; attempt < 12 && PeakTouchingScope(after, size, scope) > originalPeak + 1e-6f; attempt++)
+        {
+            for (int z = 0; z < n; z++)
+                for (int x = 0; x < n; x++)
+                    if (scope[z, x]) after[z, x] = Mathf.Lerp(before[z, x], after[z, x], .5f);
+        }
+        if (PeakTouchingScope(after, size, scope) > originalPeak + 1e-6f)
+            return (float[,])before.Clone();
+        return after;
+    }
+
+    private static float PeakTouchingScope(float[,] heights, Vector3 size, bool[,] scope)
+    {
+        int n = heights.GetLength(0);
+        float peak = 0f;
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                if (x + 1 < n && (scope[z, x] || scope[z, x + 1]))
+                    peak = Mathf.Max(peak, Mathf.Abs(heights[z, x + 1] - heights[z, x]) * size.y * (n - 1) / size.x);
+                if (z + 1 < n && (scope[z, x] || scope[z + 1, x]))
+                    peak = Mathf.Max(peak, Mathf.Abs(heights[z + 1, x] - heights[z, x]) * size.y * (n - 1) / size.z);
+            }
+        return peak;
+    }
+
     /// <summary>Build a local descending ramp while leaving the bearing core, forward face and boundary unchanged.</summary>
     /// <param name="before">Normalized Terrain heights indexed [z,x].</param>
     /// <param name="origin">Terrain world origin.</param>

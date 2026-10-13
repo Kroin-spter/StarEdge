@@ -71,6 +71,29 @@ namespace ExcavatorControls.Tests
             Object.DestroyImmediate(mapTexture);
         }
 
+        /// <summary>Authoring reconciliation keeps sculpted heights but restores a valid nonnegative soil ledger.</summary>
+        [Test]
+        public void ReconcileManualSculptPreservesSurfaceAndRepairsFloorAndVolume()
+        {
+            float[,] heights = terrainData.GetHeights(0, 0, 33, 33);
+            heights[8, 8] = .1f;
+            heights[9, 9] = .6f;
+            baked.soilMask[9 * 33 + 9] = 0;
+            baked.groundHeights[9 * 33 + 9] = .4f;
+            terrainData.SetHeights(0, 0, heights);
+            float[,] edited = terrainData.GetHeights(0, 0, 33, 33);
+            Assert.That(baked.TryValidate("example-map", 43.5, 81.5, 1322.8, out _), Is.False);
+            MethodInfo reconcile = typeof(BakedConstructionSiteData).GetMethod("ReconcileEditedSurface");
+            Assert.That(reconcile, Is.Not.Null, "手工改高程后必须同步土层账本，而非关闭校验。");
+            reconcile.Invoke(baked, null);
+            Assert.That(baked.TryValidate("example-map", 43.5, 81.5, 1322.8, out string reason), Is.True, reason);
+            Assert.That(terrainData.GetHeights(0, 0, 33, 33), Is.EqualTo(edited));
+            Assert.That(baked.groundHeights[8 * 33 + 8], Is.EqualTo(edited[8, 8]));
+            Assert.That(baked.groundHeights[9 * 33 + 9], Is.EqualTo(edited[9, 9]));
+            Assert.That(baked.groundHeights[10 * 33 + 10], Is.EqualTo(.2f));
+            Assert.That(baked.initialSoilVolumeM3, Is.GreaterThan(6.3).And.LessThan(6.4));
+        }
+
         [Test]
         public void WorkFaceBoundsUseTheSlopeFootprintInsteadOfTheFullTerrainPatch()
         {

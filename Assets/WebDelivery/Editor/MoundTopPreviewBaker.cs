@@ -13,6 +13,89 @@ public static class MoundTopPreviewBaker
     private static double deadline;
     private static Camera surveyCamera;
 
+    /// <summary>Keep manually sculpted preview heights and synchronize the persistent floor/volume ledger.</summary>
+    [MenuItem("Tools/Excavator/Construction Site/Sync Manually Edited Preview Terrain")]
+    public static void SyncManuallyEditedTerrainBatch()
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+            throw new InvalidOperationException("请退出 Play 后同步手工地形。");
+        var snapshot = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(DirectoryPath + "/ConstructionSite.asset");
+        if (snapshot == null) throw new InvalidOperationException("缺少预览施工区资源。");
+        Undo.RecordObject(snapshot, "同步手工地形土层账本");
+        double before = snapshot.initialSoilVolumeM3;
+        snapshot.ReconcileEditedSurface();
+        EditorUtility.SetDirty(snapshot);
+        AssetDatabase.SaveAssets();
+        Debug.Log($"手工地形已同步：保留 Terrain 高度、纹理、holes 与设备位置；初始土量 {before:F3} -> {snapshot.initialSoilVolumeM3:F3}m³。");
+    }
+
+    /// <summary>Smooth the rear access patch toward the original map, preserving equipment support and cut-face geometry.</summary>
+    public static void SmoothRearAccessBatch()
+    {
+        var snapshot = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(DirectoryPath + "/ConstructionSite.asset");
+        if (snapshot == null || !snapshot.TryValidate(snapshot.sourceMapName, snapshot.georeferenceLatitude,
+            snapshot.georeferenceLongitude, snapshot.georeferenceHeight, out _))
+            throw new InvalidOperationException("请先同步并验证手工地形，再平顺通行区域。");
+        TerrainData data = snapshot.terrainData;
+        int n = data.heightmapResolution;
+        float[,] before = data.GetHeights(0, 0, n, n);
+        float[,] after = RearTravelTerrainGrade.SmoothAccessPatch(before, snapshot.terrainOrigin, data.size,
+            new Vector2(321f, 341.5f), 5f,
+            new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z),
+            new Vector2(snapshot.truckPosition.x, snapshot.truckPosition.z), snapshot.machineRotation,
+            snapshot.replacementPolygonXZ, out bool[,] scope);
+        float peakBefore = AccessPatchPeakSlope(before, data.size, scope);
+        float peakAfter = AccessPatchPeakSlope(after, data.size, scope);
+        if (peakAfter > peakBefore + .001f) throw new InvalidOperationException("局部平顺产生更陡的接缝，未保存。");
+        float[] oldFloor = (float[])snapshot.groundHeights.Clone();
+        double oldVolume = snapshot.initialSoilVolumeM3;
+        int changed = 0;
+        float maximumChange = 0;
+        try
+        {
+            data.SetHeights(0, 0, after);
+            float[,] stored = data.GetHeights(0, 0, n, n);
+            for (int z = 0; z < n; z++)
+                for (int x = 0; x < n; x++)
+                {
+                    int i = z * n + x;
+                    float thickness = Mathf.Max(0, before[z, x] - oldFloor[i]);
+                    if (stored[z, x] < thickness) throw new InvalidOperationException("平顺会截断土层底面，未保存。");
+                    snapshot.groundHeights[i] = stored[z, x] - thickness;
+                    float delta = Mathf.Abs(stored[z, x] - before[z, x]) * data.size.y;
+                    if (delta > .001f) changed++;
+                    maximumChange = Mathf.Max(maximumChange, delta);
+                }
+            snapshot.ReconcileEditedSurface();
+        }
+        catch
+        {
+            data.SetHeights(0, 0, before);
+            snapshot.groundHeights = oldFloor;
+            snapshot.initialSoilVolumeM3 = oldVolume;
+            throw;
+        }
+        EditorUtility.SetDirty(data);
+        EditorUtility.SetDirty(snapshot);
+        AssetDatabase.SaveAssets();
+        Debug.Log($"后方通行区平顺：改动 {changed} 格，最大高差 {maximumChange:F3}m；含接缝峰值坡度 {peakBefore:F3}->{peakAfter:F3}。设备位置、核心、前挖面与外边界保持不变。");
+    }
+
+    private static float AccessPatchPeakSlope(float[,] heights, Vector3 size, bool[,] scope)
+    {
+        int n = heights.GetLength(0);
+        float peak = 0;
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                if (x + 1 < n && (scope[z, x] || scope[z, x + 1]))
+                    peak = Mathf.Max(peak, Mathf.Abs(heights[z, x + 1] - heights[z, x]) * size.y * (n - 1) / size.x);
+                if (z + 1 < n && (scope[z, x] || scope[z + 1, x]))
+                    peak = Mathf.Max(peak, Mathf.Abs(heights[z + 1, x] - heights[z, x]) * size.y * (n - 1) / size.z);
+            }
+        return peak;
+    }
+
     /// <summary>Remove the identified front scan shards while preserving layout, track support and map clipping.</summary>
     [MenuItem("Tools/Excavator/Construction Site/Repair Preview Front Scan Shards")]
     public static void RepairFrontSurfaceBatch()
