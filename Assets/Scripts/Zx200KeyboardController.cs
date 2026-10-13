@@ -63,15 +63,14 @@ public class Zx200KeyboardController : MonoBehaviour
         float deltaTime = Time.deltaTime;
         float vertical = Input.GetAxisRaw("Vertical");
         float horizontal = Input.GetAxisRaw("Horizontal");
-        bool hasControlTopic = HasControlTopic();
-        bool topicActive = hasControlTopic && Time.time - lastTopicTime <= DriveTopicTimeout;
-        float topicSwing = hasControlTopic
+        bool topicActive = HasActiveControlTopic();
+        float topicSwing = topicActive
             ? -NormalizeAction(topicFrame.action3, neutralDeadzone) : 0f;
-        float topicArm = hasControlTopic
+        float topicArm = topicActive
             ? NormalizeAction(topicFrame.action4, neutralDeadzone) : 0f;
-        float topicBucket = hasControlTopic
+        float topicBucket = topicActive
             ? -NormalizeAction(topicFrame.action5, neutralDeadzone) : 0f;
-        float topicBoom = hasControlTopic
+        float topicBoom = topicActive
             ? -NormalizeAction(topicFrame.action6, neutralDeadzone) : 0f;
         float keyboardSwing = (Input.GetKey(KeyCode.E) ? 1f : 0f) -
             (Input.GetKey(KeyCode.Q) ? 1f : 0f);
@@ -92,7 +91,7 @@ public class Zx200KeyboardController : MonoBehaviour
             return;
         }
 
-        if (hasControlTopic && Time.time - lastTopicTime <= DriveTopicTimeout &&
+        if (topicActive &&
             Mathf.Approximately(vertical, 0f) && Mathf.Approximately(horizontal, 0f))
         {
             // AZ action1/2 是左、右履带。差速驱动中，两侧速度相同表示直行，
@@ -119,16 +118,16 @@ public class Zx200KeyboardController : MonoBehaviour
         // 对应键按下时键盘优先；该轴没有键盘输入时才使用 topic。
         // 导入模型的回转正方向与设备向左回转的方向相反。
         float swing = ResolveAxisInput(
-            Input.GetKey(KeyCode.E), Input.GetKey(KeyCode.Q), hasControlTopic, topicSwing) *
+            Input.GetKey(KeyCode.E), Input.GetKey(KeyCode.Q), topicActive, topicSwing) *
             swingSpeed * deltaTime;
         float boom = ResolveAxisInput(
-            Input.GetKey(KeyCode.F), Input.GetKey(KeyCode.R), hasControlTopic, topicBoom) *
+            Input.GetKey(KeyCode.F), Input.GetKey(KeyCode.R), topicActive, topicBoom) *
             boomSpeed * deltaTime;
         float arm = ResolveAxisInput(
-            Input.GetKey(KeyCode.T), Input.GetKey(KeyCode.G), hasControlTopic, topicArm) *
+            Input.GetKey(KeyCode.T), Input.GetKey(KeyCode.G), topicActive, topicArm) *
             armSpeed * deltaTime;
         float bucket = ResolveAxisInput(
-            Input.GetKey(KeyCode.Y), Input.GetKey(KeyCode.H), hasControlTopic, topicBucket) *
+            Input.GetKey(KeyCode.Y), Input.GetKey(KeyCode.H), topicActive, topicBucket) *
             bucketSpeed * deltaTime;
         if (!Mathf.Approximately(swing, 0f) || !Mathf.Approximately(boom, 0f) ||
             !Mathf.Approximately(arm, 0f) || !Mathf.Approximately(bucket, 0f))
@@ -178,6 +177,13 @@ public class Zx200KeyboardController : MonoBehaviour
     public bool HasControlTopic()
     {
         return topicFrame != null;
+    }
+
+    /// <summary>判断最近 AZ 输入是否仍可驱动六轴，避免串口断流后持续动作。</summary>
+    /// <returns>已收到控制帧且接收时间未超过0.5秒时返回true。</returns>
+    public bool HasActiveControlTopic()
+    {
+        return topicFrame != null && Time.time - lastTopicTime <= DriveTopicTimeout;
     }
 
     /// <summary>

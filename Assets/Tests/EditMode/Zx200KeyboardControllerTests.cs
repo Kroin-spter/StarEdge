@@ -127,6 +127,29 @@ namespace ExcavatorControls.Tests
             Assert.That(steering, Is.EqualTo(0f));
         }
 
+        [TestCase(0.1f, true)]
+        [TestCase(0.49f, true)]
+        [TestCase(0.51f, false)]
+        public void HasActiveControlTopic_ExpiresAllAzAxes(float age, bool expected)
+        {
+            var root = new GameObject("zx200");
+            try
+            {
+                var controller = root.AddComponent<Zx200KeyboardController>();
+                controller.ReceiveControlTopic("{\"action6\":254}");
+                typeof(Zx200KeyboardController).GetField("lastTopicTime",
+                    BindingFlags.Instance | BindingFlags.NonPublic).SetValue(controller, Time.time - age);
+                MethodInfo active = typeof(Zx200KeyboardController).GetMethod("HasActiveControlTopic");
+                Assert.That(active, Is.Not.Null, "All six axes must share the input freshness gate.");
+                Assert.That((bool)active.Invoke(controller, null), Is.EqualTo(expected));
+                Assert.That(controller.HasControlTopic(), Is.True, "History may remain without driving joints.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
         [Test]
         public void CalculateTrackMotion_OneTrackCreatesTurn()
         {

@@ -37,7 +37,11 @@ namespace ExcavatorControls.Tests
                 var automatic = scene.GetRootGameObjects().SelectMany(root =>
                     root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
                 double before = automatic.receiver.VolumeM3;
-                Assert.That(automatic.StartAutonomousJob(.1), Is.True);
+                automatic.targetVolumeM3 = .1f;
+                var command = typeof(AutonomousExcavationController).GetMethod("ReceiveAutonomousCommand");
+                Assert.That(command, Is.Not.Null, "The WebGL button must use the same autonomous entry as P.");
+                command.Invoke(automatic, new object[] { "start" });
+                Assert.That(automatic.IsRunning, Is.True, automatic.FaultReason);
                 var state = automatic.State;
                 float started = Time.time, cycleStarted = Time.time;
                 float deadline = Time.realtimeSinceStartup + 120f;
@@ -54,6 +58,43 @@ namespace ExcavatorControls.Tests
                 Assert.That(automatic.State, Is.EqualTo(AutonomousExcavationState.Completed), automatic.FaultReason);
                 Assert.That(automatic.receiver.VolumeM3 - before, Is.GreaterThanOrEqualTo(.1));
                 Debug.Log($"单斗总计时：{Time.time - cycleStarted:F2}模拟秒，实际装入={automatic.receiver.VolumeM3 - before:F5}m³");
+            }
+            finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
+        }
+
+        /// <summary>Verify live AZ boom input drives the saved machine and expires without further manual writes.</summary>
+        /// <returns>Saved scene initialization, held-input replay and timeout verification.</returns>
+        [UnityTest]
+        public IEnumerator SavedAzInputMovesAndStopsOnTimeout()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var keyboard = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<Zx200KeyboardController>(true)).Single();
+                var machine = keyboard.digController;
+                float deadline = Time.time + 5f;
+                while (machine.IsBusy && Time.time < deadline) yield return null;
+                Assert.That(machine.IsBusy, Is.False);
+                uint before = machine.ManualPoseRevision;
+                const string held = "{\"action1\":128,\"action2\":128,\"action3\":128,\"action4\":128,\"action5\":128,\"action6\":0}";
+                for (int i = 0; i < 20; i++)
+                {
+                    keyboard.ReceiveControlTopic(held);
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(machine.ManualPoseRevision, Is.GreaterThan(before), "Held AZ input must drive the actual manual controller.");
+                Assert.That(keyboard.ManualInputActive, Is.True);
+                yield return new WaitForSeconds(.65f);
+                uint stopped = machine.ManualPoseRevision;
+                Assert.That(keyboard.HasActiveControlTopic(), Is.False);
+                Assert.That(keyboard.ManualInputActive, Is.False);
+                yield return new WaitForSeconds(.15f);
+                Assert.That(machine.ManualPoseRevision, Is.EqualTo(stopped), "Expired input must not continue writing joint targets.");
             }
             finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
         }

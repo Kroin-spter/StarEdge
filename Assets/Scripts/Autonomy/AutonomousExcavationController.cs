@@ -408,6 +408,16 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         return StartAutonomousJob(targetVolumeM3);
     }
 
+    /// <summary>接收同源WebGL宿主的装车/人工接管命令，复用P和Esc的现有流程。</summary>
+    /// <param name="command">start启动当前目标量；stop立即交回人工控制。其他值不执行。</param>
+    public void ReceiveAutonomousCommand(string command)
+    {
+        if (!Application.isPlaying || !isActiveAndEnabled) return;
+        if (command == "start") StartAutonomousJob();
+        else if (command == "stop") RequestManualTakeover();
+        else Debug.LogWarning("忽略不支持的自主装车命令", this);
+    }
+
     /// <summary>启动指定增量土量的自主挖掘装车任务。</summary>
     /// <param name="requestedTargetM3">本次任务相对于当前车厢量的目标增量。</param>
     /// <returns>任务成功启动时返回 true。</returns>
