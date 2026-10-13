@@ -375,6 +375,44 @@ namespace ExcavatorControls.Tests
             Assert.That(controller.bucketJoint.xDrive.target, Is.EqualTo(-35.637974f).Within(0.001f));
         }
 
+        [Test]
+        public void SmoothTarget_ManualMoveRespondsFasterThanAutomaticMove()
+        {
+            controller.ResolveJoints();
+            MethodInfo smoothTarget = typeof(Zx200DigController).GetMethod(
+                "SmoothTarget", BindingFlags.Instance | BindingFlags.NonPublic);
+            PropertyInfo isBusy = typeof(Zx200DigController).GetProperty("IsBusy");
+            Assert.That(smoothTarget, Is.Not.Null);
+            Assert.That(isBusy, Is.Not.Null);
+
+            ArticulationBody joint = controller.boomJoint;
+            ArticulationDrive drive = joint.xDrive;
+            drive.target = -40f;
+            joint.xDrive = drive;
+            object[] manualArgs = { joint, -20f, 0f };
+            smoothTarget.Invoke(controller, manualArgs);
+            float manualTarget = joint.xDrive.target;
+
+            drive = joint.xDrive;
+            drive.target = -40f;
+            joint.xDrive = drive;
+            isBusy.SetValue(controller, true);
+            object[] automaticArgs = { joint, -20f, 0f };
+            smoothTarget.Invoke(controller, automaticArgs);
+            float automaticTarget = joint.xDrive.target;
+
+            float manualVelocity = 0f;
+            float automaticVelocity = 0f;
+            float expectedManual = Mathf.SmoothDamp(-40f, -20f, ref manualVelocity,
+                0.15f, Mathf.Infinity, Time.fixedDeltaTime);
+            float expectedAutomatic = Mathf.SmoothDamp(-40f, -20f, ref automaticVelocity,
+                0.3f, Mathf.Infinity, Time.fixedDeltaTime);
+            Assert.That(manualTarget, Is.EqualTo(expectedManual).Within(0.0001f));
+            Assert.That(automaticTarget, Is.EqualTo(expectedAutomatic).Within(0.0001f));
+            Assert.That(manualTarget, Is.GreaterThan(automaticTarget));
+            Assert.That(automaticTarget, Is.GreaterThan(-40f));
+        }
+
         private static ArticulationBody CreateJoint(
             string name, float lower, float upper, Transform parent)
         {

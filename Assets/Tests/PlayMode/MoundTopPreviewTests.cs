@@ -281,6 +281,8 @@ namespace ExcavatorControls.Tests
                     }
                     if (automatic.CompletedCycles > cycles)
                     {
+                        Assert.That(automatic.DumpDeploymentAttempts, Is.LessThanOrEqualTo(2),
+                            "每斗只允许一次联合定位及一次测量修正，不能重复试探卸料。");
                         Assert.That(automatic.receiver.VolumeM3, Is.GreaterThan(receipt + .005), "每斗都必须实际装入车厢。");
                         cycles = automatic.CompletedCycles;
                         receipt = automatic.receiver.VolumeM3;

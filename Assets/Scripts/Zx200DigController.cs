@@ -56,6 +56,8 @@ public class Zx200DigController : MonoBehaviour
     [Header("Motion Smoothing")]
     [Tooltip("关节目标起停的平滑时间，秒；减小突发加速对动态底盘的冲击。")]
     [Min(0.02f)] public float motionSmoothTime = 0.3f;
+    [Tooltip("手动关节目标的平滑时间，秒；自动姿态仍使用 motionSmoothTime。")]
+    [Min(0.02f)] public float manualMotionSmoothTime = 0.15f;
     private Zx200JointPose requestedPose;
     private Vector4 targetVelocities;
     private bool driveTargetsInitialized;
@@ -588,7 +590,7 @@ public class Zx200DigController : MonoBehaviour
     private void SmoothTarget(ArticulationBody joint, float target, ref float velocity)
     {
         float next = Mathf.SmoothDamp(joint.xDrive.target, target, ref velocity,
-            motionSmoothTime, Mathf.Infinity, Time.fixedDeltaTime);
+            IsBusy ? motionSmoothTime : manualMotionSmoothTime, Mathf.Infinity, Time.fixedDeltaTime);
         SetTarget(joint, next);
     }
 
@@ -609,6 +611,7 @@ public class Zx200DigController : MonoBehaviour
     private bool ValidateControlValues(out string error)
     {
         if (!IsFinitePositive(motionSmoothTime)) return Invalid("motionSmoothTime", out error);
+        if (!IsFinitePositive(manualMotionSmoothTime)) return Invalid("manualMotionSmoothTime", out error);
         if (!IsFiniteNonNegative(stiffness)) return Invalid("stiffness", out error);
         if (!IsFiniteNonNegative(damping)) return Invalid("damping", out error);
         if (!IsFinitePositive(forceLimit)) return Invalid("forceLimit", out error);

@@ -376,11 +376,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: armSpeed
-      value: 10
+      value: 25
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: boomSpeed
-      value: 10
+      value: 20
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: fixedBase
@@ -388,11 +388,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: swingSpeed
-      value: 15
+      value: 25
       objectReference: {fileID: 0}
     - target: {fileID: 8886816033785497736, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       propertyPath: bucketSpeed
-      value: 15
+      value: 35
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

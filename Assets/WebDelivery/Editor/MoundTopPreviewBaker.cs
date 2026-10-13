@@ -404,6 +404,75 @@ public static class MoundTopPreviewBaker
         }
     }
 
+    /// <summary>Grade the saved mound's rear and side travel band without rebaking map data or moving equipment.</summary>
+    public static void GradeRearTravelBatch()
+    {
+        EditorSceneManager.OpenScene(ScenePath);
+        var snapshot = AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(DirectoryPath + "/ConstructionSite.asset");
+        if (snapshot == null || snapshot.terrainData == null)
+            throw new InvalidOperationException("缺少已烘焙施工区，不能生成后侧通行缓坡。");
+        if (!snapshot.TryValidate(snapshot.sourceMapName, snapshot.georeferenceLatitude,
+            snapshot.georeferenceLongitude, snapshot.georeferenceHeight, out string initialReason))
+            throw new InvalidOperationException(initialReason);
+        TerrainData data = snapshot.terrainData;
+        int n = data.heightmapResolution;
+        float[,] before = data.GetHeights(0, 0, n, n);
+        float[,] after = RearTravelTerrainGrade.Grade(before, snapshot.terrainOrigin, data.size,
+            new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z), snapshot.machineRotation,
+            snapshot.replacementPolygonXZ, out bool[,] scope);
+        float peakBefore = RearTravelTerrainGrade.MaxNeighborSlope(before, data.size, scope);
+        float peakAfter = RearTravelTerrainGrade.MaxNeighborSlope(after, data.size, scope);
+        int changed = 0;
+        float maxDelta = 0f;
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                float delta = Mathf.Abs(after[z, x] - before[z, x]) * data.size.y;
+                if (delta > .001f) changed++;
+                maxDelta = Mathf.Max(maxDelta, delta);
+            }
+        if (changed == 0 || peakBefore <= 0f || peakAfter >= peakBefore)
+            throw new InvalidOperationException($"后侧缓坡没有降低局部峰值坡度：{peakBefore:F3} -> {peakAfter:F3}，改动格数={changed}；未保存。");
+
+        float[] oldFloor = (float[])snapshot.groundHeights.Clone();
+        float[] oldMask = (float[])snapshot.soilMask.Clone();
+        double oldVolume = snapshot.initialSoilVolumeM3;
+        try
+        {
+            data.SetHeights(0, 0, after);
+            float[,] stored = data.GetHeights(0, 0, n, n);
+            snapshot.initialSoilVolumeM3 = 0;
+            double cell = (double)data.size.x * data.size.y * data.size.z / ((n - 1) * (n - 1));
+            for (int z = 0; z < n; z++)
+                for (int x = 0; x < n; x++)
+                {
+                    int index = z * n + x;
+                    float thickness = Mathf.Max(0f, before[z, x] - oldFloor[index]);
+                    if (stored[z, x] + 1e-5f < thickness)
+                        throw new InvalidOperationException($"后侧缓坡会截断原土层（x={x},z={z}），未保存。");
+                    snapshot.groundHeights[index] = Mathf.Clamp01(stored[z, x] - thickness);
+                    snapshot.initialSoilVolumeM3 += (stored[z, x] - snapshot.groundHeights[index]) * cell *
+                        (x == 0 || x == n - 1 ? .5 : 1) * (z == 0 || z == n - 1 ? .5 : 1);
+                }
+            if (!snapshot.TryValidate(snapshot.sourceMapName, snapshot.georeferenceLatitude,
+                snapshot.georeferenceLongitude, snapshot.georeferenceHeight, out string reason))
+                throw new InvalidOperationException(reason);
+        }
+        catch
+        {
+            data.SetHeights(0, 0, before);
+            Array.Copy(oldFloor, snapshot.groundHeights, oldFloor.Length);
+            Array.Copy(oldMask, snapshot.soilMask, oldMask.Length);
+            snapshot.initialSoilVolumeM3 = oldVolume;
+            throw;
+        }
+        EditorUtility.SetDirty(data);
+        EditorUtility.SetDirty(snapshot);
+        AssetDatabase.SaveAssets();
+        Debug.Log($"后侧通行缓坡：峰值邻格坡度 {peakBefore:F3} -> {peakAfter:F3}，改动 {changed} 格，最大高差 {maxDelta:F2}m；" +
+            "履带核心、前方挖掘面、地图边界、holes 和矿车位置未改变。", snapshot);
+    }
+
     private static void PrepareLoadingGround(CesiumMoundSite site, BakedConstructionSiteData snapshot)
     {
         TerrainData data = snapshot.terrainData;

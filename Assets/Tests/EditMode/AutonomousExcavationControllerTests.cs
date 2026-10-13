@@ -7,6 +7,23 @@ namespace ExcavatorControls.Tests
     /// <summary>Validates autonomous boundaries and geometric collision predictions without loading Cesium.</summary>
     public class AutonomousExcavationControllerTests
     {
+        [Test]
+        public void ReturnSlewDurationBoundsPeakSpeedForLargeAngles()
+        {
+            Assert.That(AutonomousExcavationController.CalculateSlewDuration(0f, 84f), Is.EqualTo(3.5f).Within(.001f));
+            Assert.That(AutonomousExcavationController.CalculateSlewDuration(0f, 1f), Is.EqualTo(1.5f));
+        }
+
+        [Test]
+        public void DumpLandingAllowsSafeOffCenterButRejectsWallAndEnd()
+        {
+            var bed = new Vector2(2.4f, 4f);
+            Assert.That(AutonomousExcavationController.HasSafeDumpLanding(new Vector3(.2f, 1f, 0f), bed, .6f), Is.True);
+            Assert.That(AutonomousExcavationController.HasSafeDumpLanding(new Vector3(.6f, 1f, 0f), bed, .6f), Is.False);
+            Assert.That(AutonomousExcavationController.HasSafeDumpLanding(new Vector3(0f, 1f, 1.9f), bed, .6f), Is.False);
+            Assert.That(AutonomousExcavationController.HasSafeDumpLanding(Vector3.zero, new Vector2(1f, 4f), .6f), Is.False);
+        }
+
         /// <summary>Checking only endpoints misses a cab intersecting the middle of the return slew.</summary>
         [Test]
         public void ReturnSweepRejectsMidArcCollisionWithoutMovingBucket()
