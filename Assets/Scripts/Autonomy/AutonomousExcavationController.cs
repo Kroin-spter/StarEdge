@@ -675,9 +675,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             {
                 SetState(AutonomousExcavationState.PrepareDump, "向车厢侧展开斗杆并重新校准卸料落点");
                 Zx200JointPose actualBeforeDump = machine.ReadActualPose();
-                Zx200JointPose deployForDump = CreatePreSwingApproachPose(
-                    actualBeforeDump, machine.dumpPreparePose, actualBeforeDump.bucket);
-                deployForDump.duration = Mathf.Max(1.4f, machine.dumpPreparePose.duration);
+                Zx200JointPose deployForDump = PlanDumpDeployment(actualBeforeDump);
                 yield return MoveCoordinatedPose(
                     deployForDump, "车厢侧展开定位超时", AutonomousMotionAxis.Arm);
                 if (!IsRunning || !stageSucceeded) yield break;
@@ -1782,6 +1780,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private IEnumerator AlignCurrentSwing(bool faultOnFailure = true)
     {
         stageSucceeded = false;
+        if (IsProjectedDumpApproachSafe() && FindTruckPenetration() == null)
+        {
+            stageSucceeded = true;
+            yield break;
+        }
         for (int attempt = 0; IsRunning && attempt < 4; attempt++)
         {
             dumpSwingTarget = ComputeDumpSwingTarget(true);
@@ -1804,7 +1807,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             Zx200JointPose actual = machine.ReadActualPose();
             Zx200JointPose target = new Zx200JointPose(
                 dumpSwingTarget, actual.boom, actual.arm, actual.bucket,
-                Mathf.Max(.7f, Mathf.Abs(Mathf.DeltaAngle(actual.swing, dumpSwingTarget)) / 24f));
+                Mathf.Max(.25f, Mathf.Abs(Mathf.DeltaAngle(actual.swing, dumpSwingTarget)) / 16f));
             if (!machine.StartAutomaticPose(target))
             {
                 EnterFault("无法微调卸料回转姿态");
@@ -1898,7 +1901,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 }
             }
             if (Mathf.Abs(bestPose.arm - actual.arm) < 1f && Mathf.Abs(bestPose.boom - actual.boom) < 1f) yield break;
-            bestPose.duration = 1.2f;
+            bestPose.duration = GetDumpMotionDuration(actual, bestPose);
             yield return MoveToPose(bestPose, "车厢侧微调落点超时");
             if (!IsRunning || !stageSucceeded) yield break;
             yield return AlignCurrentSwing(false);
@@ -2067,12 +2070,12 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         }
     }
 
-    private IEnumerator RaiseBoomUntilTruckClearance(string timeoutReason)
+    private IEnumerator RaiseBoomUntilTruckClearance(string timeoutReason, float? clearanceHeight = null)
     {
         stageSucceeded = false;
         ArticulationDrive boomDrive = machine.boomJoint.xDrive;
         const int maximumRecoveryAttempts = 8;
-        float requiredHeight = GetTruckClearanceY() + dumpClearanceMarginMeters;
+        float requiredHeight = clearanceHeight ?? GetTruckClearanceY() + dumpClearanceMarginMeters;
         for (int attempt = 0; IsRunning && attempt < maximumRecoveryAttempts; attempt++)
         {
             if (cutter.TipWorldPosition.y >= requiredHeight)
@@ -2103,7 +2106,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
             Zx200JointPose waypoint = actual;
             waypoint.boom = nextBoom;
-            waypoint.duration = Mathf.Max(1.8f, machine.swingToDumpPose.duration);
+            waypoint.duration = GetDumpMotionDuration(actual, waypoint);
             // A sub-two-degree correction still matters at the truck rim; do not skip it
             // using the normal coarse joint tolerance.
             yield return MoveToPose(waypoint, timeoutReason, .25f);
@@ -2204,6 +2207,34 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         if (resistanceWasEnabled) resistance.enabled = false;
         try
         {
+            // The emptied bucket is lower than the cab after dumping. Before slewing away,
+            // clear the whole vehicle, not only the receiving bed's lower side walls.
+            float exitHeight = GetTruckClearanceY();
+            Transform truckRoot = receiver.transform.parent != null ? receiver.transform.parent : receiver.transform;
+            foreach (Collider collider in truckRoot.GetComponentsInChildren<Collider>())
+                if (collider.enabled && !collider.isTrigger) exitHeight = Mathf.Max(exitHeight, collider.bounds.max.y);
+            yield return RaiseBoomUntilTruckClearance("空斗离开车厢抬升超时",
+                exitHeight + dumpClearanceMarginMeters + .3f);
+            if (!IsRunning || !stageSucceeded) yield break;
+            // A safe tooth is not a safe bowl. Validate the complete empty-bucket slew
+            // before issuing it, and reserve bounded additional lift if an edge still clips.
+            bool exitClear = IsBucketReturnSweepClear(clearTruck.swing);
+            for (int attempt = 0; IsRunning && !exitClear && attempt < 3; attempt++)
+            {
+                yield return RaiseBoomUntilTruckClearance("空斗回转扫掠净空抬升超时",
+                    cutter.TipWorldPosition.y + .35f);
+                if (!IsRunning || !stageSucceeded) yield break;
+                exitClear = IsBucketReturnSweepClear(clearTruck.swing);
+            }
+            if (!exitClear)
+            {
+                EnterFault("空斗返回路径未能避开矿卡实体，保持停止，不执行危险回转。");
+                yield break;
+            }
+            actual = machine.ReadActualPose();
+            clearTruck.boom = actual.boom;
+            clearTruck.arm = actual.arm;
+            clearTruck.bucket = actual.bucket;
             yield return MoveToPose(clearTruck, "离开车厢回转姿态超时", 3f);
             if (IsRunning && stageSucceeded)
             {
@@ -2271,6 +2302,58 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         Vector3 pivot = joint.transform.TransformPoint(joint.anchorPosition);
         return pivot + Quaternion.AngleAxis(machine.dumpPose.bucket - actual.bucket, axis) *
             (cutter.TipWorldPosition - pivot);
+    }
+
+    private static float GetDumpMotionDuration(Zx200JointPose actual, Zx200JointPose target)
+    {
+        // SmoothProgress has a 1.5x peak speed. Bound the eased stroke, not only its average rate.
+        float swing = Mathf.Abs(target.swing - actual.swing) / 16f;
+        float boom = Mathf.Abs(target.boom - actual.boom) / 18f;
+        float arm = Mathf.Abs(target.arm - actual.arm) / 20f;
+        float bucket = Mathf.Abs(target.bucket - actual.bucket) / 35f;
+        return Mathf.Max(.25f, swing, boom, arm, bucket);
+    }
+
+    private Zx200JointPose PlanDumpDeployment(Zx200JointPose actual)
+    {
+        Zx200JointPose best = CreatePreSwingApproachPose(actual, machine.dumpPreparePose, actual.bucket);
+        Vector3 armPivot = machine.armJoint.transform.TransformPoint(machine.armJoint.anchorPosition);
+        Vector3 armAxis = machine.armJoint.transform.TransformDirection(machine.armJoint.anchorRotation * Vector3.right).normalized;
+        Vector3 swingPivot = machine.swingJoint.transform.TransformPoint(machine.swingJoint.anchorPosition);
+        Vector3 swingAxis = machine.swingJoint.transform.TransformDirection(machine.swingJoint.anchorRotation * Vector3.right).normalized;
+        Vector3 openTip = GetPredictedOpenTip();
+        float bestScore = float.PositiveInfinity;
+        // Plan against the deployed open-tip projection while keeping the bucket closed and boom lifted.
+        // This bounded kinematic search never writes joint state; real motion retains collision monitoring.
+        for (int step = -12; step <= 12; step++)
+        {
+            float arm = Zx200DigController.ClampTarget(machine.dumpPreparePose.arm + step * 2f,
+                machine.armJoint.xDrive.lowerLimit, machine.armJoint.xDrive.upperLimit);
+            Quaternion rotation = Quaternion.AngleAxis(arm - actual.arm, armAxis);
+            Vector3 tip = armPivot + rotation * (openTip - armPivot);
+            Vector3 closedTip = armPivot + rotation * (cutter.TipWorldPosition - armPivot);
+            float angle = ComputeDumpSwingTarget(true, tip);
+            Quaternion slew = Quaternion.AngleAxis(angle - actual.swing, swingAxis);
+            Vector3 predicted = swingPivot + slew * (tip - swingPivot);
+            Vector3 closed = swingPivot + slew * (closedTip - swingPivot);
+            Vector3 local = receiver.transform.InverseTransformPoint(predicted);
+            float halfWidth = Mathf.Min(.08f, receiver.size.x * .5f - cutter.innerMouthHalfWidth - .08f);
+            float halfLength = receiver.size.y * .5f - .35f;
+            if (halfWidth <= 0f || halfLength <= 0f) continue;
+            float widthError = Mathf.Max(0f, Mathf.Abs(local.x) - halfWidth);
+            float lengthError = Mathf.Max(0f, Mathf.Abs(local.z) - halfLength);
+            float heightError = Mathf.Max(0f, GetTruckClearanceY() + dumpClearanceMarginMeters - closed.y);
+            float score = (widthError * widthError + lengthError * lengthError + heightError * heightError) * 100f +
+                local.z * local.z * .001f + Mathf.Abs(arm - machine.dumpPreparePose.arm) * .0001f;
+            if (!receiver.TryGetLanding(predicted, MaximumDumpDropMeters, out _)) score += 100f;
+            if (score >= bestScore) continue;
+            bestScore = score;
+            best = actual;
+            best.arm = arm;
+            best.swing = angle;
+        }
+        best.duration = GetDumpMotionDuration(actual, best);
+        return best;
     }
 
     private bool IsBucketOpeningSweepClear(float boomDeltaDegrees = 0f)
@@ -2350,6 +2433,52 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             }
         }
         return openingSweepMaximumDepth <= TruckCollisionSlopToleranceMeters - maximumSampleDisplacement;
+    }
+
+    private bool IsBucketReturnSweepClear(float swingTargetDegrees)
+    {
+        ArticulationBody swing = machine.swingJoint;
+        Vector3 pivot = swing.transform.TransformPoint(swing.anchorPosition);
+        Vector3 axis = swing.transform.TransformDirection(swing.anchorRotation * Vector3.right).normalized;
+        float degrees = swingTargetDegrees - machine.ReadActualPose().swing;
+        machineCollisionScratch.Clear();
+        truckCollisionScratch.Clear();
+        machine.bucketJoint.GetComponentsInChildren(true, machineCollisionScratch);
+        Transform truck = receiver.transform.parent != null ? receiver.transform.parent : receiver.transform;
+        truck.GetComponentsInChildren(true, truckCollisionScratch);
+        bool hasBucket = false, hasTruck = false;
+        foreach (Collider bucket in machineCollisionScratch)
+        {
+            if (!bucket.enabled || !bucket.gameObject.activeInHierarchy || bucket.isTrigger) continue;
+            hasBucket = true;
+            foreach (Collider obstacle in truckCollisionScratch)
+            {
+                if (!obstacle.enabled || !obstacle.gameObject.activeInHierarchy || obstacle.isTrigger) continue;
+                hasTruck = true;
+                if (!IsRigidColliderSweepClear(bucket, obstacle, pivot, axis, degrees)) return false;
+            }
+        }
+        return hasBucket && hasTruck;
+    }
+
+    private static bool IsRigidColliderSweepClear(
+        Collider moving, Collider obstacle, Vector3 pivot, Vector3 axis, float degrees)
+    {
+        // Use the real collision shapes at predicted transforms, never teleport the machine.
+        // Radius includes every bound corner so even the outer bowl edge advances by at most 5 mm.
+        const float sampleDistance = .005f;
+        float radius = Vector3.ProjectOnPlane(moving.bounds.center - pivot, axis).magnitude +
+            moving.bounds.extents.magnitude;
+        int samples = Mathf.Max(1, Mathf.CeilToInt(Mathf.Abs(degrees) * Mathf.Deg2Rad * radius / sampleDistance));
+        Vector3 offset = moving.transform.position - pivot;
+        for (int sample = 0; sample <= samples; sample++)
+        {
+            Quaternion rotation = Quaternion.AngleAxis(degrees * sample / samples, axis);
+            if (Physics.ComputePenetration(moving, pivot + rotation * offset, rotation * moving.transform.rotation,
+                obstacle, obstacle.transform.position, obstacle.transform.rotation, out _, out float depth) &&
+                depth > TruckCollisionSlopToleranceMeters - sampleDistance) return false;
+        }
+        return true;
     }
 
     private bool CanContinueMotion(bool allowDuringReset)
@@ -2827,7 +2956,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         return Mathf.Max(minimumTransferVolumeM3, BucketResidualToleranceM3);
     }
 
-    private float ComputeDumpSwingTarget(bool forOpenBucket = false)
+    private float ComputeDumpSwingTarget(bool forOpenBucket = false, Vector3? projectedOpenTip = null)
     {
         Zx200JointPose actual = machine.ReadActualPose();
         ArticulationBody joint = machine.swingJoint;
@@ -2835,7 +2964,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
 
         Vector3 axis = joint.transform.TransformDirection(joint.anchorRotation * Vector3.right).normalized;
         Vector3 pivot = joint.transform.TransformPoint(joint.anchorPosition);
-        Vector3 landingTip = forOpenBucket ? GetPredictedOpenTip() : cutter.TipWorldPosition;
+        Vector3 landingTip = forOpenBucket ? projectedOpenTip ?? GetPredictedOpenTip() : cutter.TipWorldPosition;
         if (forOpenBucket)
         {
             float bestOpenScore = float.PositiveInfinity;

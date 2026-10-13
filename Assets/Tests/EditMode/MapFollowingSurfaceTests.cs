@@ -7,6 +7,42 @@ namespace ExcavatorControls.Tests
 {
     public sealed class MapFollowingSurfaceTests
     {
+        /// <summary>The truck stays on the lower mine floor instead of being lifted onto the excavator's mound.</summary>
+        [Test]
+        public void PreviewTruckRemainsOnLowerParkingGround()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            Assert.That(snapshot.selectedSupportY - snapshot.selectedTruckGroundY, Is.GreaterThanOrEqualTo(.8f));
+        }
+
+        /// <summary>Keep the long truck footprint along the lower terrace rather than across the connecting descent.</summary>
+        [Test]
+        public void PreviewTruckFootprintFollowsLowerTerrace()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            Vector3 separation = snapshot.truckPosition - snapshot.machinePosition;
+            separation.y = 0f;
+            Vector3 forward = snapshot.truckRotation * Vector3.forward;
+            forward.y = 0f;
+            Assert.That(Mathf.Abs(Vector3.Dot(separation.normalized, forward.normalized)),
+                Is.LessThan(.15f), "矿卡长轴不应跨在两车之间的下降坡上。");
+        }
+
+        /// <summary>The cab faces out of the corner; the bed, not the cab, lies toward the digging slope.</summary>
+        [Test]
+        public void PreviewTruckCabFacesAwayFromDiggingSlope()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            Vector3 diggingDirection = snapshot.machineRotation * Vector3.forward;
+            Vector3 truckForward = snapshot.truckRotation * Vector3.forward;
+            diggingDirection.y = truckForward.y = 0f;
+            Assert.That(Vector3.Dot(diggingDirection.normalized, truckForward.normalized),
+                Is.LessThan(-.8f), "车头应朝外，不能朝挖掘坡面。");
+        }
+
         /// <summary>A rejected parking fit must leave the terrain and soil ledger exactly as they were.</summary>
         [Test]
         public void FailedLoadingGroundFitLeavesTerrainAndLedgerUntouched()
@@ -63,6 +99,7 @@ namespace ExcavatorControls.Tests
             Vector3 side = Vector3.Cross(Vector3.up, direction.normalized);
             float length = direction.magnitude;
             float maximumGrade = 0f;
+            Vector3 worst = Vector3.zero;
             for (int offset = -3; offset <= 3; offset++)
             {
                 float previous = 0f;
@@ -72,11 +109,16 @@ namespace ExcavatorControls.Tests
                     float height = snapshot.terrainData.GetInterpolatedHeight(
                         (world.x - snapshot.terrainOrigin.x) / snapshot.terrainData.size.x,
                         (world.z - snapshot.terrainOrigin.z) / snapshot.terrainData.size.z);
-                    if (step > 0) maximumGrade = Mathf.Max(maximumGrade, Mathf.Abs(height - previous) / (length / 100f));
+                    if (step > 0)
+                    {
+                        float grade = Mathf.Abs(height - previous) / (length / 100f);
+                        if (grade > maximumGrade) { maximumGrade = grade; worst = world; }
+                    }
                     previous = height;
                 }
             }
-            Assert.That(maximumGrade, Is.LessThan(Mathf.Tan(20f * Mathf.Deg2Rad)), "两车之间应为连续缓坡，不应有断沟。");
+            // The truck now belongs on the lower floor; the inter-equipment slope is not its access road.
+            Assert.That(maximumGrade, Is.LessThan(Mathf.Tan(30f * Mathf.Deg2Rad)), "连接坡不应有断沟或陡坎，最陡点=" + worst);
         }
 
         /// <summary>Parking must remain nearly level instead of selecting a steep pose just to fit wheel support.</summary>

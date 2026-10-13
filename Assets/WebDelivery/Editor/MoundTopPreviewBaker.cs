@@ -242,7 +242,42 @@ public static class MoundTopPreviewBaker
         ConstructionSiteBaker.ApplySelectedBakedSite();
     }
 
-    private static void FitTruckToNaturalGround(CesiumMoundSite site, BakedConstructionSiteData snapshot)
+    /// <summary>Reverse the parked truck by 180 degrees, refitting wheel height without moving its X/Z or reshaping soil.</summary>
+    /// <remarks>Saves the validated snapshot and reapplies it to sence_test. Rejects unsupported wheel layouts.</remarks>
+    public static void ReverseTruckFacingBatch()
+    {
+        EditorSceneManager.OpenScene(ScenePath);
+        var site = UnityEngine.Object.FindFirstObjectByType<CesiumMoundSite>();
+        var snapshot = site.bakedSite;
+        Vector3 position = snapshot.truckPosition;
+        Quaternion rotation = snapshot.truckRotation;
+        float groundY = snapshot.selectedTruckGroundY;
+        try
+        {
+            snapshot.truckRotation = Quaternion.Euler(0f, rotation.eulerAngles.y + 180f, 0f);
+            FitTruckToNaturalGround(site, snapshot, true);
+            if (!snapshot.TryValidate(snapshot.sourceMapName, snapshot.georeferenceLatitude,
+                snapshot.georeferenceLongitude, snapshot.georeferenceHeight, out string reason))
+                throw new InvalidOperationException(reason);
+        }
+        catch
+        {
+            snapshot.truckPosition = position;
+            snapshot.truckRotation = rotation;
+            snapshot.selectedTruckGroundY = groundY;
+            site.truck.SetPositionAndRotation(position, rotation);
+            Physics.SyncTransforms();
+            throw;
+        }
+        EditorUtility.SetDirty(snapshot);
+        AssetDatabase.SaveAssets();
+        Selection.activeObject = snapshot;
+        ConstructionSiteBaker.ApplySelectedBakedSite();
+        Debug.Log("矿卡已原地掉头，车头朝外；地形和挖掘机保持不变。");
+    }
+
+    private static void FitTruckToNaturalGround(CesiumMoundSite site, BakedConstructionSiteData snapshot,
+        bool keepHorizontalPosition = false)
     {
         Collider[] wheels = site.truck.GetComponentsInChildren<Collider>().Where(wheel =>
             wheel.enabled && wheel.name.ToLowerInvariant().Contains("wheel") && wheel.name.Contains("collision")).ToArray();
@@ -252,6 +287,7 @@ public static class MoundTopPreviewBaker
             (world.x - snapshot.terrainOrigin.x) / data.size.x,
             (world.z - snapshot.terrainOrigin.z) / data.size.z);
         Vector3 origin = snapshot.truckPosition;
+        float heading = snapshot.truckRotation.eulerAngles.y;
         Vector3 bestPosition = origin;
         Quaternion bestRotation = snapshot.truckRotation;
         float bestPitch = 0f, bestRoll = 0f, bestScore = float.PositiveInfinity, bestGap = float.PositiveInfinity;
@@ -262,7 +298,7 @@ public static class MoundTopPreviewBaker
                 new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z));
             if (distance < 5.5f || distance > 6.5f) return;
             position.y = 0f;
-            Quaternion rotation = Quaternion.Euler(pitch, 239.868f, roll);
+            Quaternion rotation = Quaternion.Euler(pitch, heading, roll);
             site.truck.SetPositionAndRotation(position, rotation);
             Physics.SyncTransforms();
             float highest = float.NegativeInfinity, lowest = float.PositiveInfinity;
@@ -294,15 +330,17 @@ public static class MoundTopPreviewBaker
             bestRoll = roll;
         }
         // Search a small nearby parking region using actual wheel support, not a center-point slope estimate.
-        for (int x = -4; x <= 4; x++)
-            for (int z = -4; z <= 4; z++)
+        int searchSteps = keepHorizontalPosition ? 0 : 4;
+        for (int x = -searchSteps; x <= searchSteps; x++)
+            for (int z = -searchSteps; z <= searchSteps; z++)
                 for (int pitch = -5; pitch <= 5; pitch++)
                     for (int roll = -3; roll <= 3; roll++)
                         Consider(origin + new Vector3(x * .6f, 0f, z * .6f), pitch, roll);
         Vector3 coarsePosition = bestPosition;
         float coarsePitch = bestPitch, coarseRoll = bestRoll;
-        for (int x = -1; x <= 1; x++)
-            for (int z = -1; z <= 1; z++)
+        int refineSteps = keepHorizontalPosition ? 0 : 1;
+        for (int x = -refineSteps; x <= refineSteps; x++)
+            for (int z = -refineSteps; z <= refineSteps; z++)
                 for (int pitch = -2; pitch <= 2; pitch++)
                     for (int roll = -2; roll <= 2; roll++)
                         Consider(coarsePosition + new Vector3(x * .2f, 0f, z * .2f), coarsePitch + pitch, coarseRoll + roll);
@@ -375,11 +413,14 @@ public static class MoundTopPreviewBaker
         Vector2 machine = new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z);
         Vector2 truck = new Vector2(snapshot.truckPosition.x, snapshot.truckPosition.z);
         Vector2 direction = truck - machine;
-        float lengthSquared = direction.sqrMagnitude;
-        Quaternion inverse = Quaternion.Inverse(Quaternion.Euler(0f, 239.868f, 0f));
+        // Park longitudinally along the lower terrace: no wheel should straddle the descent.
+        float parkingHeading = Mathf.Atan2(direction.x, direction.y) * Mathf.Rad2Deg - 90f;
+        snapshot.truckRotation = Quaternion.Euler(0f, parkingHeading, 0f);
+        Quaternion inverse = Quaternion.Inverse(snapshot.truckRotation);
         float machineHeight = snapshot.terrainOrigin.y + data.GetInterpolatedHeight(
             (machine.x - snapshot.terrainOrigin.x) / data.size.x,
             (machine.y - snapshot.terrainOrigin.z) / data.size.z);
+        float parkingHeight = snapshot.selectedTruckGroundY;
         for (int z = 0; z < n; z++)
             for (int x = 0; x < n; x++)
             {
@@ -394,12 +435,18 @@ public static class MoundTopPreviewBaker
                 float parkingWeight = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1f, 1.8f, parkingRadius));
                 // Leave the bearing core untouched. Away from it, a shallow plane connects both machines,
                 // with a wide feather rather than the old one-metre transition into a deep depression.
-                float coreWeight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.8f, 2.8f, Vector2.Distance(point, machine)));
+                float coreWeight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.8f, 2.3f, Vector2.Distance(point, machine)));
                 float loadingSideWeight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 1.2f, projectedDistance));
                 float weight = Mathf.Max(corridorWeight, parkingWeight) * coreWeight * loadingSideWeight;
                 if (weight <= 0f) continue;
-                Vector3 relative = inverse * (world - new Vector3(machine.x, 0f, machine.y));
-                float target = (machineHeight + relative.z * .025f - snapshot.terrainOrigin.y) / data.size.y;
+                // The truck belongs on the lower floor, not on an extension of the track-bearing bench.
+                float ramp = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.8f, direction.magnitude - .6f, projectedDistance));
+                float rampHeight = Mathf.Lerp(machineHeight, parkingHeight, ramp);
+                float lowerPlane = parkingHeight + parking.z * .012f;
+                // Apply the descent once: blending the lower plane by ramp again steepens
+                // its middle and creates a second artificial break in the connecting slope.
+                float targetHeight = rampHeight + (lowerPlane - parkingHeight) * parkingWeight * ramp;
+                float target = (targetHeight - snapshot.terrainOrigin.y) / data.size.y;
                 after[z, x] = Mathf.Lerp(before[z, x], Mathf.Clamp01(target), weight);
             }
         data.SetHeights(0, 0, after);

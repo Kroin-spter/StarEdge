@@ -4,9 +4,55 @@ using UnityEngine;
 
 namespace ExcavatorControls.Tests
 {
-    /// <summary>Validates autonomous job boundaries without loading Cesium or running physics.</summary>
+    /// <summary>Validates autonomous boundaries and geometric collision predictions without loading Cesium.</summary>
     public class AutonomousExcavationControllerTests
     {
+        /// <summary>Checking only endpoints misses a cab intersecting the middle of the return slew.</summary>
+        [Test]
+        public void ReturnSweepRejectsMidArcCollisionWithoutMovingBucket()
+        {
+            var bucket = new GameObject("return bucket");
+            var cab = new GameObject("cab in slew path");
+            try
+            {
+                var moving = bucket.AddComponent<BoxCollider>();
+                moving.size = Vector3.one * .2f;
+                bucket.transform.position = new Vector3(2f, 0f, 0f);
+                var obstacle = cab.AddComponent<BoxCollider>();
+                obstacle.size = Vector3.one * .2f;
+                cab.transform.position = new Vector3(1.4142f, 0f, -1.4142f);
+                Physics.SyncTransforms();
+                MethodInfo sweep = typeof(AutonomousExcavationController).GetMethod(
+                    "IsRigidColliderSweepClear", BindingFlags.Static | BindingFlags.NonPublic);
+                Assert.That(sweep, Is.Not.Null, "回转前必须检查空斗实体扫掠，不只是斗尖高度。");
+                object[] args = { moving, obstacle, Vector3.zero, Vector3.up, 90f };
+                Assert.That((bool)sweep.Invoke(null, args), Is.False);
+                Assert.That(bucket.transform.position, Is.EqualTo(new Vector3(2f, 0f, 0f)));
+                cab.transform.position += Vector3.up * 2f;
+                Physics.SyncTransforms();
+                Assert.That((bool)sweep.Invoke(null, args), Is.True);
+            }
+            finally { Object.DestroyImmediate(bucket); Object.DestroyImmediate(cab); }
+        }
+
+        /// <summary>Small dump corrections should finish promptly while larger strokes remain speed-bounded and eased.</summary>
+        [Test]
+        public void DumpMotionDurationScalesWithMeasuredStroke()
+        {
+            MethodInfo method = typeof(AutonomousExcavationController).GetMethod(
+                "GetDumpMotionDuration", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            var actual = new Zx200JointPose(0f, 0f, 0f, 0f, 0f);
+            var small = new Zx200JointPose(3f, 0f, 3f, 0f, 0f);
+            float shortDuration = (float)method.Invoke(null, new object[] { actual, small });
+            Assert.That(shortDuration, Is.InRange(.25f, .5f));
+            var large = new Zx200JointPose(24f, 24f, 24f, 0f, 0f);
+            float longDuration = (float)method.Invoke(null, new object[] { actual, large });
+            Assert.That(longDuration, Is.GreaterThanOrEqualTo(1.2f));
+            Assert.That(longDuration, Is.LessThanOrEqualTo(2f));
+            Assert.That(longDuration, Is.GreaterThan(shortDuration));
+        }
+
         [Test]
         public void NewController_StartsIdle()
         {

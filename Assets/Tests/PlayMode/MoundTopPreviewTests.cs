@@ -21,6 +21,43 @@ namespace ExcavatorControls.Tests
             for (int i = 0; i < 3; i++) LogAssert.Expect(LogType.Error, $"Tree prefab at index {i} is missing.");
         }
 
+        /// <summary>Measure one real loading cycle by simulation time, independent of map startup and batch rendering speed.</summary>
+        /// <returns>Saved scene preparation, physical cycle timing and cleanup.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator SavedPreviewMeasuresOneLoadingCycle()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                double before = automatic.receiver.VolumeM3;
+                Assert.That(automatic.StartAutonomousJob(.1), Is.True);
+                var state = automatic.State;
+                float started = Time.time, cycleStarted = Time.time;
+                float deadline = Time.realtimeSinceStartup + 120f;
+                while (automatic.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    if (state != automatic.State)
+                    {
+                        Debug.Log($"单斗阶段计时：{state}={Time.time - started:F2}模拟秒");
+                        state = automatic.State;
+                        started = Time.time;
+                    }
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(automatic.State, Is.EqualTo(AutonomousExcavationState.Completed), automatic.FaultReason);
+                Assert.That(automatic.receiver.VolumeM3 - before, Is.GreaterThanOrEqualTo(.1));
+                Debug.Log($"单斗总计时：{Time.time - cycleStarted:F2}模拟秒，实际装入={automatic.receiver.VolumeM3 - before:F5}m³");
+            }
+            finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
+        }
+
         /// <summary>Drive the saved preview chassis downhill and back using real articulation forces.</summary>
         /// <returns>Scene preparation, travel posture, manual descent and ascent, then teardown.</returns>
         [UnityTest]
@@ -191,8 +228,16 @@ namespace ExcavatorControls.Tests
                 float deadline = Time.realtimeSinceStartup + 480f;
                 int cycles = 0;
                 double receipt = initial;
+                AutonomousExcavationState measuredState = automatic.State;
+                float stateStarted = Time.time;
                 while (automatic.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
+                    if (automatic.State != measuredState)
+                    {
+                        Debug.Log($"阶段耗时：斗数={cycles}，阶段={measuredState}，模拟秒={Time.time - stateStarted:F2}");
+                        measuredState = automatic.State;
+                        stateStarted = Time.time;
+                    }
                     if (automatic.CompletedCycles > cycles)
                     {
                         Assert.That(automatic.receiver.VolumeM3, Is.GreaterThan(receipt + .005), "每斗都必须实际装入车厢。");
