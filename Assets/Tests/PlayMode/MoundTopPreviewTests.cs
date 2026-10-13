@@ -171,6 +171,56 @@ namespace ExcavatorControls.Tests
             }
         }
 
+        /// <summary>Run the entire one-cubic-metre job so a successful first few buckets cannot conceal a later stall.</summary>
+        /// <returns>Saved scene startup, repeated physical cutting and receipt checks, then cleanup.</returns>
+        [UnityTest]
+        [Timeout(600000)]
+        public IEnumerator SavedPreviewCompletesContinuousLoadingGoal()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                double initial = automatic.receiver.VolumeM3;
+                Assert.That(automatic.StartAutonomousJob(1.0), Is.True, automatic.Status);
+                float deadline = Time.realtimeSinceStartup + 480f;
+                int cycles = 0;
+                double receipt = initial;
+                while (automatic.IsRunning && Time.realtimeSinceStartup < deadline)
+                {
+                    if (automatic.CompletedCycles > cycles)
+                    {
+                        Assert.That(automatic.receiver.VolumeM3, Is.GreaterThan(receipt + .005), "每斗都必须实际装入车厢。");
+                        cycles = automatic.CompletedCycles;
+                        receipt = automatic.receiver.VolumeM3;
+                        Debug.Log($"完整持续装车：斗数={cycles}，车厢增量={receipt - initial:F5}m³");
+                    }
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(automatic.State, Is.EqualTo(AutonomousExcavationState.Completed), automatic.FaultReason + " / " + automatic.Status);
+                Assert.That(automatic.CompletedCycles, Is.GreaterThanOrEqualTo(3));
+                Assert.That(automatic.receiver.VolumeM3 - initial, Is.GreaterThanOrEqualTo(1.0), "必须装到目标量而非提前停止。");
+                Debug.Log($"完整持续装车通过：斗数={automatic.CompletedCycles}，车厢增量={automatic.receiver.VolumeM3 - initial:F5}m³");
+                if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+                {
+                    Camera camera = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
+                        .First(candidate => candidate.CompareTag("MainCamera"));
+                    var site = automatic.GetComponent<CesiumMoundSite>() ?? scene.GetRootGameObjects()
+                        .SelectMany(root => root.GetComponentsInChildren<CesiumMoundSite>(true)).Single();
+                    Vector3 machine = site.bakedSite.machinePosition;
+                    Capture(camera, machine + new Vector3(-9f, 3f, -10f),
+                        (machine + site.truck.position) * .5f,
+                        "Diagnostics/continuous-loading-ground.png");
+                }
+            }
+            finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
+        }
+
         /// <summary>Require three actual excavation receipts from the saved preview, without injected soil.</summary>
         /// <returns>Scene startup, physical multi-bucket job and cleanup.</returns>
         [UnityTest]
@@ -269,6 +319,9 @@ namespace ExcavatorControls.Tests
                         site.bakedSite.machinePosition + Vector3.forward * 2f, "Diagnostics/mound-top-close.png");
                     Capture(camera, site.bakedSite.machinePosition + new Vector3(14f, 12f, 17f),
                         site.bakedSite.machinePosition, "Diagnostics/mound-top-front.png");
+                    Capture(camera, site.bakedSite.machinePosition + new Vector3(3f, 2f, -8f),
+                        (site.bakedSite.machinePosition + site.truck.position) * .5f,
+                        "Diagnostics/loading-ground-low-view.png");
                 }
             }
             finally

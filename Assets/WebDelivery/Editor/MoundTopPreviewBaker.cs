@@ -257,6 +257,7 @@ public static class MoundTopPreviewBaker
         float bestPitch = 0f, bestRoll = 0f, bestScore = float.PositiveInfinity, bestGap = float.PositiveInfinity;
         void Consider(Vector3 position, float pitch, float roll)
         {
+            if (Mathf.Abs(pitch) > 5f || Mathf.Abs(roll) > 3f) return;
             float distance = Vector2.Distance(new Vector2(position.x, position.z),
                 new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z));
             if (distance < 5.5f || distance > 6.5f) return;
@@ -282,7 +283,7 @@ public static class MoundTopPreviewBaker
             }
             float gap = highest - lowest;
             Vector2 offset = new Vector2(position.x - origin.x, position.z - origin.z);
-            float score = gap + offset.sqrMagnitude * .005f;
+            float score = gap + offset.sqrMagnitude * .005f + (pitch * pitch + roll * roll) * .001f;
             if (score >= bestScore) return;
             bestScore = score;
             bestGap = gap;
@@ -295,8 +296,8 @@ public static class MoundTopPreviewBaker
         // Search a small nearby parking region using actual wheel support, not a center-point slope estimate.
         for (int x = -4; x <= 4; x++)
             for (int z = -4; z <= 4; z++)
-                for (int pitch = -18; pitch <= 18; pitch += 3)
-                    for (int roll = -12; roll <= 12; roll += 3)
+                for (int pitch = -5; pitch <= 5; pitch++)
+                    for (int roll = -3; roll <= 3; roll++)
                         Consider(origin + new Vector3(x * .6f, 0f, z * .6f), pitch, roll);
         Vector3 coarsePosition = bestPosition;
         float coarsePitch = bestPitch, coarseRoll = bestRoll;
@@ -316,6 +317,109 @@ public static class MoundTopPreviewBaker
         site.truck.SetPositionAndRotation(bestPosition, bestRotation);
         Physics.SyncTransforms();
         Debug.Log($"自然轮胎支撑：矿车={bestPosition}，姿态={bestRotation.eulerAngles}，最大轮间支撑差={bestGap:F4}m");
+    }
+
+    /// <summary>Blend a gently graded loading corridor into the saved mound, fit the real wheels and save the scene.</summary>
+    /// <remarks>Batch-only authoring operation; preserves local soil thickness and the central track-bearing core.</remarks>
+    public static void BlendLoadingGroundBatch()
+    {
+        EditorSceneManager.OpenScene(ScenePath);
+        var site = UnityEngine.Object.FindFirstObjectByType<CesiumMoundSite>();
+        var snapshot = site.bakedSite;
+        BlendLoadingGround(site, snapshot);
+        EditorUtility.SetDirty(snapshot.terrainData);
+        EditorUtility.SetDirty(snapshot);
+        AssetDatabase.SaveAssets();
+        Selection.activeObject = snapshot;
+        ConstructionSiteBaker.ApplySelectedBakedSite();
+        Debug.Log("装车区已生成连续缓坡，履带核心和土层厚度保持不变。");
+    }
+
+    private static void BlendLoadingGround(CesiumMoundSite site, BakedConstructionSiteData snapshot)
+    {
+        TerrainData data = snapshot.terrainData;
+        int n = data.heightmapResolution;
+        float[,] heights = data.GetHeights(0, 0, n, n);
+        float[] floor = (float[])snapshot.groundHeights.Clone();
+        float[] mask = (float[])snapshot.soilMask.Clone();
+        double volume = snapshot.initialSoilVolumeM3;
+        Vector3 position = snapshot.truckPosition;
+        Quaternion rotation = snapshot.truckRotation;
+        float groundY = snapshot.selectedTruckGroundY;
+        Vector3 actualPosition = site.truck.position;
+        Quaternion actualRotation = site.truck.rotation;
+        try { PrepareLoadingGround(site, snapshot); }
+        catch
+        {
+            // Terrain and the soil ledger form one authoring transaction. A failed parking search
+            // must not leave modified asset objects available for a later accidental save.
+            data.SetHeights(0, 0, heights);
+            Array.Copy(floor, snapshot.groundHeights, floor.Length);
+            Array.Copy(mask, snapshot.soilMask, mask.Length);
+            snapshot.initialSoilVolumeM3 = volume;
+            snapshot.truckPosition = position;
+            snapshot.truckRotation = rotation;
+            snapshot.selectedTruckGroundY = groundY;
+            site.truck.SetPositionAndRotation(actualPosition, actualRotation);
+            Physics.SyncTransforms();
+            throw;
+        }
+    }
+
+    private static void PrepareLoadingGround(CesiumMoundSite site, BakedConstructionSiteData snapshot)
+    {
+        TerrainData data = snapshot.terrainData;
+        int n = data.heightmapResolution;
+        float[,] before = data.GetHeights(0, 0, n, n);
+        float[,] after = (float[,])before.Clone();
+        Vector2 machine = new Vector2(snapshot.machinePosition.x, snapshot.machinePosition.z);
+        Vector2 truck = new Vector2(snapshot.truckPosition.x, snapshot.truckPosition.z);
+        Vector2 direction = truck - machine;
+        float lengthSquared = direction.sqrMagnitude;
+        Quaternion inverse = Quaternion.Inverse(Quaternion.Euler(0f, 239.868f, 0f));
+        float machineHeight = snapshot.terrainOrigin.y + data.GetInterpolatedHeight(
+            (machine.x - snapshot.terrainOrigin.x) / data.size.x,
+            (machine.y - snapshot.terrainOrigin.z) / data.size.z);
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                Vector3 world = snapshot.terrainOrigin + new Vector3(x * data.size.x / (n - 1), 0f, z * data.size.z / (n - 1));
+                Vector2 point = new Vector2(world.x, world.z);
+                float projectedDistance = Vector2.Dot(point - machine, direction.normalized);
+                float along = Mathf.Clamp01(projectedDistance / direction.magnitude);
+                float distance = Vector2.Distance(point, machine + direction * along);
+                float corridorWeight = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.8f, 4.8f, distance));
+                Vector3 parking = inverse * (world - snapshot.truckPosition);
+                float parkingRadius = new Vector2(parking.x / 2.1f, (parking.z - .8f) / 4.7f).magnitude;
+                float parkingWeight = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1f, 1.8f, parkingRadius));
+                // Leave the bearing core untouched. Away from it, a shallow plane connects both machines,
+                // with a wide feather rather than the old one-metre transition into a deep depression.
+                float coreWeight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.8f, 2.8f, Vector2.Distance(point, machine)));
+                float loadingSideWeight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 1.2f, projectedDistance));
+                float weight = Mathf.Max(corridorWeight, parkingWeight) * coreWeight * loadingSideWeight;
+                if (weight <= 0f) continue;
+                Vector3 relative = inverse * (world - new Vector3(machine.x, 0f, machine.y));
+                float target = (machineHeight + relative.z * .025f - snapshot.terrainOrigin.y) / data.size.y;
+                after[z, x] = Mathf.Lerp(before[z, x], Mathf.Clamp01(target), weight);
+            }
+        data.SetHeights(0, 0, after);
+        after = data.GetHeights(0, 0, n, n);
+        snapshot.initialSoilVolumeM3 = 0;
+        double cell = (double)data.size.x * data.size.y * data.size.z / ((n - 1) * (n - 1));
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++)
+            {
+                int index = z * n + x;
+                float thickness = Mathf.Max(0f, before[z, x] - snapshot.groundHeights[index]);
+                snapshot.groundHeights[index] = Mathf.Max(0f, after[z, x] - thickness);
+                snapshot.soilMask[index] = thickness > .00001f ? 1f : 0f;
+                snapshot.initialSoilVolumeM3 += (after[z, x] - snapshot.groundHeights[index]) * cell *
+                    (x == 0 || x == n - 1 ? .5 : 1) * (z == 0 || z == n - 1 ? .5 : 1);
+            }
+        FitTruckToNaturalGround(site, snapshot);
+        if (!snapshot.TryValidate(snapshot.sourceMapName, snapshot.georeferenceLatitude,
+            snapshot.georeferenceLongitude, snapshot.georeferenceHeight, out string reason))
+            throw new InvalidOperationException(reason);
     }
 
     /// <summary>Sample original map elevations, repair scanned equipment and save the independently baked preview.</summary>

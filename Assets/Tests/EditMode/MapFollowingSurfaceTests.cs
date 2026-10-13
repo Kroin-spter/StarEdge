@@ -7,6 +7,89 @@ namespace ExcavatorControls.Tests
 {
     public sealed class MapFollowingSurfaceTests
     {
+        /// <summary>A rejected parking fit must leave the terrain and soil ledger exactly as they were.</summary>
+        [Test]
+        public void FailedLoadingGroundFitLeavesTerrainAndLedgerUntouched()
+        {
+            var source = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            var snapshot = UnityEngine.Object.Instantiate(source);
+            snapshot.terrainData = UnityEngine.Object.Instantiate(source.terrainData);
+            snapshot.groundHeights = (float[])source.groundHeights.Clone();
+            snapshot.soilMask = (float[])source.soilMask.Clone();
+            var root = new GameObject("invalid loading parking");
+            var truck = new GameObject("truck without wheels");
+            try
+            {
+                var site = root.AddComponent<CesiumMoundSite>();
+                site.truck = truck.transform;
+                int n = snapshot.terrainData.heightmapResolution;
+                float[,] heights = snapshot.terrainData.GetHeights(0, 0, n, n);
+                float[] floor = (float[])snapshot.groundHeights.Clone();
+                float[] mask = (float[])snapshot.soilMask.Clone();
+                double volume = snapshot.initialSoilVolumeM3;
+                Type baker = typeof(MapFollowingSurfaceTests).Assembly.GetType("MoundTopPreviewBaker");
+                if (baker == null)
+                    foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                    { baker = assembly.GetType("MoundTopPreviewBaker"); if (baker != null) break; }
+                MethodInfo method = baker.GetMethod("BlendLoadingGround", BindingFlags.NonPublic | BindingFlags.Static);
+                Assert.That(method, Is.Not.Null, "需要可验证且失败不留半成品的地形准备步骤。");
+                var failure = Assert.Throws<TargetInvocationException>(() => method.Invoke(null, new object[] { site, snapshot }));
+                Assert.That(failure.InnerException, Is.TypeOf<InvalidOperationException>());
+                Assert.That(snapshot.terrainData.GetHeights(0, 0, n, n), Is.EqualTo(heights));
+                Assert.That(snapshot.groundHeights, Is.EqualTo(floor));
+                Assert.That(snapshot.soilMask, Is.EqualTo(mask));
+                Assert.That(snapshot.initialSoilVolumeM3, Is.EqualTo(volume));
+                Assert.That(snapshot.truckPosition, Is.EqualTo(source.truckPosition));
+                Assert.That(snapshot.truckRotation, Is.EqualTo(source.truckRotation));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(truck);
+                UnityEngine.Object.DestroyImmediate(snapshot.terrainData);
+                UnityEngine.Object.DestroyImmediate(snapshot);
+            }
+        }
+
+        /// <summary>The loading corridor must not contain a cliff or a trench between the two machines.</summary>
+        [Test]
+        public void LoadingCorridorHasNoAbruptTrench()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            Vector3 direction = snapshot.truckPosition - snapshot.machinePosition;
+            direction.y = 0f;
+            Vector3 side = Vector3.Cross(Vector3.up, direction.normalized);
+            float length = direction.magnitude;
+            float maximumGrade = 0f;
+            for (int offset = -3; offset <= 3; offset++)
+            {
+                float previous = 0f;
+                for (int step = 0; step <= 100; step++)
+                {
+                    Vector3 world = snapshot.machinePosition + direction * (step / 100f) + side * (offset * .25f);
+                    float height = snapshot.terrainData.GetInterpolatedHeight(
+                        (world.x - snapshot.terrainOrigin.x) / snapshot.terrainData.size.x,
+                        (world.z - snapshot.terrainOrigin.z) / snapshot.terrainData.size.z);
+                    if (step > 0) maximumGrade = Mathf.Max(maximumGrade, Mathf.Abs(height - previous) / (length / 100f));
+                    previous = height;
+                }
+            }
+            Assert.That(maximumGrade, Is.LessThan(Mathf.Tan(20f * Mathf.Deg2Rad)), "两车之间应为连续缓坡，不应有断沟。");
+        }
+
+        /// <summary>Parking must remain nearly level instead of selecting a steep pose just to fit wheel support.</summary>
+        [Test]
+        public void PreviewTruckParksNearlyLevel()
+        {
+            var snapshot = UnityEditor.AssetDatabase.LoadAssetAtPath<BakedConstructionSiteData>(
+                "Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset");
+            Vector3 angles = snapshot.truckRotation.eulerAngles;
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(0f, angles.x)), Is.LessThanOrEqualTo(5.01f));
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(0f, angles.z)), Is.LessThanOrEqualTo(3.01f));
+        }
+
         /// <summary>Gravity discharge must intersect the real bed plane when the truck follows a mild slope.</summary>
         [Test]
         public void TiltedTruckReceivesOnItsActualPlane()
