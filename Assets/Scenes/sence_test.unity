@@ -1674,6 +1674,7 @@ GameObject:
   - component: {fileID: 1633613322}
   - component: {fileID: 1633613321}
   - component: {fileID: 1633613324}
+  - component: {fileID: 1633613325}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1681,6 +1682,28 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &1633613325
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1633613320}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 03b4eb081f4044628dd81910118a786b, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  enhancementEnabled: 1
+  showToggle: 1
+  toggleKey: 289
+  sunlight: {fileID: 1705196282}
+  presetProfile: {fileID: 11400000, guid: 6c4f0a0a147347b5ba680a0f6de89ac8, type: 2}
+  exposure: 0.2
+  contrast: 8
+  saturation: 3
+  temperature: 2
+  shadowStrengthScale: 0.82
 --- !u!81 &1633613321
 AudioListener:
   m_ObjectHideFlags: 0

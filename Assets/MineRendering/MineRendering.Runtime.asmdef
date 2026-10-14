@@ -1,0 +1,5 @@
+{
+  "name": "MineRendering.Runtime",
+  "references": ["Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"],
+  "autoReferenced": true
+}
