@@ -102,7 +102,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     [Header("Job Settings")]
     [Min(.001f)] public float targetVolumeM3 = 1f;
     [Min(.0001f)] public float minimumLoadVolumeM3 = .005f;
-    [Range(.1f, .95f)] public float targetBucketFillFraction = .65f;
+    [Range(.1f, .95f)] public float targetBucketFillFraction = .85f;
     [Min(.0001f)] public float minimumTransferVolumeM3 = .005f;
     [Min(1f)] public float siteReadyTimeoutSeconds = 40f;
     [Min(1f)] public float stageTimeoutSeconds = 12f;

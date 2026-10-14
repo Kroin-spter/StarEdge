@@ -7,6 +7,36 @@ namespace ExcavatorControls.Tests
 {
     public class Zx200DigControllerTests
     {
+        /// <summary>Ordinary forward contact keeps smoothing, while unsafe target corrections remain immediate.</summary>
+        [Test]
+        public void ForwardContactLimitDoesNotJumpDrivePastItsSmoothingStep()
+        {
+            var go = new GameObject("limited drive");
+            try
+            {
+                var joint = go.AddComponent<ArticulationBody>();
+                var drive = joint.xDrive;
+                drive.lowerLimit = -90; drive.upperLimit = 90; drive.target = 0;
+                joint.xDrive = drive;
+                var method = typeof(Zx200DigController).GetMethod("ApplyConstrainedTarget",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                object[] args = { joint, 1f, .2f, 1f, true };
+                method.Invoke(null, args);
+                Assert.That(joint.xDrive.target, Is.EqualTo(0), "A safe forward limit must still pass through smoothing.");
+                Assert.That((float)args[3], Is.GreaterThan(0), "Continuous forward contact must not reset acceleration every step.");
+                args = new object[] { joint, 1f, -.1f, 1f, true };
+                method.Invoke(null, args);
+                Assert.That(joint.xDrive.target, Is.EqualTo(-.1f).Within(.0001f), "An unsafe target correction must remain immediate.");
+                Assert.That((float)args[3], Is.Zero);
+                drive = joint.xDrive;
+                drive.target = -10;
+                joint.xDrive = drive;
+                args = new object[] { joint, 10f, 0f, 1f, false };
+                method.Invoke(null, args);
+                Assert.That(joint.xDrive.target, Is.Zero, "Safety holds must immediately replace an unsafe existing drive.");
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
         private GameObject root;
         private Zx200DigController controller;
 

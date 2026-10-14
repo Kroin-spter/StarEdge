@@ -7,6 +7,12 @@ using UnityEngine;
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public sealed class SoilReceivingZone : MonoBehaviour
 {
+    private static readonly List<SoilReceivingZone> activeZones = new List<SoilReceivingZone>();
+    private static readonly IReadOnlyList<SoilReceivingZone> activeZoneView = activeZones.AsReadOnly();
+    // Non-ExecuteAlways components do not reliably receive registry callbacks in Edit Mode.
+    internal static IReadOnlyList<SoilReceivingZone> ActiveZones => Application.isPlaying
+        ? activeZoneView
+        : FindObjectsByType<SoilReceivingZone>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
     public Vector2 size = new Vector2(3, 4);
     [Min(.001f)] public float capacityM3 = 3;
     [Min(.01f)] public float maximumFillHeight = 1;
@@ -20,6 +26,9 @@ public sealed class SoilReceivingZone : MonoBehaviour
     public IReadOnlyList<TransferRecord> Records => records.AsReadOnly();
     private readonly List<TransferRecord> records = new List<TransferRecord>();
     private Mesh mesh;
+    private Mesh surfaceMesh;
+    private MeshRenderer surfaceRenderer;
+    private bool meshDirty;
     private ReceivingSoilHeap heap;
     internal float HeightAt(Vector3 local) => !isGroundPile && heap != null ? heap.Height(local) : SurfaceLocalY;
 
@@ -75,8 +84,14 @@ public sealed class SoilReceivingZone : MonoBehaviour
         return 0;
     }
 
-    private bool CanExcavate(double requested) => isGroundPile && isActiveAndEnabled &&
-        double.IsFinite(requested) && requested > 0 && VolumeM3 > 0 && mesh != null;
+    private bool CanExcavate(double requested)
+    {
+        if (!isGroundPile || !isActiveAndEnabled || !double.IsFinite(requested) ||
+            requested <= 0 || VolumeM3 <= 0) return false;
+        // Cutting must see deposits from earlier in this frame, before the visual flush.
+        if (meshDirty) RefreshMesh();
+        return mesh != null;
+    }
 
     private double RemoveLooseVolume(double requested)
     {
@@ -84,7 +99,7 @@ public sealed class SoilReceivingZone : MonoBehaviour
         double removed = Math.Min(requested, VolumeM3);
         VolumeM3 -= removed;
         MassKg = Math.Max(0, MassKg - removed * density);
-        RefreshMesh();
+        RequestMeshRefresh();
         return removed;
     }
 
@@ -216,7 +231,7 @@ public sealed class SoilReceivingZone : MonoBehaviour
             if (heap == null) heap = new ReceivingSoilHeap(size);
             heap.Add(accepted, local, maximumFillHeight);
         }
-        RefreshMesh();
+        RequestMeshRefresh();
         return accepted;
     }
 
@@ -232,15 +247,60 @@ public sealed class SoilReceivingZone : MonoBehaviour
             MassKg += record.MassKg;
             heap?.Add(record.VolumeM3, record.LocalLanding, maximumFillHeight);
         }
-        RefreshMesh();
+        RequestMeshRefresh();
     }
 
     private void Awake() => RefreshMesh();
 
+    private void OnEnable()
+    {
+        if (!activeZones.Contains(this)) activeZones.Add(this);
+        RequestMeshRefresh();
+    }
+
+    private void OnDisable()
+    {
+        activeZones.Remove(this);
+        if (surfaceRenderer != null) surfaceRenderer.enabled = false;
+    }
+
+    private void RequestMeshRefresh()
+    {
+        meshDirty = true;
+        if (VolumeM3 <= 0)
+        {
+            GetComponent<MeshRenderer>().enabled = false;
+            if (surfaceRenderer != null) surfaceRenderer.enabled = false;
+        }
+        if (!Application.isPlaying) RefreshMesh();
+    }
+
+    private void LateUpdate()
+    {
+        if (meshDirty) RefreshMesh();
+        SyncSurfaceRenderer();
+    }
+
+    private void SyncSurfaceRenderer()
+    {
+        if (surfaceRenderer == null) return;
+        surfaceRenderer.enabled = isActiveAndEnabled && !isGroundPile && VolumeM3 > 0;
+        if (!surfaceRenderer.enabled) return;
+        // Scene builders can assign the soil material after AddComponent/Awake.
+        var renderer = GetComponent<MeshRenderer>();
+        surfaceRenderer.sharedMaterial = renderer.sharedMaterial;
+        surfaceRenderer.shadowCastingMode = renderer.shadowCastingMode;
+        surfaceRenderer.receiveShadows = renderer.receiveShadows;
+        surfaceRenderer.renderingLayerMask = renderer.renderingLayerMask;
+        surfaceRenderer.gameObject.layer = gameObject.layer;
+    }
+
     private void RefreshMesh()
     {
+        meshDirty = false;
         var renderer = GetComponent<MeshRenderer>();
-        renderer.enabled = VolumeM3 > 0;
+        renderer.enabled = isGroundPile && VolumeM3 > 0;
+        if (surfaceRenderer != null) surfaceRenderer.enabled = false;
         if (VolumeM3 <= 0) return;
         if (mesh == null)
         {
@@ -279,6 +339,16 @@ public sealed class SoilReceivingZone : MonoBehaviour
             return;
         }
         heap?.Build(mesh);
+        if (surfaceMesh == null)
+        {
+            surfaceMesh = new Mesh { name = "Received soil surface", hideFlags = HideFlags.DontSave };
+            var visual = new GameObject("Received soil surface") { hideFlags = HideFlags.DontSave };
+            visual.transform.SetParent(transform, false);
+            visual.AddComponent<MeshFilter>().sharedMesh = surfaceMesh;
+            surfaceRenderer = visual.AddComponent<MeshRenderer>();
+        }
+        heap?.BuildSurface(surfaceMesh);
+        SyncSurfaceRenderer();
     }
 
     private Vector3 ConformPileBase(Vector3 localPoint, DeformableSoilTerrain source)
@@ -303,8 +373,20 @@ public sealed class SoilReceivingZone : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (mesh == null) return;
-        if (Application.isPlaying) Destroy(mesh); else DestroyImmediate(mesh);
+        activeZones.Remove(this);
+        if (surfaceRenderer != null)
+        {
+            if (Application.isPlaying) Destroy(surfaceRenderer.gameObject);
+            else DestroyImmediate(surfaceRenderer.gameObject);
+        }
+        if (surfaceMesh != null)
+        {
+            if (Application.isPlaying) Destroy(surfaceMesh); else DestroyImmediate(surfaceMesh);
+        }
+        if (mesh != null)
+        {
+            if (Application.isPlaying) Destroy(mesh); else DestroyImmediate(mesh);
+        }
     }
 
     private void OnDrawGizmosSelected()

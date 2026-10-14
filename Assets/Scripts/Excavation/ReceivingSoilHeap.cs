@@ -9,6 +9,11 @@ internal sealed class ReceivingSoilHeap
     private readonly Vector2 size;
     private readonly double[] volumes = new double[Columns * Rows];
     private readonly double[] areas = new double[Columns * Rows];
+    private readonly double[] weights = new double[Columns * Rows];
+    private readonly List<Vector3> surfaceVertices = new List<Vector3>();
+    private readonly List<Vector2> surfaceUv = new List<Vector2>();
+    private readonly List<int> surfaceTriangles = new List<int>();
+    private readonly Vector3[] clipped = new Vector3[4];
     private readonly float dx, dz;
 
     internal ReceivingSoilHeap(Vector2 size)
@@ -28,7 +33,6 @@ internal sealed class ReceivingSoilHeap
 
     internal void Add(double volume, Vector3 local, float ceiling)
     {
-        var weights = new double[volumes.Length];
         float radius = Mathf.Max(.35f, Mathf.Min(size.x, size.y) * .22f);
         for (int i = 0; i < weights.Length; i++)
         {
@@ -55,24 +59,29 @@ internal sealed class ReceivingSoilHeap
         }
         // Local avalanching limits slopes without changing the integral of the mesh.
         for (int pass = 0; pass < 32; pass++)
+        {
+            bool changed = false;
             for (int z = 0; z < Rows; z++)
                 for (int x = 0; x < Columns; x++)
                 {
                     int a = z * Columns + x;
-                    if (x + 1 < Columns) Relax(a, a + 1, dx);
-                    if (z + 1 < Rows) Relax(a, a + Columns, dz);
+                    if (x + 1 < Columns) changed |= Relax(a, a + 1, dx);
+                    if (z + 1 < Rows) changed |= Relax(a, a + Columns, dz);
                 }
+            if (!changed) break;
+        }
     }
 
-    private void Relax(int a, int b, float distance)
+    private bool Relax(int a, int b, float distance)
     {
         double difference = volumes[a] / areas[a] - volumes[b] / areas[b];
         double excess = Math.Abs(difference) - distance * .624869;
-        if (excess <= 0) return;
+        if (excess <= 0) return false;
         double transfer = excess / (1 / areas[a] + 1 / areas[b]);
         if (difference < 0) transfer = -transfer;
         volumes[a] -= transfer;
         volumes[b] += transfer;
+        return true;
     }
 
     internal float Height(Vector3 local)
@@ -92,6 +101,12 @@ internal sealed class ReceivingSoilHeap
 
     internal bool Intersect(Vector3 start, Vector3 end, out Vector3 landing)
     {
+        landing = start;
+        // Most loose-soil parcels are nowhere near the truck. Reject their segment bounds
+        // before visiting the heap triangles; this also handles horizontal off-bed spills.
+        if (Mathf.Min(start.x, end.x) > size.x * .5f || Mathf.Max(start.x, end.x) < -size.x * .5f ||
+            Mathf.Min(start.z, end.z) > size.y * .5f || Mathf.Max(start.z, end.z) < -size.y * .5f ||
+            Mathf.Max(start.y, end.y) < 0) return false;
         Vector3 direction = end - start;
         float nearest = float.PositiveInfinity;
         for (int z = 0; z < Rows - 1; z++)
@@ -121,6 +136,74 @@ internal sealed class ReceivingSoilHeap
             if (v < 0 || u + v > 1) return;
             float t = Vector3.Dot(e2, q) * inverse;
             if (t >= 0 && t <= 1 && t < nearest) nearest = t;
+        }
+    }
+
+    // Clip only the visual surface. The closed mesh and the landing height field retain
+    // every deposit, including soil thinner than the 1 mm floor clearance.
+    internal void BuildSurface(Mesh mesh)
+    {
+        const float clearance = .001f;
+        surfaceVertices.Clear();
+        surfaceUv.Clear();
+        surfaceTriangles.Clear();
+        for (int z = 0; z < Rows - 1; z++)
+            for (int x = 0; x < Columns - 1; x++)
+            {
+                int a = z * Columns + x, b = a + 1, d = a + Columns, c = d + 1;
+                Triangle(Point(a), Point(d), Point(b));
+                Triangle(Point(b), Point(d), Point(c));
+                if (z == 0) Side(Point(a), Point(b));
+                if (z == Rows - 2) Side(Point(c), Point(d));
+                if (x == 0) Side(Point(d), Point(a));
+                if (x == Columns - 2) Side(Point(b), Point(c));
+            }
+        mesh.Clear();
+        mesh.SetVertices(surfaceVertices);
+        mesh.SetUVs(0, surfaceUv);
+        mesh.SetTriangles(surfaceTriangles, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        void Side(Vector3 a, Vector3 b)
+        {
+            Vector3 bottomA = new Vector3(a.x, 0, a.z);
+            Vector3 bottomB = new Vector3(b.x, 0, b.z);
+            Triangle(a, b, bottomA);
+            Triangle(b, bottomB, bottomA);
+        }
+
+        void Triangle(Vector3 a, Vector3 b, Vector3 c)
+        {
+            int count = 0;
+            Edge(c, a);
+            Edge(a, b);
+            Edge(b, c);
+            if (count < 3) return;
+            int first = surfaceVertices.Count;
+            for (int i = 0; i < count; i++)
+            {
+                surfaceVertices.Add(clipped[i]);
+                surfaceUv.Add(new Vector2(clipped[i].x, clipped[i].z));
+            }
+            for (int i = 1; i < count - 1; i++)
+            {
+                surfaceTriangles.Add(first);
+                surfaceTriangles.Add(first + i);
+                surfaceTriangles.Add(first + i + 1);
+            }
+
+            void Edge(Vector3 from, Vector3 to)
+            {
+                bool fromInside = from.y >= clearance, toInside = to.y >= clearance;
+                if (fromInside != toInside)
+                {
+                    Vector3 crossing = Vector3.Lerp(from, to, (clearance - from.y) / (to.y - from.y));
+                    crossing.y = clearance;
+                    clipped[count++] = crossing;
+                }
+                if (toInside) clipped[count++] = to;
+            }
         }
     }
 

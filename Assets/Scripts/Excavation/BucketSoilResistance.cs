@@ -125,9 +125,8 @@ public sealed class BucketSoilResistance : MonoBehaviour
         full = cutter.EffectiveCapacityM3 - cutter.VolumeM3 <= .00001;
         atFloor = tip.y <= cutter.soil.GetFloorWorldY(tip) + contactMargin;
         tooDeep = PenetrationM >= maximumPenetration;
-        bool fullStopsCut = full && !cutter.ManualSoilControlActive;
-        IsBlocked = fullStopsCut || atFloor || tooDeep;
-        BlockReason = fullStopsCut ? "满斗：禁止继续切入" : atFloor ? "土层底部：禁止深入" : tooDeep ? "切深超限：限制深入，可沿面切削或抬升" : full ? "满斗切削：多余土侧落" : "切削接触";
+        IsBlocked = atFloor || tooDeep;
+        BlockReason = atFloor ? "土层底部：禁止深入" : tooDeep ? "切深超限：限制深入，可沿面切削或抬升" : full ? "满斗切削：多余土侧落" : "切削接触";
     }
 
     /// <summary>Limit each joint command using its predicted cutting-edge displacement; never write solver pose.</summary>
@@ -396,7 +395,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
         // On a mound, overhead height grows during a horizontal cut into its face. It is
         // not a downward plunge. The real arm cuts at about 32 degrees below horizontal;
         // allow mouth-leading oblique cuts up to about 60 degrees at the restricted cutting speed.
-        if (full && !allowManualSlopeRelief || atFloor) return Hold(joint, actual);
+        if (atFloor) return Hold(joint, actual);
         float horizontalTravel = new Vector2(movement.x, movement.z).magnitude;
         if (tooDeep)
         {

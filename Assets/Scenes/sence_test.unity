@@ -1111,7 +1111,7 @@ MonoBehaviour:
   siteReadinessSource: {fileID: 471781301}
   targetVolumeM3: 1
   minimumLoadVolumeM3: 0.005
-  targetBucketFillFraction: 0.65
+  targetBucketFillFraction: 0.85
   minimumTransferVolumeM3: 0.005
   siteReadyTimeoutSeconds: 40
   stageTimeoutSeconds: 12

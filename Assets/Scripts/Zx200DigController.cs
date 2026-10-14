@@ -566,11 +566,14 @@ public class Zx200DigController : MonoBehaviour
         if (soilResistance != null && soilResistance.isActiveAndEnabled)
         {
             Zx200JointPose constrained = soilResistance.ConstrainPose(this, requestedPose, Time.fixedDeltaTime);
+            // Only ordinary cutting-speed reductions may remain smooth. A floor/shell
+            // correction can be safe relative to the actual pose while the old drive is unsafe.
+            bool smoothContactAdvance = !IsBusy && !soilResistance.IsBlocked;
             // Cancel accumulated target error on a constrained joint so holding a key cannot build a later lurch.
-            ApplyConstrainedTarget(swingJoint, requestedPose.swing, constrained.swing, ref targetVelocities.x);
-            ApplyConstrainedTarget(boomJoint, requestedPose.boom, constrained.boom, ref targetVelocities.y);
-            ApplyConstrainedTarget(armJoint, requestedPose.arm, constrained.arm, ref targetVelocities.z);
-            ApplyConstrainedTarget(bucketJoint, requestedPose.bucket, constrained.bucket, ref targetVelocities.w);
+            ApplyConstrainedTarget(swingJoint, requestedPose.swing, constrained.swing, ref targetVelocities.x, smoothContactAdvance);
+            ApplyConstrainedTarget(boomJoint, requestedPose.boom, constrained.boom, ref targetVelocities.y, smoothContactAdvance);
+            ApplyConstrainedTarget(armJoint, requestedPose.arm, constrained.arm, ref targetVelocities.z, smoothContactAdvance);
+            ApplyConstrainedTarget(bucketJoint, requestedPose.bucket, constrained.bucket, ref targetVelocities.w, smoothContactAdvance);
             requestedPose = constrained;
         }
         // 在固定物理步上对目标平滑，输入反向与松手也有连续的减速过程。
@@ -580,9 +583,20 @@ public class Zx200DigController : MonoBehaviour
         SmoothTarget(bucketJoint, requestedPose.bucket, ref targetVelocities.w);
     }
 
-    private static void ApplyConstrainedTarget(ArticulationBody joint, float requested, float constrained, ref float velocity)
+    private static void ApplyConstrainedTarget(ArticulationBody joint, float requested, float constrained, ref float velocity, bool smoothContactAdvance)
     {
         if (Mathf.Abs(requested - constrained) < .00001f) return;
+        float current = joint.xDrive.target;
+        float allowedAdvance = constrained - current;
+        float requestedAdvance = requested - current;
+        if (smoothContactAdvance && allowedAdvance * requestedAdvance > 0 &&
+            Mathf.Abs(allowedAdvance) <= Mathf.Abs(requestedAdvance))
+        {
+            // A shortened but still safe forward target must not bypass SmoothTarget or
+            // restart acceleration on every contact step. Unsafe reversals still correct immediately.
+            if (velocity * allowedAdvance < 0) velocity = 0;
+            return;
+        }
         velocity = 0;
         SetTarget(joint, constrained);
     }

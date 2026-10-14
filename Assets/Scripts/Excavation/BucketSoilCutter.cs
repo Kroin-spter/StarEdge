@@ -173,12 +173,9 @@ public sealed class BucketSoilCutter : MonoBehaviour
         Vector3[] from = previousBlade;
         RememberBlade(current, corners);
         double available = System.Math.Max(0, EffectiveCapacityM3 - VolumeM3);
-        bool manual = ManualSoilControlActive;
-        // A full mouth displaces soil rather than turning it into a wall. Bound each
-        // manual sweep by its width, measured travel and the soil's working depth.
-        float cutBudget = manual
-            ? 2 * bladeHalfWidth * Mathf.Abs(transform.lossyScale.x) * travel * soil.maximumCutDepth
-            : (float)available;
+        // Capacity limits collection, never the soil a moving blade can displace.
+        // The autonomous planner decides when to curl/lift; it must not create a capacity wall.
+        float cutBudget = 2 * bladeHalfWidth * Mathf.Abs(transform.lossyScale.x) * travel * soil.maximumCutDepth;
         if (cutBudget <= 1e-5f) { Status = "斗满：请停止切削"; return 0; }
 
         // Geometry determines excavation. Relative inflow determines collection; gravity retention
@@ -186,7 +183,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
         double removed = soil.CutBladeSweep(from, corners, cutBudget);
         if (removed < cutBudget)
         {
-            foreach (var pile in FindObjectsByType<SoilReceivingZone>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            foreach (var pile in SoilReceivingZone.ActiveZones)
                 if (pile.gameObject.scene == gameObject.scene)
                     removed += pile.ExcavateLoose(from, corners, cutBudget - removed);
         }

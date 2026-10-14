@@ -65,8 +65,10 @@ namespace ExcavatorControls.Tests
         }
 
         /// <summary>A full bucket must still displace real soil without inventing extra stored volume.</summary>
-        [Test]
-        public void FullManualBucketContinuesCuttingAndRoutesExcessToSoilFlight()
+        /// <param name="automatic">Whether a running automatic job owns the filled bucket.</param>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void FullBucketContinuesCuttingAndRoutesExcessToSoilFlight(bool automatic)
         {
             cutter.capacityM3 = .005f;
             bucket.transform.position = new Vector3(2, .7f, 1);
@@ -77,6 +79,17 @@ namespace ExcavatorControls.Tests
                 cutter.SamplePose();
             }
             Assert.That(cutter.VolumeM3, Is.EqualTo(.005).Within(.00003));
+            if (automatic)
+            {
+                var machine = bucket.AddComponent<Zx200DigController>();
+                var controller = bucket.AddComponent<AutonomousExcavationController>();
+                controller.machine = machine;
+                typeof(AutonomousExcavationController).GetProperty("IsRunning").SetValue(controller, true);
+            }
+            var resistance = bucket.AddComponent<BucketSoilResistance>();
+            resistance.maximumPenetration = 1;
+            resistance.EvaluateContact();
+            Assert.That(resistance.IsBlocked, Is.False, "Capacity alone cannot create a hard stop in soft soil.");
             double before = cutter.ExcavatedVolumeM3;
             bucket.transform.position += Vector3.forward * .2f;
             cutter.SamplePose();

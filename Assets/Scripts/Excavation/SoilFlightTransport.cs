@@ -42,10 +42,14 @@ public sealed class SoilFlightTransport : MonoBehaviour
     private BucketSoilCutter cutter;
     private GameObject visual;
     private Mesh mesh;
+    private bool visualDirty;
+    private readonly List<Vector3> visualVertices = new List<Vector3>();
+    private readonly List<int> visualTriangles = new List<int>();
+    private static readonly int[] ClumpTriangles = { 0,3,2,0,4,3,0,5,4,0,2,5,1,2,3,1,3,4,1,4,5,1,5,2 };
     // Match the loose-pile repose angle. Steeper faces transport spoil, not support it.
     private static readonly float MinimumStableNormalY = Mathf.Cos(32 * Mathf.Deg2Rad);
 
-    /// <summary>Add all outlet parcels and rebuild the shared visual mesh once.</summary>
+    /// <summary>Add conserved outlet parcels; publish the visual at most once per rendered frame.</summary>
     internal void EmitBatch(IReadOnlyList<Emission> emissions)
     {
         if (emissions == null || emissions.Count == 0) return;
@@ -54,6 +58,24 @@ public sealed class SoilFlightTransport : MonoBehaviour
         {
             Emission emission = emissions[i];
             if (emission.volume <= 0) continue;
+            bool merged = false;
+            // Adjacent emissions with nearly identical motion represent the same local stream.
+            // Bound volume and search size so long-lived soil cannot turn this into quadratic work.
+            for (int j = parcels.Count - 1; j >= Mathf.Max(0, parcels.Count - 64); j--)
+            {
+                Parcel candidate = parcels[j];
+                if (candidate.volume + emission.volume > .008 ||
+                    (candidate.position - emission.position).sqrMagnitude > .0036f ||
+                    (candidate.velocity - emission.velocity).sqrMagnitude > .04f) continue;
+                double total = candidate.volume + emission.volume;
+                float fraction = (float)(emission.volume / total);
+                candidate.position = Vector3.Lerp(candidate.position, emission.position, fraction);
+                candidate.velocity = Vector3.Lerp(candidate.velocity, emission.velocity, fraction);
+                candidate.volume = total;
+                merged = true;
+                break;
+            }
+            if (merged) continue;
             parcels.Add(new Parcel
             {
                 volume = emission.volume,
@@ -61,7 +83,20 @@ public sealed class SoilFlightTransport : MonoBehaviour
                 velocity = emission.velocity
             });
         }
+        RequestVisualRefresh();
+    }
+
+    private void RequestVisualRefresh()
+    {
+        visualDirty = true;
+        if (!Application.isPlaying) { RefreshVisual(); visualDirty = false; }
+    }
+
+    private void LateUpdate()
+    {
+        if (!visualDirty) return;
         RefreshVisual();
+        visualDirty = false;
     }
 
     private void FixedUpdate()
@@ -84,7 +119,7 @@ public sealed class SoilFlightTransport : MonoBehaviour
             for (int i = parcels.Count - 1; i >= 0; i--)
                 if (AdvanceParcel(parcels[i], dt, receivers, mask)) parcels.RemoveAt(i);
         FlushTerrainDeposits(parcels.Count == 0);
-        RefreshVisual();
+        RequestVisualRefresh();
     }
 
     internal void Clear()
@@ -306,8 +341,10 @@ public sealed class SoilFlightTransport : MonoBehaviour
             if (cutter.fillVisual != null) renderer.sharedMaterial = cutter.fillVisual.GetComponent<Renderer>().sharedMaterial;
         }
         visual.SetActive(true);
-        var vertices = new List<Vector3>();
-        var triangles = new List<int>();
+        var vertices = visualVertices;
+        var triangles = visualTriangles;
+        vertices.Clear();
+        triangles.Clear();
         // Three offset clumps per parcel: visual only, with deterministic spread and no physics cost.
         for (int pIndex = 0; pIndex < parcels.Count + deposits.Count; pIndex++)
         {
@@ -323,9 +360,13 @@ public sealed class SoilFlightTransport : MonoBehaviour
                 Vector3 offset = new Vector3(Mathf.Cos(angle), .15f * Mathf.Sin(angle * 1.7f), Mathf.Sin(angle)) * r * .55f;
                 Vector3 c = p + offset;
                 float cr = r * (clump == 0 ? 1f : .7f);
-                vertices.AddRange(new[] { c + Vector3.up*cr, c-Vector3.up*cr, c+Vector3.right*cr,
-                    c+Vector3.forward*cr, c-Vector3.right*cr, c-Vector3.forward*cr });
-                foreach (int t in new[] { 0,3,2,0,4,3,0,5,4,0,2,5,1,2,3,1,3,4,1,4,5,1,5,2 }) triangles.Add(index+t);
+                vertices.Add(c + Vector3.up * cr);
+                vertices.Add(c - Vector3.up * cr);
+                vertices.Add(c + Vector3.right * cr);
+                vertices.Add(c + Vector3.forward * cr);
+                vertices.Add(c - Vector3.right * cr);
+                vertices.Add(c - Vector3.forward * cr);
+                foreach (int t in ClumpTriangles) triangles.Add(index + t);
             }
         }
         mesh.Clear();

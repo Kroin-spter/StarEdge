@@ -149,6 +149,23 @@ namespace ExcavatorControls.Tests
             Assert.That(((Vector3)args[2]).x, Is.LessThan(0), "Use the first contact, not the far side of the heap.");
         }
 
+        /// <summary>Nearby stream parcels combine without losing their tracked soil volume.</summary>
+        [Test]
+        public void AdjacentSmallEmissionsCoalesceWithoutLosingSoil()
+        {
+            bucket.transform.position = new Vector3(10, 20, 0);
+            var unloader = bucket.AddComponent<BucketSoilUnloader>();
+            unloader.openingNormalLocal = Vector3.down;
+            unloader.flowM3PerSecond = .01f;
+            unloader.dwellSeconds = 0;
+            double before = cutter.VolumeM3;
+            double airborne = bucket.GetComponent<SoilFlightTransport>()?.AirborneVolumeM3 ?? 0;
+            for (int i = 0; i < 100; i++) unloader.Step(.001f);
+            var flight = bucket.GetComponent<SoilFlightTransport>();
+            Assert.That(flight.ParcelCount, Is.LessThan(80), "Small colocated emissions must not create hundreds of persistent parcels.");
+            Assert.That(cutter.VolumeM3 + flight.AirborneVolumeM3, Is.EqualTo(before + airborne).Within(1e-9));
+        }
+
         [Test]
         public void ShallowTiltKeepsCollectedSoilUntilDumpGateOpens()
         {
