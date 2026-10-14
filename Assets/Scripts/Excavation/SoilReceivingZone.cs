@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>Upright receiving bed with in-situ volume accounting and a level soil display.</summary>
+/// <summary>Receiving bed with conservative, locally sloping soil and a shared landing surface.</summary>
 [DisallowMultipleComponent]
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public sealed class SoilReceivingZone : MonoBehaviour
@@ -20,6 +20,8 @@ public sealed class SoilReceivingZone : MonoBehaviour
     public IReadOnlyList<TransferRecord> Records => records.AsReadOnly();
     private readonly List<TransferRecord> records = new List<TransferRecord>();
     private Mesh mesh;
+    private ReceivingSoilHeap heap;
+    internal float HeightAt(Vector3 local) => !isGroundPile && heap != null ? heap.Height(local) : SurfaceLocalY;
 
     /// <summary>Reexcavate loose soil only when a moving tooth intersects the displayed pile.</summary>
     /// <param name="tooth">Current world-space tooth position.</param>
@@ -145,17 +147,19 @@ public sealed class SoilReceivingZone : MonoBehaviour
         public DeformableSoilTerrain Source { get; }
         public double VolumeM3 { get; }
         public double MassKg { get; }
-        internal TransferRecord(BucketSoilCutter bucket, double volume)
+        internal Vector3 LocalLanding { get; }
+        internal TransferRecord(BucketSoilCutter bucket, double volume, Vector3 localLanding)
         {
             TimeSeconds = Time.timeAsDouble;
             Bucket = bucket;
             Source = bucket.soil;
             VolumeM3 = volume;
             MassKg = volume * bucket.SoilDensityKgPerM3;
+            LocalLanding = localLanding;
         }
     }
 
-    /// <summary>Find the receiving surface vertically beneath a discharge point.</summary>
+    /// <summary>Find the rendered receiving surface vertically beneath a discharge point.</summary>
     /// <param name="worldPoint">Bucket discharge point in world coordinates.</param>
     /// <param name="maximumDrop">Maximum permitted vertical drop in metres.</param>
     /// <param name="landing">Receiving surface position when valid.</param>
@@ -166,27 +170,52 @@ public sealed class SoilReceivingZone : MonoBehaviour
         if (!isActiveAndEnabled || size.x <= 0 || size.y <= 0 || maximumDrop <= 0 ||
             Vector3.Dot(transform.up, Vector3.up) <= Mathf.Cos(30f * Mathf.Deg2Rad) ||
             (transform.lossyScale - Vector3.one).sqrMagnitude > .000001f) return false;
-        // Intersect the vertical gravity ray with the actual tilted receiving plane.
-        Vector3 normal = transform.up;
-        Vector3 center = transform.TransformPoint(Vector3.up * SurfaceLocalY);
-        float planeDrop = Vector3.Dot(worldPoint - center, normal) / normal.y;
-        landing = worldPoint - Vector3.up * planeDrop;
-        Vector3 local = transform.InverseTransformPoint(landing);
+        if (!TryIntersectSegment(worldPoint, worldPoint - Vector3.up * maximumDrop, out landing)) return false;
         float drop = worldPoint.y - landing.y;
-        return Mathf.Abs(local.x) <= size.x * .5f && Mathf.Abs(local.z) <= size.y * .5f &&
-            drop >= .02f && drop <= maximumDrop;
+        return drop >= .02f && drop <= maximumDrop;
+    }
+
+    internal bool TryIntersectSegment(Vector3 start, Vector3 end, out Vector3 landing)
+    {
+        landing = start;
+        if (!isActiveAndEnabled || size.x <= 0 || size.y <= 0 ||
+            Vector3.Dot(transform.up, Vector3.up) <= Mathf.Cos(30f * Mathf.Deg2Rad) ||
+            (transform.lossyScale - Vector3.one).sqrMagnitude > .000001f) return false;
+        Vector3 a = transform.InverseTransformPoint(start), b = transform.InverseTransformPoint(end);
+        if (!isGroundPile && heap != null)
+        {
+            if (!heap.Intersect(a, b, out Vector3 hit)) return false;
+            landing = transform.TransformPoint(hit);
+            return true;
+        }
+        if (a.y < SurfaceLocalY || b.y > SurfaceLocalY || a.y - b.y <= 1e-8f) return false;
+        Vector3 local = Vector3.Lerp(a, b, (a.y - SurfaceLocalY) / (a.y - b.y));
+        if (Mathf.Abs(local.x) > size.x * .5f || Mathf.Abs(local.z) > size.y * .5f) return false;
+        landing = transform.TransformPoint(local);
+        return true;
     }
 
     // Only the bucket owns debiting its inventory; accepting material is not a public minting API.
     internal double Accept(BucketSoilCutter bucket, double requested)
+        => Accept(bucket, requested, transform.position);
+
+    internal double Accept(BucketSoilCutter bucket, double requested, Vector3 landing)
     {
         if (!isActiveAndEnabled || double.IsNaN(requested) || double.IsInfinity(requested) || requested <= 0) return 0;
         double accepted = Math.Min(requested, AvailableM3);
         if (accepted <= 0) return 0;
-        var receipt = new TransferRecord(bucket, accepted);
+        Vector3 local = transform.InverseTransformPoint(landing);
+        local.x = Mathf.Clamp(local.x, -size.x * .5f, size.x * .5f);
+        local.z = Mathf.Clamp(local.z, -size.y * .5f, size.y * .5f);
+        var receipt = new TransferRecord(bucket, accepted, local);
         records.Add(receipt);
         VolumeM3 += accepted;
         MassKg += receipt.MassKg;
+        if (!isGroundPile)
+        {
+            if (heap == null) heap = new ReceivingSoilHeap(size);
+            heap.Add(accepted, local, maximumFillHeight);
+        }
         RefreshMesh();
         return accepted;
     }
@@ -196,7 +225,13 @@ public sealed class SoilReceivingZone : MonoBehaviour
         records.RemoveAll(record => source != null ? record.Source == source : record.Bucket == singleBucket);
         VolumeM3 = 0;
         MassKg = 0;
-        foreach (var record in records) { VolumeM3 += record.VolumeM3; MassKg += record.MassKg; }
+        heap = isGroundPile ? null : new ReceivingSoilHeap(size);
+        foreach (var record in records)
+        {
+            VolumeM3 += record.VolumeM3;
+            MassKg += record.MassKg;
+            heap?.Add(record.VolumeM3, record.LocalLanding, maximumFillHeight);
+        }
         RefreshMesh();
     }
 
@@ -212,8 +247,6 @@ public sealed class SoilReceivingZone : MonoBehaviour
             mesh = new Mesh { name = "Received soil", hideFlags = HideFlags.DontSave };
             GetComponent<MeshFilter>().sharedMesh = mesh;
         }
-        float x = size.x * .5f, z = size.y * .5f;
-        float height = (float)(VolumeM3 / (size.x * size.y));
         mesh.Clear();
         if (isGroundPile)
         {
@@ -245,23 +278,27 @@ public sealed class SoilReceivingZone : MonoBehaviour
             mesh.RecalculateBounds();
             return;
         }
-        mesh.vertices = new[] { new Vector3(-x,0,-z), new Vector3(x,0,-z), new Vector3(x,0,z), new Vector3(-x,0,z),
-            new Vector3(-x,height,-z), new Vector3(x,height,-z), new Vector3(x,height,z), new Vector3(-x,height,z) };
-        mesh.triangles = new[] { 0,1,2,0,2,3, 4,6,5,4,7,6, 0,5,1,0,4,5,
-            1,6,2,1,5,6, 2,7,3,2,6,7, 3,4,0,3,7,4 };
-        mesh.uv = new[] { new Vector2(0,0),new Vector2(size.x,0),size,new Vector2(0,size.y),
-            new Vector2(0,0),new Vector2(size.x,0),size,new Vector2(0,size.y) };
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
+        heap?.Build(mesh);
     }
 
     private Vector3 ConformPileBase(Vector3 localPoint, DeformableSoilTerrain source)
     {
         if (source == null || source.Terrain == null) return localPoint;
-        Vector3 world = transform.TransformPoint(localPoint);
-        if (!source.HasSurfaceAt(world)) return localPoint;
-        world.y = source.Terrain.SampleHeight(world) + source.transform.position.y;
-        return transform.InverseTransformPoint(world);
+        Vector3 anchor = transform.position;
+        if (!source.HasSurfaceAt(anchor)) return localPoint;
+        float surface = source.Terrain.SampleHeight(anchor) + source.transform.position.y;
+        // Only a deposit actually supported by this Terrain may conform to it.
+        // Sampling every perimeter point independently bridged cliffs/vehicle impacts into tall spikes.
+        if (Mathf.Abs(surface - anchor.y) > .1f) return localPoint;
+        Vector3 horizontal = transform.TransformVector(localPoint);
+        Vector3 sample = anchor + horizontal;
+        if (!source.HasSurfaceAt(sample)) return localPoint;
+        // Match the transport's 2.5 cm surface clearance at a cut edge, without allowing
+        // a small pile to bridge metre-scale changes in terrain height.
+        float limit = new Vector2(horizontal.x, horizontal.z).magnitude * Mathf.Tan(32f * Mathf.Deg2Rad) + .025f;
+        horizontal.y = Mathf.Clamp(source.Terrain.SampleHeight(sample) + source.transform.position.y - anchor.y,
+            -limit, limit);
+        return transform.InverseTransformVector(horizontal);
     }
 
     private void OnDestroy()

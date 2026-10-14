@@ -150,16 +150,11 @@ public sealed class SoilFlightTransport : MonoBehaviour
             foreach (var zone in receivers)
             {
                 if (zone == null) continue;
-                Vector3 normal = zone.transform.up;
-                Vector3 center = zone.transform.TransformPoint(Vector3.up * zone.SurfaceLocalY);
-                float denominator = Vector3.Dot(start - next, normal);
-                if (denominator <= 1e-8f) continue;
-                float t = Vector3.Dot(start - center, normal) / denominator;
-                if (t < 0 || t > 1 || t * length > nearest) continue;
-                Vector3 point = Vector3.Lerp(start, next, t);
-                if (!zone.TryGetLanding(point + Vector3.up * .03f, .1f, out _)) continue;
+                if (!zone.TryIntersectSegment(start, next, out Vector3 point)) continue;
+                float distance = Vector3.Distance(start, point);
+                if (distance > nearest) continue;
                 receiver = zone;
-                nearest = t * length;
+                nearest = distance;
             }
         if (receiver != null)
             return ResolveReceiver(parcel, receiver, Vector3.Lerp(start, next, nearest / length));
@@ -199,7 +194,7 @@ public sealed class SoilFlightTransport : MonoBehaviour
                 Vector3.Dot(receiver.transform.up, Vector3.up) <= Mathf.Cos(30f * Mathf.Deg2Rad) ||
                 (receiver.transform.lossyScale - Vector3.one).sqrMagnitude > .000001f) continue;
             Vector3 local = receiver.transform.InverseTransformPoint(position);
-            if (local.y < 0f || local.y > receiver.SurfaceLocalY) continue;
+            if (local.y < 0f || local.y > receiver.HeightAt(local)) continue;
             if (Mathf.Abs(local.x) <= receiver.size.x * .5f && Mathf.Abs(local.z) <= receiver.size.y * .5f)
                 if (highest == null || receiver.SurfaceY > highest.SurfaceY) highest = receiver;
         }
@@ -208,7 +203,7 @@ public sealed class SoilFlightTransport : MonoBehaviour
 
     private bool ResolveReceiver(Parcel parcel, SoilReceivingZone receiver, Vector3 impactPoint)
     {
-        double accepted = receiver.Accept(cutter, parcel.volume);
+        double accepted = receiver.Accept(cutter, parcel.volume, impactPoint);
         if (accepted > 0) LastReceiver = receiver;
         cutter.RecordLanding(receiver, accepted);
         parcel.volume -= accepted;

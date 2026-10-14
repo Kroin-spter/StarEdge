@@ -93,6 +93,17 @@ namespace ExcavatorControls.Tests
                 Is.EqualTo(removed * cutter.SoilDensityKgPerM3).Within(.00001));
         }
 
+        [Test]
+        public void TinyPileAboveLowerTerrainDoesNotStretchItsBaseIntoAColumn()
+        {
+            receiver.transform.position = new Vector3(2, 3, 2);
+            var pile = receiver.AddComponent<SoilReceivingZone>();
+            pile.isGroundPile = true;
+            cutter.TransferTo(pile, .002);
+            var bounds = receiver.GetComponent<MeshFilter>().sharedMesh.bounds;
+            Assert.That(bounds.size.y, Is.LessThan(.3f), "A small deposit must not bridge a two metre support gap.");
+        }
+
         private SoilReceivingZone CreateLoosePile()
         {
             receiver.transform.position = new Vector3(2, 1, 2);
@@ -103,6 +114,39 @@ namespace ExcavatorControls.Tests
             pile.maximumFillHeight = 100;
             Assert.That(cutter.TransferTo(pile, .02), Is.EqualTo(.02).Within(1e-9));
             return pile;
+        }
+
+        [Test]
+        public void ReceivingBedFormsSlopingHeapWithConservedMeshVolume()
+        {
+            var zone = receiver.AddComponent<SoilReceivingZone>();
+            cutter.TransferTo(zone, .02);
+            var mesh = receiver.GetComponent<MeshFilter>().sharedMesh;
+            float min = float.PositiveInfinity, max = 0;
+            foreach (var v in mesh.vertices)
+                if (v.y > .000001f) { min = Mathf.Min(min, v.y); max = Mathf.Max(max, v.y); }
+            Assert.That(max - min, Is.GreaterThan(.001f), "First load must form a mound, not a flat slab.");
+            double volume = 0;
+            var vertices = mesh.vertices;
+            var triangles = mesh.triangles;
+            for (int i = 0; i < triangles.Length; i += 3)
+                volume += Vector3.Dot(vertices[triangles[i]], Vector3.Cross(
+                    vertices[triangles[i + 1]], vertices[triangles[i + 2]])) / 6.0;
+            Assert.That(System.Math.Abs(volume), Is.EqualTo(zone.VolumeM3).Within(.000001));
+            Assert.That(zone.TryGetLanding(new Vector3(0, 2, 0), 3, out var landing), Is.True);
+            Assert.That(landing.y, Is.EqualTo(max).Within(.0001f), "Reception must use the rendered heap, not its average height.");
+        }
+
+        [Test]
+        public void ObliqueFlightHitsHeapEvenWhenBothEndpointsAreAboveSoil()
+        {
+            var zone = receiver.AddComponent<SoilReceivingZone>();
+            cutter.TransferTo(zone, .02);
+            var method = typeof(SoilReceivingZone).GetMethod("TryIntersectSegment",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            object[] args = { new Vector3(-1.4f, .004f, 0), new Vector3(1.4f, .003f, 0), Vector3.zero };
+            Assert.That((bool)method.Invoke(zone, args), Is.True);
+            Assert.That(((Vector3)args[2]).x, Is.LessThan(0), "Use the first contact, not the far side of the heap.");
         }
 
         [Test]
@@ -265,7 +309,7 @@ namespace ExcavatorControls.Tests
 
         /// <summary>Retain pose hysteresis and dwell while allowing discharge outside a receiver footprint.</summary>
         [Test]
-        public void GravityGateDwellAndFreeDischargeConserveSoil()
+        public void ContinuousGravityFlowAndFreeDischargeConserveSoil()
         {
             var zone = receiver.AddComponent<SoilReceivingZone>();
             receiver.transform.position = new Vector3(10, 0, 0);
@@ -279,15 +323,16 @@ namespace ExcavatorControls.Tests
             bucket.transform.rotation = Quaternion.Euler(180, 0, 0);
             Assert.That(unloader.Step(1), Is.Zero);
             bucket.transform.rotation = Quaternion.identity;
-            Assert.That(unloader.Step(.2f), Is.Zero);
-            Assert.That(unloader.State, Is.EqualTo(BucketSoilUnloader.UnloadingState.ReadyToDump));
+            double first = unloader.Step(.2f);
+            Assert.That(first, Is.GreaterThan(0));
+            Assert.That(unloader.State, Is.EqualTo(BucketSoilUnloader.UnloadingState.Dumping));
             double emitted = unloader.Step(.1f);
-            Assert.That(emitted, Is.GreaterThan(0).And.LessThanOrEqualTo(.000501),
-                "Only the post-dwell portion may flow, scaled by fullness");
-            Assert.That(unloader.AirborneVolumeM3, Is.EqualTo(emitted).Within(1e-10));
+            Assert.That(emitted, Is.GreaterThan(0).And.LessThanOrEqualTo(.0018),
+                "Flow stays rate limited even without the old quarter-second pause");
+            Assert.That(unloader.AirborneVolumeM3, Is.EqualTo(first + emitted).Within(1e-10));
             Assert.That(zone.VolumeM3, Is.Zero, "Emission must not teleport soil into the bed");
             bucket.transform.rotation = Quaternion.Euler(70, 0, 0);
-            Assert.That(unloader.Step(.1f), Is.GreaterThan(0), "Hysteresis must retain the active gate");
+            Assert.That(unloader.Step(.1f), Is.GreaterThan(0), "The transition band must allow gradual spilling");
             bucket.transform.position += Vector3.right * 5;
             Assert.That(unloader.Step(1), Is.GreaterThan(0), "Missing a receiver must not close the gravity gate");
             Assert.That(cutter.VolumeM3 + unloader.AirborneVolumeM3 + LandedVolume(),
@@ -297,9 +342,9 @@ namespace ExcavatorControls.Tests
             bucket.transform.rotation = Quaternion.Euler(85, 0, 0);
             Assert.That(unloader.Step(1), Is.Zero);
             bucket.transform.rotation = Quaternion.Euler(70, 0, 0);
-            Assert.That(unloader.Step(1), Is.Zero, "Must reach the entry angle after closing");
+            Assert.That(unloader.Step(.1f), Is.GreaterThan(0), "Return to transition band restarts gradual spilling");
             bucket.transform.rotation = Quaternion.identity;
-            Assert.That(unloader.Step(.2f), Is.Zero, "Closing the pose gate must restart dwell");
+            Assert.That(unloader.Step(.2f), Is.GreaterThan(0), "Fully opening must restart promptly");
             Assert.That(unloader.Step(.1f), Is.GreaterThan(0));
             Assert.That(cutter.VolumeM3 + unloader.AirborneVolumeM3 + LandedVolume(),
                 Is.EqualTo(initial).Within(1e-10));

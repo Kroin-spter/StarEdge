@@ -314,6 +314,9 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
         int width = x1 - x0 + 1, depth = z1 - z0 + 1;
         float[,] before = runtime.GetHeights(x0, z0, width, depth);
         var weights = new double[depth, width];
+        var rooms = new double[depth, width];
+        float[,] neighborhood = minimumNormalY > 0
+            ? runtime.GetHeights(x0 - 1, z0 - 1, width + 2, depth + 2) : null;
         double vertexVolume = dx * dz * size.y;
         double radiusSquared = (double)radius * radius;
         double capacity = 0, maximumAmplitude = 0;
@@ -327,6 +330,18 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
                     (float)(x + x0) / (n - 1), (float)(z + z0) / (n - 1)).y < minimumNormalY) continue;
                 weights[z, x] = weight;
                 double room = 1.0 - before[z, x];
+                if (neighborhood != null)
+                {
+                    // A flight impact cannot fill a tiny surviving footprint to the terrain ceiling.
+                    // Bound each rise by its neighbours at the soil's angle of repose. Any remainder
+                    // stays in the transport ledger for a loose pile rather than becoming a needle.
+                    double slope = Math.Sqrt(1 - minimumNormalY * minimumNormalY) / minimumNormalY;
+                    double ceiling = Math.Min(
+                        Math.Min(neighborhood[z + 1, x], neighborhood[z + 1, x + 2]) + dx * slope / size.y,
+                        Math.Min(neighborhood[z, x + 1], neighborhood[z + 2, x + 1]) + dz * slope / size.y);
+                    room = Math.Max(0, Math.Min(room, ceiling - before[z, x]));
+                }
+                rooms[z, x] = room;
                 capacity += room * vertexVolume;
                 maximumAmplitude = Math.Max(maximumAmplitude, room / weight);
             }
@@ -341,7 +356,7 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
                 double candidateVolume = 0;
                 for (int z = 0; z < depth; z++)
                     for (int x = 0; x < width; x++)
-                        candidateVolume += Math.Min(1.0 - before[z, x], amplitude * weights[z, x]) * vertexVolume;
+                        candidateVolume += Math.Min(rooms[z, x], amplitude * weights[z, x]) * vertexVolume;
                 if (candidateVolume <= volumeM3) low = amplitude;
                 else high = amplitude;
             }
@@ -352,10 +367,10 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
             for (int x = 0; x < width; x++)
             {
                 if (weights[z, x] <= 0) continue;
-                double rise = Math.Min(1.0 - before[z, x], low * weights[z, x]);
+                double rise = fillToCeiling ? rooms[z, x] : Math.Min(rooms[z, x], low * weights[z, x]);
                 // Reserve one quantization unit; actual read-back remains the authoritative transfer amount.
                 rise = Math.Floor(Math.Max(0, rise - heightQuantum) / heightQuantum) * heightQuantum;
-                after[z, x] = fillToCeiling ? 1f : (float)Math.Min(1, before[z, x] + rise);
+                after[z, x] = fillToCeiling && neighborhood == null ? 1f : (float)Math.Min(1, before[z, x] + rise);
                 changed |= after[z, x] > before[z, x];
             }
         if (!changed) return 0;

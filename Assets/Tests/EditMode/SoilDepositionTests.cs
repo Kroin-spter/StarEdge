@@ -99,6 +99,18 @@ namespace ExcavatorControls.Tests
             Assert.That(IndependentAddedVolume(), Is.Zero);
         }
 
+        [Test]
+        public void FlightDepositCannotBuildNeedleOnStableGround()
+        {
+            var method = typeof(DeformableSoilTerrain).GetMethod("Deposit",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            double added = (double)method.Invoke(soil, new object[] {
+                new Vector3(12, 4, -3), .2f, .5, Mathf.Cos(32 * Mathf.Deg2Rad) });
+            Assert.That(added, Is.GreaterThan(0).And.LessThan(.5));
+            Assert.That(Data.GetHeight(16, 16) - source.GetHeight(16, 16), Is.LessThan(.09f));
+            Assert.That(added, Is.EqualTo(IndependentAddedVolume()).Within(1e-8));
+        }
+
         private double Deposit(Vector3 point, float radius, double volume)
         {
             var method = typeof(DeformableSoilTerrain).GetMethod("Deposit", new[] { typeof(Vector3), typeof(float), typeof(double) });

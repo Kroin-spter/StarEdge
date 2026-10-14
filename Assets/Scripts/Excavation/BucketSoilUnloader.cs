@@ -10,7 +10,7 @@ public sealed class BucketSoilUnloader : MonoBehaviour
     public SoilReceivingZone[] receivers = new SoilReceivingZone[0];
     public Vector3 openingNormalLocal = new Vector3(0, -1.25f, .82f);
     [Range(0, 89)] public float enterAngleFromDown = 65;
-    [Range(0, 89)] public float exitAngleFromDown = 78;
+    [Range(0, 89)] public float exitAngleFromDown = 78; // Legacy scene field; retention no longer latches.
     [Range(0, 45)] public float reposeAngle = 30;
     [Min(0)] public float dwellSeconds = .25f;
     [Min(.001f)] public float flowM3PerSecond = .24f;
@@ -29,9 +29,7 @@ public sealed class BucketSoilUnloader : MonoBehaviour
     private BucketSoilCutter cutter;
     private SoilFlightTransport flight;
     private float dwell;
-    private bool angleLatched;
     private int emissionSequence;
-    private bool flowPaused;
     private readonly List<Outlet> openOutlets = new List<Outlet>(5);
     private readonly List<SoilFlightTransport.Emission> emissions = new List<SoilFlightTransport.Emission>(5);
 
@@ -66,56 +64,52 @@ public sealed class BucketSoilUnloader : MonoBehaviour
         if (cutter.VolumeM3 <= 0)
         { ResetGate(); State = UnloadingState.Empty; Status = AirborneVolumeM3 > 0 ? "空斗，土方下落中" : "空斗"; return 0; }
         float angle = Vector3.Angle(transform.TransformDirection(openingNormalLocal), Physics.gravity);
-        angleLatched = angle <= (angleLatched ? Mathf.Max(enterAngleFromDown, exitAngleFromDown) : enterAngleFromDown);
-        // A carried load stays in the bucket until the operator deliberately tips past the
-        // dump threshold. The geometric free surface alone must not shed soil on a mild tilt.
-        RetainedVolumeM3 = angleLatched ? 0 : cutter.VolumeM3;
+        var fill = cutter.fillVisual != null ? cutter.fillVisual.GetComponent<BucketSoilFill>() : null;
+        double geometricRetention = fill != null ? fill.RetainedCapacityM3(fill.SurfaceNormalLocal) : 0;
+        // The repose surface can still intersect the cavity while its mouth faces down.
+        // Fade that retention away for a deliberate full dump, including autonomous unloading.
+        float retentionFraction = Mathf.InverseLerp(30f, 60f, angle);
+        geometricRetention *= retentionFraction;
+        // Blend out geometric spilling over the mild-tilt band rather than latching the
+        // entire inventory. At 75 degrees with the default 65-degree threshold, carry is protected.
+        float carryAngle = Mathf.Min(89f, enterAngleFromDown + 10f);
+        float carryProtection = angle >= carryAngle ? 1f
+            : Mathf.SmoothStep(0, 1, Mathf.InverseLerp(enterAngleFromDown, carryAngle, angle));
+        RetainedVolumeM3 = System.Math.Min(cutter.VolumeM3, geometricRetention);
+        RetainedVolumeM3 += (cutter.VolumeM3 - RetainedVolumeM3) * carryProtection;
         double excess = System.Math.Max(0, cutter.VolumeM3 - RetainedVolumeM3);
-        if (excess <= 1e-7)
+        if (excess <= 0 || (RetainedVolumeM3 > 0 && excess <= 1e-7))
         { dwell = 0; State = UnloadingState.Loaded; Status = "斗内保土"; return 0; }
         State = UnloadingState.ReadyToDump;
         Status = "土体滑向斗口";
         float before = dwell;
         dwell += deltaSeconds;
-        float flowingTime = Mathf.Max(0, dwell - Mathf.Max(before, dwellSeconds));
+        float dumpProgress = Mathf.InverseLerp(enterAngleFromDown, 0f, angle);
+        float effectiveDwell = Mathf.Min(Mathf.Max(0, dwellSeconds), .05f) * (1 - dumpProgress);
+        float flowingTime = Mathf.Max(0, dwell - Mathf.Max(before, effectiveDwell));
         if (flowingTime <= 0) return 0;
         // A shallow tilt leaks slowly; near a downward mouth gravity clears the bucket quickly.
-        float dumpProgress = Mathf.InverseLerp(enterAngleFromDown, 0f, angle);
-        float tilt = angleLatched ? Mathf.Lerp(.55f, 1.8f, dumpProgress) : .10f;
+        float tilt = Mathf.Lerp(.55f, 1.8f, dumpProgress);
         float fullness = Mathf.Clamp01((float)(cutter.VolumeM3 / System.Math.Max(.001, cutter.EffectiveCapacityM3)));
         double requested = System.Math.Min(excess, flowingTime * Mathf.Max(0, flowM3PerSecond) * tilt * Mathf.Lerp(.3f, 1, fullness));
-        if (cutter.VolumeM3 < .0001 && angleLatched) requested = cutter.VolumeM3;
         double emitted = EmitAcrossMouth(requested);
         if (emitted <= 0)
         {
-            if (flowPaused)
-            {
-                State = UnloadingState.ReadyToDump;
-                Status = "余土间歇下落";
-                return 0;
-            }
             dwell = 0;
             State = UnloadingState.Loaded;
             Status = "斗口被实体遮挡";
             return 0;
         }
         State = cutter.VolumeM3 <= 0 ? UnloadingState.Empty : UnloadingState.Dumping;
-        Status = angleLatched ? "正在卸土" : "倾斜撒土";
+        Status = angle <= enterAngleFromDown ? "正在卸土" : "倾斜撒土";
         return emitted;
     }
 
     private double EmitAcrossMouth(double requested)
     {
-        flowPaused = false;
         if (requested <= 0) return 0;
         float tailReference = Mathf.Max(.001f, Mathf.Min(.01f, (float)cutter.EffectiveCapacityM3 * .05f));
         float tailRatio = Mathf.Clamp01((float)cutter.VolumeM3 / tailReference);
-        if (tailRatio < .25f && (emissionSequence & 1) != 0)
-        {
-            emissionSequence++;
-            flowPaused = true;
-            return 0;
-        }
         int outletCount = Mathf.RoundToInt(Mathf.Lerp(3, 5, tailRatio));
         float halfWidth = cutter.innerMouthHalfWidth * Mathf.Abs(transform.lossyScale.x);
         Vector3 lateral = transform.right.normalized;
@@ -140,11 +134,9 @@ public sealed class BucketSoilUnloader : MonoBehaviour
         }
         if (openOutlets.Count == 0 || allWeight <= 0) return 0;
 
-        double availableRequest = requested * openWeight / allWeight;
-        if (cutter.VolumeM3 < .000001)
-            availableRequest = cutter.VolumeM3;
-        else if (tailRatio < .25f)
-            availableRequest = System.Math.Min(availableRequest, cutter.VolumeM3 * .6);
+        // Preserve an exact final debit when every outlet is open; weighted roundoff
+        // must not leave a microscopic tail behind after requesting all remaining soil.
+        double availableRequest = openOutlets.Count == outletCount ? requested : requested * openWeight / allWeight;
         double released = cutter.ReleaseToFlight(availableRequest);
         if (released <= 0) return 0;
         emissions.Clear();
@@ -179,9 +171,8 @@ public sealed class BucketSoilUnloader : MonoBehaviour
     internal void ResetGate()
     {
         dwell = 0;
-        angleLatched = false;
         emissionSequence = 0;
-        flowPaused = false;
+        RetainedVolumeM3 = 0;
         State = cutter != null && cutter.VolumeM3 > 0 ? UnloadingState.Loaded : UnloadingState.Empty;
         Status = State == UnloadingState.Empty ? "空斗" : "斗内保土";
         if (soilStream != null) soilStream.enabled = false;
