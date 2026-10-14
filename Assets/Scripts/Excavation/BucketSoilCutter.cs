@@ -62,6 +62,21 @@ public sealed class BucketSoilCutter : MonoBehaviour
     /// <summary>Whether cutting is unlocked by a settled work-ready pose or explicit manual input at a ready site.</summary>
     public bool StartupReady => startupReady;
     private Zx200DigController machine;
+    private AutonomousExcavationController automatic;
+    /// <summary>True only when neither an automatic joint move nor a complete loading job owns this bucket.</summary>
+    internal bool ManualSoilControlActive
+    {
+        get
+        {
+            if (machine == null) machine = GetComponentInParent<Zx200DigController>();
+            if (machine == null) return true;
+            if (automatic == null)
+                foreach (var candidate in FindObjectsByType<AutonomousExcavationController>(FindObjectsSortMode.None))
+                    if (candidate.machine == machine && candidate.gameObject.scene == gameObject.scene)
+                    { automatic = candidate; break; }
+            return !machine.IsBusy && (automatic == null || !automatic.IsRunning);
+        }
+    }
     private uint manualRevisionAtEnable;
     private Vector3 previous;
     private Vector3 lastObserved;
@@ -87,7 +102,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
         if (Application.isPlaying && Input.GetKeyDown(KeyCode.Backspace)) ResetExcavation();
     }
 
-    /// <summary>采样当前真实刃口位置，按方向/运动/底面/容量门控切削并更新斗量。</summary>
+    /// <summary>采样真实刃口并切削；手动切削预算独立于斗容量，超出收集容量的土守恒侧落。</summary>
     /// <returns>本次实际进入斗内的m³。</returns>
     public double SamplePose()
     {
@@ -157,20 +172,26 @@ public sealed class BucketSoilCutter : MonoBehaviour
         { RememberBlade(current, corners); Status = reason; return 0; }
         Vector3[] from = previousBlade;
         RememberBlade(current, corners);
-        float available = Mathf.Max(0, (float)(EffectiveCapacityM3 - VolumeM3));
-        if (available <= 1e-5f) { Status = "斗满：请停止切削"; return 0; }
+        double available = System.Math.Max(0, EffectiveCapacityM3 - VolumeM3);
+        bool manual = ManualSoilControlActive;
+        // A full mouth displaces soil rather than turning it into a wall. Bound each
+        // manual sweep by its width, measured travel and the soil's working depth.
+        float cutBudget = manual
+            ? 2 * bladeHalfWidth * Mathf.Abs(transform.lossyScale.x) * travel * soil.maximumCutDepth
+            : (float)available;
+        if (cutBudget <= 1e-5f) { Status = "斗满：请停止切削"; return 0; }
 
         // Geometry determines excavation. Relative inflow determines collection; gravity retention
         // remains the unloader's independent job. A vertical tooth sweep can cut without filling.
-        double removed = soil.CutBladeSweep(from, corners, available);
-        if (removed < available)
+        double removed = soil.CutBladeSweep(from, corners, cutBudget);
+        if (removed < cutBudget)
         {
             foreach (var pile in FindObjectsByType<SoilReceivingZone>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
                 if (pile.gameObject.scene == gameObject.scene)
-                    removed += pile.ExcavateLoose(from, corners, available - removed);
+                    removed += pile.ExcavateLoose(from, corners, cutBudget - removed);
         }
         CollectionEfficiency = EstimateCollectionEfficiency(frameMovement.magnitude > jitterBudget ? frameMovement : movement);
-        double collected = removed * CollectionEfficiency;
+        double collected = System.Math.Min(available, removed * CollectionEfficiency);
         double displaced = removed - collected;
         if (removed > 0 && capturedDensity <= 0) capturedDensity = Mathf.Max(1, densityKgPerM3);
         VolumeM3 += collected;
@@ -253,6 +274,31 @@ public sealed class BucketSoilCutter : MonoBehaviour
         bool collects = EstimateCollectionEfficiency(worldMovement) > .001f;
         reason = collects ? "土穿过斗口" : "切土侧落：尚未进入斗口";
         return collects;
+    }
+
+    /// <summary>Yield a shallow patch under an actively pressing manual shell; displaced soil never becomes bucket intake.</summary>
+    /// <param name="contact">Measured shell contact in world metres, not a predicted remote point.</param>
+    /// <param name="budgetM3">Maximum real displaced volume for this pressure step.</param>
+    /// <returns>Read-back Terrain volume displaced and routed to the existing soil transport ledger.</returns>
+    public double DisplacePressedSoil(Vector3 contact, float budgetM3)
+    {
+        if (soil == null || !startupReady || cuttingSuppressed || !float.IsFinite(budgetM3) || budgetM3 <= 0 ||
+            !soil.HasSurfaceAt(contact)) return 0;
+        soil.Initialize(soil.GetComponent<Terrain>());
+        float surface = soil.Terrain.SampleHeight(contact) + soil.transform.position.y;
+        if (contact.y >= surface - .015f) return 0;
+        Vector3 target = contact;
+        target.y = Mathf.Max(contact.y, surface - .04f);
+        var data = soil.Terrain.terrainData;
+        float cell = Mathf.Max(data.size.x, data.size.z) / (data.heightmapResolution - 1);
+        double removed = soil.CutSweep(target, target, Mathf.Clamp(cell * .75f, .1f, .2f), budgetM3);
+        if (removed <= 0) return 0;
+        if (capturedDensity <= 0) capturedDensity = Mathf.Max(1, densityKgPerM3);
+        ExcavatedVolumeM3 += removed;
+        DisplacedVolumeM3 += removed;
+        ReleaseDisplacedSoil(removed, contact);
+        Status = "斗壳压土：松土让位并侧落";
+        return removed;
     }
 
     private void ReleaseDisplacedSoil(double volume, Vector3 tip)

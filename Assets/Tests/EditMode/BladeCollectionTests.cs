@@ -64,6 +64,59 @@ namespace ExcavatorControls.Tests
                 "z=1.5 lies ahead of the current z=1.25 teeth; old radial cutting must not reach it");
         }
 
+        /// <summary>A full bucket must still displace real soil without inventing extra stored volume.</summary>
+        [Test]
+        public void FullManualBucketContinuesCuttingAndRoutesExcessToSoilFlight()
+        {
+            cutter.capacityM3 = .005f;
+            bucket.transform.position = new Vector3(2, .7f, 1);
+            cutter.SamplePose();
+            for (int i = 0; i < 5; i++)
+            {
+                bucket.transform.position += Vector3.forward * .1f;
+                cutter.SamplePose();
+            }
+            Assert.That(cutter.VolumeM3, Is.EqualTo(.005).Within(.00003));
+            double before = cutter.ExcavatedVolumeM3;
+            bucket.transform.position += Vector3.forward * .2f;
+            cutter.SamplePose();
+            Assert.That(cutter.ExcavatedVolumeM3 - before, Is.GreaterThan(.001), "Fullness must not turn cuttable soil into a wall.");
+            Assert.That(cutter.VolumeM3, Is.LessThanOrEqualTo(cutter.EffectiveCapacityM3 + 1e-9));
+            var flight = bucket.GetComponent<SoilFlightTransport>();
+            Assert.That(flight, Is.Not.Null);
+            Assert.That(cutter.DisplacedVolumeM3, Is.GreaterThan(.001));
+            Assert.That(cutter.soil.RecalculateRemovedVolumeM3(), Is.EqualTo(
+                cutter.VolumeM3 + flight.AirborneVolumeM3 + flight.SurfacePendingVolumeM3 + cutter.DeliveredVolumeM3).Within(1e-5));
+        }
+
+        /// <summary>Pressure displacement has a real soil destination, respects its budget, and does not fake intake.</summary>
+        [Test]
+        public void PressedShellDisplacesSoilWithoutFillingBucket()
+        {
+            double removed = cutter.DisplacePressedSoil(new Vector3(2, .85f, 2), .003f);
+            Assert.That(removed, Is.GreaterThan(.00001).And.LessThanOrEqualTo(.003));
+            Assert.That(cutter.VolumeM3, Is.Zero);
+            Assert.That(cutter.CollectedVolumeM3, Is.Zero);
+            var flight = bucket.GetComponent<SoilFlightTransport>();
+            Assert.That(flight, Is.Not.Null);
+            Assert.That(cutter.soil.RecalculateRemovedVolumeM3(), Is.EqualTo(removed).Within(1e-5));
+            Assert.That(flight.AirborneVolumeM3 + flight.SurfacePendingVolumeM3, Is.EqualTo(removed).Within(1e-9));
+            Assert.That(cutter.soil.Terrain.terrainData.GetHeight(32, 32), Is.GreaterThanOrEqualTo(.959f),
+                "One pressure step must not lower the ground by more than 4cm.");
+            Assert.That(data.GetHeight(32, 32), Is.EqualTo(1).Within(.0001), "Persistent terrain is never changed.");
+        }
+
+        /// <summary>Continued pressure cannot cut through the prepared floor or alter remote terrain.</summary>
+        [Test]
+        public void RepeatedPressurePreservesSoilFloorAndRemoteHeights()
+        {
+            for (int i = 0; i < 100; i++) cutter.DisplacePressedSoil(new Vector3(2, .1f, 2), .003f);
+            Assert.That(cutter.soil.Terrain.terrainData.GetHeight(32, 32), Is.GreaterThanOrEqualTo(.1999f));
+            Assert.That(cutter.soil.Terrain.terrainData.GetHeight(40, 32), Is.EqualTo(1).Within(.0001));
+            Assert.That(cutter.VolumeM3, Is.Zero);
+            Assert.That(cutter.soil.RecalculateRemovedVolumeM3(), Is.EqualTo(cutter.DisplacedVolumeM3).Within(1e-5));
+        }
+
         [Test]
         public void StationaryBladeInsideSoilDoesNotKeepExcavating()
         {

@@ -125,8 +125,9 @@ public sealed class BucketSoilResistance : MonoBehaviour
         full = cutter.EffectiveCapacityM3 - cutter.VolumeM3 <= .00001;
         atFloor = tip.y <= cutter.soil.GetFloorWorldY(tip) + contactMargin;
         tooDeep = PenetrationM >= maximumPenetration;
-        IsBlocked = full || atFloor || tooDeep;
-        BlockReason = full ? "满斗：禁止继续切入" : atFloor ? "土层底部：禁止深入" : tooDeep ? "切深超限：限制深入，可沿面切削或抬升" : "切削接触";
+        bool fullStopsCut = full && !cutter.ManualSoilControlActive;
+        IsBlocked = fullStopsCut || atFloor || tooDeep;
+        BlockReason = fullStopsCut ? "满斗：禁止继续切入" : atFloor ? "土层底部：禁止深入" : tooDeep ? "切深超限：限制深入，可沿面切削或抬升" : full ? "满斗切削：多余土侧落" : "切削接触";
     }
 
     /// <summary>Limit each joint command using its predicted cutting-edge displacement; never write solver pose.</summary>
@@ -137,7 +138,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
     public Zx200JointPose ConstrainPose(Zx200DigController machine, Zx200JointPose requested, float deltaSeconds)
     {
         EvaluateContact();
-        allowManualSlopeRelief = machine != null && !machine.IsBusy;
+        allowManualSlopeRelief = machine != null && cutter.ManualSoilControlActive;
         if (!isActiveAndEnabled || machine == null || deltaSeconds <= 0)
         { holds.Clear(); floorMomentumBrakeActive = false; return requested; }
         var actual = machine.ReadActualPose();
@@ -160,7 +161,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
     private Zx200JointPose GuardManualShell(Zx200DigController machine, Zx200JointPose actual, Zx200JointPose requested)
     {
         // Keep the autonomous controller's validated trajectories unchanged in this manual-focused change.
-        if (machine.IsBusy) return requested;
+        if (machine.IsBusy || !cutter.ManualSoilControlActive) return requested;
         if (shellGuard == null) shellGuard = new BucketShellTerrainGuard();
         var result = shellGuard.Constrain(cutter, machine, actual, requested, out bool limited);
         if (limited)
@@ -382,7 +383,8 @@ public sealed class BucketSoilResistance : MonoBehaviour
 
         // While held, compare input against the latched target, not gravity-induced tracking error.
         // Otherwise a downward command can look like withdrawal after the joint sags past its target.
-        float reference = holds.TryGetValue(joint, out float held) ? held : actual;
+        float reference = holds.TryGetValue(joint, out float held) ? held :
+            allowManualSlopeRelief ? joint.xDrive.target : actual;
         float delta = requested - reference;
         if (Mathf.Abs(delta) < .00001f) return reference;
         Vector3 next = pivot + Quaternion.AngleAxis(Mathf.Clamp(delta, -1, 1), axis) * (tip - pivot);
@@ -394,7 +396,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
         // On a mound, overhead height grows during a horizontal cut into its face. It is
         // not a downward plunge. The real arm cuts at about 32 degrees below horizontal;
         // allow mouth-leading oblique cuts up to about 60 degrees at the restricted cutting speed.
-        if (full || atFloor) return Hold(joint, actual);
+        if (full && !allowManualSlopeRelief || atFloor) return Hold(joint, actual);
         float horizontalTravel = new Vector2(movement.x, movement.z).magnitude;
         if (tooDeep)
         {
@@ -410,7 +412,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
             return Hold(joint, actual);
         }
         holds.Remove(joint);
-        return Mathf.MoveTowards(actual, requested, cuttingSpeedDegrees * dt);
+        return Mathf.MoveTowards(allowManualSlopeRelief ? reference : actual, requested, cuttingSpeedDegrees * dt);
     }
 
     private bool ImprovesFloorClearance(Vector3 current, Vector3 next)

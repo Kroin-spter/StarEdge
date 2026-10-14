@@ -8,6 +8,10 @@ internal sealed class BucketShellTerrainGuard
     private readonly HashSet<Vector3Int> sampleCells = new HashSet<Vector3Int>();
     private Vector3[] worldSamples;
     private float[] permittedDepth;
+    private BucketSoilCutter activeCutter;
+    private float lastPressureTime = float.NegativeInfinity;
+    private readonly List<int> pressingSamples = new List<int>();
+    private float[] pressureDepths;
     private bool prepared;
     internal float MaximumDepth { get; private set; }
 
@@ -17,6 +21,7 @@ internal sealed class BucketShellTerrainGuard
         limited = false;
         if (!prepared) Prepare(cutter);
         if (localSamples.Count == 0 || cutter.soil == null) return requested;
+        activeCutter = cutter;
         MaximumDepth = 0;
         for (int i = 0; i < localSamples.Count; i++)
         {
@@ -31,6 +36,7 @@ internal sealed class BucketShellTerrainGuard
         // removes that support and ratchets the shell downward under gravity.
         var drive = new Zx200JointPose(Drive(machine.swingJoint, actual.swing), Drive(machine.boomJoint, actual.boom),
             Drive(machine.armJoint, actual.arm), Drive(machine.bucketJoint, actual.bucket), 0);
+        YieldPressedContacts(cutter, machine, actual, drive, requested);
         if (IsPathSafe(cutter.soil, machine, actual, drive, requested)) return requested;
         // Preserve independently safe controls, especially boom withdrawal. A common
         // fraction for all axes would let one blocked curl erase the operator's escape input.
@@ -51,6 +57,44 @@ internal sealed class BucketShellTerrainGuard
         }
         limited = true;
         return accepted;
+    }
+
+    private void YieldPressedContacts(BucketSoilCutter cutter, Zx200DigController machine,
+        Zx200JointPose actual, Zx200JointPose drive, Zx200JointPose requested)
+    {
+        // Pressure-driven yielding needs explicit manual operation. An idle, initialized
+        // machine must not erode its surroundings, nor may repeated queries double-spend a step.
+        if (!Application.isPlaying || machine.IsBusy || machine.ManualPoseRevision == 0 ||
+            !cutter.StartupReady || Time.fixedTime <= lastPressureTime) return;
+        lastPressureTime = Time.fixedTime;
+        Matrix4x4 motion = Motion(machine, actual, WithDriveIncrement(actual, drive, requested));
+        float budget = .06f * Time.fixedDeltaTime;
+        pressingSamples.Clear();
+        for (int i = 0; i < worldSamples.Length; i++)
+        {
+            Vector3 contact = worldSamples[i];
+            Vector3 next = motion.MultiplyPoint3x4(contact);
+            Vector3 movement = next - contact;
+            float depth = Depth(cutter.soil, contact);
+            if (depth < .015f || movement.sqrMagnitude < 1e-8f ||
+                Mathf.Abs(Vector3.Dot(movement.normalized, cutter.transform.right)) > .7f ||
+                Depth(cutter.soil, next) <= depth + .0001f) continue;
+            pressureDepths[i] = depth;
+            pressingSamples.Add(i);
+        }
+        // Spend the finite pressure budget on the deepest contacts first, not the
+        // imported mesh's vertex order, which can starve the actually blocking wall.
+        pressingSamples.Sort((a, b) => pressureDepths[b].CompareTo(pressureDepths[a]));
+        int patches = 0;
+        foreach (int index in pressingSamples)
+        {
+            if (budget <= .00001f || patches >= 8) break;
+            double removed = cutter.DisplacePressedSoil(worldSamples[index], budget);
+            if (removed > 0) { budget -= (float)removed; patches++; }
+        }
+        // Limits must use the newly yielded surface, not stale depths from before the pressure step.
+        for (int i = 0; i < worldSamples.Length; i++)
+            permittedDepth[i] = Mathf.Max(0, Depth(cutter.soil, worldSamples[i]));
     }
 
     private static Zx200JointPose WithAxis(Zx200JointPose pose, Zx200JointPose requested, int axis)
@@ -119,6 +163,7 @@ internal sealed class BucketShellTerrainGuard
         }
         worldSamples = new Vector3[localSamples.Count];
         permittedDepth = new float[localSamples.Count];
+        pressureDepths = new float[localSamples.Count];
     }
 
     private void Add(BucketSoilCutter cutter, Vector3 world)
@@ -133,8 +178,36 @@ internal sealed class BucketShellTerrainGuard
 
     private bool IsSafe(DeformableSoilTerrain soil, Matrix4x4 motion)
     {
+        Vector3 tip = activeCutter.TipWorldPosition;
+        Vector3 nextTip = motion.MultiplyPoint3x4(tip);
+        float toothDepth = Depth(soil, tip);
+        // Give actual tooth-led cuts a small deformable contact band. Never grant
+        // this to an airborne edge, side/back scraping, or motion below the soil floor.
+        bool yielding = toothDepth >= -.02f && soil.HasSurfaceAt(nextTip) &&
+            nextTip.y > soil.GetFloorWorldY(nextTip) + .03f &&
+            activeCutter.CanCutMovement(nextTip - tip, out _);
         for (int i = 0; i < worldSamples.Length; i++)
-            if (Depth(soil, motion.MultiplyPoint3x4(worldSamples[i])) > permittedDepth[i] + .0001f) return false;
+        {
+            float allowed = permittedDepth[i];
+            Vector3 point = worldSamples[i];
+            Vector3 next = motion.MultiplyPoint3x4(point);
+            Vector3 displacement = next - point;
+            float depth = Depth(soil, point);
+            float nextDepth = Depth(soil, next);
+            bool pressingContact = depth >= -.005f && nextDepth > depth + .0001f &&
+                displacement.sqrMagnitude > 1e-8f &&
+                Mathf.Abs(Vector3.Dot(displacement.normalized, activeCutter.transform.right)) <= .7f &&
+                next.y > soil.GetFloorWorldY(next) + .015f;
+            // Absolute depth cap, not a new per-frame allowance: holding an input
+            // cannot ratchet the shell indefinitely into uncut ground.
+            if (yielding && pressingContact) allowed = Mathf.Max(allowed, .045f);
+            // A manually pressed shell needs enough contact to start the shallow
+            // displacement step even when its teeth are still above the surface.
+            if (Application.isPlaying && activeCutter.StartupReady &&
+                lastPressureTime == Time.fixedTime && pressingContact)
+                allowed = Mathf.Max(allowed, .025f);
+            if (nextDepth > allowed + .0001f) return false;
+        }
         return true;
     }
 

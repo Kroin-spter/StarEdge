@@ -181,7 +181,9 @@ namespace ExcavatorControls.Tests
             }
             double volume = cutter.VolumeM3;
             Assert.That(volume, Is.GreaterThan(.02).And.LessThanOrEqualTo(cutter.EffectiveCapacityM3));
-            Assert.That(volume, Is.EqualTo(IndependentVolume()).Within(1e-5));
+            var flight = bucket.GetComponent<SoilFlightTransport>();
+            double displaced = flight != null ? flight.AirborneVolumeM3 + flight.SurfacePendingVolumeM3 : 0;
+            Assert.That(volume + displaced + cutter.DeliveredVolumeM3, Is.EqualTo(IndependentVolume()).Within(1e-5));
             var filter = visual.GetComponent<MeshFilter>();
             Vector3[] vertices = filter.sharedMesh.vertices;
             bucket.transform.position += Vector3.up * 3;

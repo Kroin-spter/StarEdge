@@ -174,6 +174,18 @@ namespace ExcavatorControls.Tests
             Assert.That(System.Math.Ceiling(target / bucket), Is.EqualTo(4));
         }
 
+        /// <summary>Only measured near-complete receiver transfer can tolerate a tiny separately tracked spill.</summary>
+        [TestCase(.24, .2394, true)]
+        [TestCase(.24, .23, false)]
+        [TestCase(.24, 0, false)]
+        [TestCase(0, 0, false)]
+        public void ConfirmedDumpRequiresAlmostEntireActualLoad(double load, double received, bool expected)
+        {
+            var method = typeof(AutonomousExcavationController).GetMethod("HasConfirmedDumpLoad");
+            Assert.That(method, Is.Not.Null);
+            Assert.That((bool)method.Invoke(null, new object[] { load, received }), Is.EqualTo(expected));
+        }
+
         [Test]
         public void StartAutonomousJob_RejectsMissingDependencies()
         {

@@ -8,6 +8,20 @@ namespace ExcavatorControls.Tests
 {
     public class BucketSoilFillTests
     {
+        /// <summary>The enlarged cavity must display a real 0.33m³ load, not silently clamp to the old cavity.</summary>
+        [Test]
+        public void EnlargedCavityDisplaysRequestedLoadWithoutClamping()
+        {
+            var bucket = new GameObject("larger real load");
+            try
+            {
+                var fill = bucket.AddComponent<BucketSoilFill>();
+                fill.SetVolume(.33);
+                Assert.That(SignedVolume(bucket.GetComponent<MeshFilter>().sharedMesh), Is.EqualTo(.33).Within(1e-6));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(bucket); }
+        }
+
         [Test]
         public void CalibratedFillDoesNotIntersectActualBucketShell()
         {

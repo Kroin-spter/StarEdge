@@ -7,7 +7,7 @@ using UnityEngine;
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public sealed class BucketSoilFill : MonoBehaviour
 {
-    [Min(.01f)] public float innerHalfWidth = .38f;
+    [Min(.01f)] public float innerHalfWidth = .42f;
     [Tooltip("Convex cavity outline in bucket-local (Y,Z) metres, inset from the ZX200 shell.")]
     public Vector2[] cavityProfile = {
         new Vector2(.50f, -.13f), new Vector2(.33f, -.04f),

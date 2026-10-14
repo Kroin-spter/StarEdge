@@ -5,6 +5,54 @@ namespace ExcavatorControls.Tests
 {
     public class SoilResistanceTests
     {
+        /// <summary>Tooth-led contact in soft soil gets finite advance instead of a zero-motion deadlock.</summary>
+        [Test]
+        public void ManualToothContactCanAdvanceWithShallowShellContact()
+        {
+            var data = new TerrainData { heightmapResolution = 33, size = new Vector3(4, 2, 4) };
+            var heights = new float[33, 33];
+            for (int z = 0; z < 33; z++) for (int x = 0; x < 33; x++) heights[z, x] = .5f;
+            data.SetHeights(0, 0, heights);
+            var ground = Terrain.CreateTerrainGameObject(data);
+            var rig = new GameObject("soft contact fixture");
+            var bucket = new GameObject("tooth-led bucket");
+            try
+            {
+                var soil = ground.AddComponent<DeformableSoilTerrain>();
+                var cutter = bucket.AddComponent<BucketSoilCutter>();
+                cutter.soil = soil;
+                cutter.tipLocalPosition = new Vector3(0, -.08f, .2f);
+                cutter.cutDirectionLocal = Vector3.down;
+                bucket.transform.position = new Vector3(2, 1.08f, 2);
+                var shell = bucket.AddComponent<BoxCollider>();
+                shell.center = new Vector3(0, -.06f, 0);
+                shell.size = new Vector3(.4f, .12f, .3f);
+                var resistance = bucket.AddComponent<BucketSoilResistance>();
+                var machine = rig.AddComponent<Zx200DigController>();
+                var pivot = new GameObject("arm");
+                pivot.transform.SetParent(rig.transform);
+                pivot.transform.position = bucket.transform.position - Vector3.forward;
+                machine.armJoint = pivot.AddComponent<ArticulationBody>();
+                machine.armJoint.matchAnchors = false;
+                machine.armJoint.anchorRotation = Quaternion.identity;
+                var result = resistance.ConstrainPose(machine, new Zx200JointPose(0, 0, .1f, 0, 0), .02f);
+                Assert.That(result.arm, Is.GreaterThan(.08f), "Effective tooth contact must get finite soft-soil advance.");
+                Assert.That(soil.RecalculateRemovedVolumeM3(), Is.Zero, "A target prediction must never fabricate excavation.");
+                var drive = machine.armJoint.xDrive;
+                drive.target = .5f; // Existing spring deflection supporting the arm's weight.
+                machine.armJoint.xDrive = drive;
+                result = resistance.ConstrainPose(machine, new Zx200JointPose(0, 0, .6f, 0, 0), .02f);
+                Assert.That(result.arm, Is.GreaterThan(.5f), "Cutting speed limits must advance the drive, not erase its gravity-support offset.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(bucket);
+                Object.DestroyImmediate(rig);
+                Object.DestroyImmediate(ground);
+                Object.DestroyImmediate(data);
+            }
+        }
+
         /// <summary>Protect the shell even when the tooth is above the soil, without locking reverse withdrawal.</summary>
         [Test]
         public void ManualShellContactLimitsDeeperMotionWithAirborneTipAndAllowsWithdrawal()

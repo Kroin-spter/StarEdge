@@ -25,6 +25,12 @@ namespace ExcavatorControls.Tests
         [Timeout(180000)]
         public IEnumerator SavedPreviewManualCurledAngleCollects() => ManualAngledScoop(45);
 
+        /// <summary>A closed starting posture can open into a real cut instead of staying locked in shell contact.</summary>
+        /// <returns>Real manual motion, volume checks and withdrawal.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator SavedPreviewManualClosedAngleOpensAndCollects() => ManualAngledScoop(65);
+
         private static IEnumerator ManualAngledScoop(float bucketAngle)
         {
             const string path = "Assets/Scenes/sence_test.unity";
@@ -61,9 +67,17 @@ namespace ExcavatorControls.Tests
                 BladeMainSceneTests.CaptureClose(cutter, camera, false, $"manual-angle-{bucketAngle}-entry");
                 for (int i = 0; i < 250 && cutter.VolumeM3 < .08; i++)
                 {
-                    machine.AdjustManualPose(0, 0, 6 * Time.fixedDeltaTime, 4 * Time.fixedDeltaTime);
+                    // A near-closed mouth needs opening, not another 20 degrees of
+                    // closure. These are explicit manual inputs, not automatic assistance.
+                    float bucketSpeed = bucketAngle >= 60 ? -4 : 4;
+                    machine.AdjustManualPose(0, 0, 6 * Time.fixedDeltaTime, bucketSpeed * Time.fixedDeltaTime);
                     yield return new WaitForFixedUpdate();
                     maximumShellDepth = Mathf.Max(maximumShellDepth, resistance.ShellPenetrationM);
+                    if (bucketAngle == 65 && i % 50 == 0)
+                    {
+                        var pose = machine.ReadActualPose();
+                        Debug.Log($"steep-step={i} arm={pose.arm:F3}/{machine.armJoint.xDrive.target:F3} bucket={pose.bucket:F3}/{machine.bucketJoint.xDrive.target:F3} tipDepth={resistance.PenetrationM:F4} shell={resistance.ShellPenetrationM:F4} reason={resistance.BlockReason}");
+                    }
                 }
                 Debug.Log($"多角度手挖 {bucketAngle}°：切除={cutter.ExcavatedVolumeM3:F5}，进斗={cutter.VolumeM3:F5}，斗壳最大穿入={maximumShellDepth:F4}m，{cutter.Status}，{resistance.BlockReason}");
                 BladeMainSceneTests.CaptureClose(cutter, camera, false, $"manual-angle-{bucketAngle}-curl");

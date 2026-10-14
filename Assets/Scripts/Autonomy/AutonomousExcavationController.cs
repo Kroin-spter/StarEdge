@@ -357,6 +357,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private double taskTargetVolumeM3;
     private double taskReceiverStartVolumeM3;
     private double cycleReceiverStartVolumeM3;
+    private double cycleDumpStartLoadM3;
     private int nextDigPointIndex;
     private int consecutiveEmptyDigPoints;
     private float dumpSwingTarget;
@@ -721,6 +722,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 // so the bucket starts emptying as its mouth rotates, not only at the final angle.
                 SetState(AutonomousExcavationState.Dump, "打开铲斗并等待土流落入车厢");
                 cycleReceiverStartVolumeM3 = receiver.VolumeM3;
+                cycleDumpStartLoadM3 = cutter.VolumeM3;
                 Zx200JointPose dump = machine.ReadActualPose();
                 dump.bucket = machine.dumpPose.bucket;
                 dump.duration = Mathf.Max(1.2f, machine.dumpPose.duration);
@@ -1648,8 +1650,13 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             HandleManualInput();
             UpdateDeliveredVolume();
             bool bucketEmpty = cutter.VolumeM3 <= GetBucketResidualToleranceM3();
+            double received = receiver.VolumeM3 - cycleReceiverStartVolumeM3;
+            // Tiny side-spill parcels remain tracked and may keep sliding off-map.
+            // They must not block the next scoop once almost all of this actual load
+            // has demonstrably reached the bed. Never delete or credit those parcels.
             bool flightSettled = unloader.AirborneVolumeM3 <= 1e-5 &&
-                unloader.SurfacePendingVolumeM3 <= 1e-5;
+                unloader.SurfacePendingVolumeM3 <= 1e-5 ||
+                HasConfirmedDumpLoad(cycleDumpStartLoadM3, received);
             bool receiverAccepted = receiver.VolumeM3 - cycleReceiverStartVolumeM3 >= minimumTransferVolumeM3;
             if (bucketEmpty && flightSettled && receiverAccepted)
             {
@@ -1665,6 +1672,18 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 $"车厢增量={receiver.VolumeM3 - cycleReceiverStartVolumeM3:F4}，" +
                 $"斗口状态={unloader.Status}，斗尖={cutter.TipWorldPosition}，车厢={receiver.transform.position}");
         }
+    }
+
+    /// <summary>Confirm near-complete real bed transfer while tolerating a small separately tracked spill.</summary>
+    /// <param name="initialLoadM3">Positive bucket load measured immediately before opening over the truck.</param>
+    /// <param name="receivedM3">Actual receiver increase since that same moment.</param>
+    /// <returns>True if the missing amount is at most 0.5% of the load and never more than one litre.</returns>
+    public static bool HasConfirmedDumpLoad(double initialLoadM3, double receivedM3)
+    {
+        if (!double.IsFinite(initialLoadM3) || !double.IsFinite(receivedM3) ||
+            initialLoadM3 <= 0 || receivedM3 <= 0) return false;
+        double spillTolerance = System.Math.Min(.001, initialLoadM3 * .005);
+        return receivedM3 >= initialLoadM3 - spillTolerance;
     }
 
     private IEnumerator AlignDumpSwing()

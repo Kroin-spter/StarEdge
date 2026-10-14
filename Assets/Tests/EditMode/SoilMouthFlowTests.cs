@@ -157,13 +157,15 @@ namespace ExcavatorControls.Tests
             Assert.That(cutter.VolumeM3, Is.GreaterThan(0).And.LessThan(.0001));
             unloader.openingNormalLocal = Vector3.down;
             MoveBucketToDischarge();
-            int before = ReadParcels().Count;
+            double emittedBefore = cutter.EmittedVolumeM3;
 
             double emitted = unloader.Step(.1f);
-            List<ParcelSnapshot> lateFlow = ReadParcels().GetRange(before, ReadParcels().Count - before);
+            // Overflow from loading remains near the excavation at x=2 and may land
+            // during Step. Select discharge parcels at x=10 rather than stale list indices.
+            List<ParcelSnapshot> lateFlow = ReadParcels().FindAll(parcel => parcel.position.x > 8);
             float lateSpan = MaxLocalX(lateFlow) - MinLocalX(lateFlow);
 
-            Assert.That(emitted, Is.EqualTo(cutter.EmittedVolumeM3).Within(1e-10));
+            Assert.That(emitted, Is.EqualTo(cutter.EmittedVolumeM3 - emittedBefore).Within(1e-10));
             Assert.That(lateFlow.Count, Is.LessThan(fullFlow.Count));
             Assert.That(lateSpan, Is.LessThan(fullSpan * .6f), "The last trickle should not occupy the full mouth width.");
             Assert.That(SumVolume(lateFlow), Is.EqualTo(emitted).Within(1e-10));
