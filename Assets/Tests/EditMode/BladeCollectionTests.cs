@@ -73,5 +73,57 @@ namespace ExcavatorControls.Tests
             Assert.That(cutter.ExcavatedVolumeM3, Is.Zero);
             Assert.That(cutter.soil.RecalculateRemovedVolumeM3(), Is.Zero);
         }
+
+        /// <summary>A rising inward scoop is not the same as lifting a bucket out of the cut.</summary>
+        [TestCase(25f)]
+        [TestCase(45f)]
+        [TestCase(60f)]
+        public void InwardRisingBladeStillCutsAndCollects(float slopeDegrees)
+        {
+            bucket.transform.position = new Vector3(2, .55f, 1.5f);
+            cutter.SamplePose();
+            Vector3 travel = new Vector3(0, Mathf.Sin(slopeDegrees * Mathf.Deg2Rad),
+                Mathf.Cos(slopeDegrees * Mathf.Deg2Rad)) * .2f;
+            bucket.transform.position += travel;
+            cutter.SamplePose();
+            Assert.That(cutter.ExcavatedVolumeM3, Is.GreaterThan(.001), cutter.Status);
+            Assert.That(cutter.VolumeM3, Is.GreaterThan(.001), "Inward steel motion must still collect while rising.");
+            Assert.That(cutter.soil.RecalculateRemovedVolumeM3(),
+                Is.EqualTo(cutter.ExcavatedVolumeM3).Within(1e-5));
+        }
+
+        /// <summary>Relaxing inward curl must not authorize a straight lift or rearward/sideways scrape.</summary>
+        [TestCase(0, 1, 0)]
+        [TestCase(0, 1, -1)]
+        [TestCase(1, 0, 0)]
+        public void WithdrawalAndSideScrapeStillDoNotCut(float x, float y, float z)
+        {
+            bucket.transform.position = new Vector3(2, .55f, 2);
+            cutter.SamplePose();
+            bucket.transform.position += new Vector3(x, y, z).normalized * .2f;
+            cutter.SamplePose();
+            Assert.That(cutter.ExcavatedVolumeM3, Is.Zero);
+        }
+
+        /// <summary>Do not discard a real rotating steel sweep merely because the tip marker is stationary.</summary>
+        [Test]
+        public void RotatingBladeWithFixedTipCanRemoveSoil()
+        {
+            var marker = new GameObject("fixed tooth marker");
+            try
+            {
+                bucket.transform.position = new Vector3(2, .8f, 2);
+                marker.transform.position = bucket.transform.position;
+                cutter.tipMarker = marker.transform;
+                cutter.bladeForwardLocal = Vector3.forward;
+                cutter.bladeCenterOffset = new Vector3(0, 0, .3f);
+                cutter.bladeLength = .12f;
+                cutter.SamplePose();
+                bucket.transform.rotation = Quaternion.Euler(20, 0, 0);
+                cutter.SamplePose();
+                Assert.That(cutter.ExcavatedVolumeM3, Is.GreaterThan(.001), cutter.Status);
+            }
+            finally { Object.DestroyImmediate(marker); }
+        }
     }
 }

@@ -155,10 +155,11 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
         Vector3 size = runtime.size;
         int resolution = runtime.heightmapResolution;
         float dx = size.x / (resolution - 1), dz = size.z / (resolution - 1);
-        int x0 = Mathf.Max(1, Mathf.CeilToInt(minimumX / dx));
-        int x1 = Mathf.Min(resolution - 2, Mathf.FloorToInt(maximumX / dx));
-        int z0 = Mathf.Max(1, Mathf.CeilToInt(minimumZ / dz));
-        int z1 = Mathf.Min(resolution - 2, Mathf.FloorToInt(maximumZ / dz));
+        // A blade may cross a cell without covering its vertex; allow only a half-cell raster fringe.
+        int x0 = Mathf.Max(1, Mathf.CeilToInt((minimumX - .5f * dx) / dx));
+        int x1 = Mathf.Min(resolution - 2, Mathf.FloorToInt((maximumX + .5f * dx) / dx));
+        int z0 = Mathf.Max(1, Mathf.CeilToInt((minimumZ - .5f * dz) / dz));
+        int z1 = Mathf.Min(resolution - 2, Mathf.FloorToInt((maximumZ + .5f * dz) / dz));
         if (x1 < x0 || z1 < z0) return 0;
 
         var triangles = new Vector3[48, 3];
@@ -169,28 +170,47 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
         int width = x1 - x0 + 1, depth = z1 - z0 + 1;
         float[,] before = runtime.GetHeights(x0, z0, width, depth);
         float[,] after = (float[,])before.Clone();
-        double remaining = availableVolumeM3;
+        var candidates = new float[depth, width];
         double vertexVolume = (double)dx * dz * size.y;
         const float heightQuantum = 1f / 32766f;
-        bool changed = false;
+        double candidateVolume = 0;
         for (int z = z0; z <= z1; z++)
             for (int x = x0; x <= x1; x++)
             {
                 float targetY = float.PositiveInfinity;
                 Vector2 point = new Vector2(x * dx, z * dz);
-                for (int triangle = 0; triangle < triangleCount; triangle++)
-                    if (ProjectedHeight(triangles[triangle, 0], triangles[triangle, 1], triangles[triangle, 2],
-                        point, out float height)) targetY = Mathf.Min(targetY, height);
+                for (int sample = 0; sample < 5; sample++)
+                {
+                    Vector2 probe = point;
+                    if (sample == 1) probe.x -= .5f * dx;
+                    else if (sample == 2) probe.x += .5f * dx;
+                    else if (sample == 3) probe.y -= .5f * dz;
+                    else if (sample == 4) probe.y += .5f * dz;
+                    for (int triangle = 0; triangle < triangleCount; triangle++)
+                        if (ProjectedHeight(triangles[triangle, 0], triangles[triangle, 1], triangles[triangle, 2],
+                            probe, out float height)) targetY = Mathf.Min(targetY, height);
+                }
                 if (!float.IsFinite(targetY) || VertexTouchesHole(x, z)) continue;
                 float old = before[z - z0, x - x0];
                 float floor = VertexFloor(x, z);
                 float target = Mathf.Max(floor, targetY) / size.y;
                 if ((old - target) * size.y < minimumCutDepth) continue;
-                float reduction = Mathf.Min(old - target, (float)(remaining / vertexVolume));
-                reduction = Mathf.Floor(Mathf.Max(0, reduction - heightQuantum) / heightQuantum) * heightQuantum;
+                float reduction = Mathf.Max(0f, old - target);
+                candidates[z - z0, x - x0] = reduction;
+                candidateVolume += reduction * vertexVolume;
+            }
+        if (candidateVolume <= 0) return 0;
+
+        // Allocate one uniform fraction to all eligible vertices, independent of raster traversal order.
+        float fraction = (float)Math.Min(1d, availableVolumeM3 / candidateVolume);
+        bool changed = false;
+        for (int z = 0; z < depth; z++)
+            for (int x = 0; x < width; x++)
+            {
+                float reduction = candidates[z, x] * fraction;
+                reduction = Mathf.Floor(Mathf.Max(0f, reduction - heightQuantum) / heightQuantum) * heightQuantum;
                 if (reduction <= 0) continue;
-                after[z - z0, x - x0] = old - reduction;
-                remaining -= reduction * vertexVolume;
+                after[z, x] = Mathf.Max(before[z, x] - candidates[z, x], before[z, x] - reduction);
                 changed = true;
             }
         if (!changed) return 0;

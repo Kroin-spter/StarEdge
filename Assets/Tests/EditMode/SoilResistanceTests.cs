@@ -5,6 +5,61 @@ namespace ExcavatorControls.Tests
 {
     public class SoilResistanceTests
     {
+        /// <summary>Protect the shell even when the tooth is above the soil, without locking reverse withdrawal.</summary>
+        [Test]
+        public void ManualShellContactLimitsDeeperMotionWithAirborneTipAndAllowsWithdrawal()
+        {
+            var data = new TerrainData { heightmapResolution = 33, size = new Vector3(4, 2, 4) };
+            var heights = new float[33, 33];
+            for (int z = 0; z < 33; z++) for (int x = 0; x < 33; x++) heights[z, x] = .5f;
+            data.SetHeights(0, 0, heights);
+            var ground = Terrain.CreateTerrainGameObject(data);
+            var rig = new GameObject("manual shell guard fixture");
+            var bucket = new GameObject("bucket with buried rear shell");
+            try
+            {
+                var soil = ground.AddComponent<DeformableSoilTerrain>();
+                var cutter = bucket.AddComponent<BucketSoilCutter>();
+                cutter.soil = soil;
+                cutter.tipLocalPosition = Vector3.zero;
+                bucket.transform.position = new Vector3(2, 1.3f, 2);
+                var shell = bucket.AddComponent<BoxCollider>();
+                shell.center = new Vector3(0, -.2f, -.3f);
+                shell.size = new Vector3(.4f, .4f, .4f);
+                var resistance = bucket.AddComponent<BucketSoilResistance>();
+                var machine = rig.AddComponent<Zx200DigController>();
+                var pivot = new GameObject("arm");
+                pivot.transform.SetParent(rig.transform);
+                pivot.transform.position = bucket.transform.position - Vector3.forward;
+                machine.armJoint = pivot.AddComponent<ArticulationBody>();
+                machine.armJoint.matchAnchors = false;
+                machine.armJoint.anchorRotation = Quaternion.identity;
+                machine.armJoint.anchorPosition = Vector3.zero;
+                var intoSoil = resistance.ConstrainPose(machine, new Zx200JointPose(0, 0, 1, 0, 0), .02f);
+                Assert.That(intoSoil.arm, Is.LessThan(.02f), "Airborne teeth do not authorize pushing the buried shell deeper.");
+                var withdrawal = resistance.ConstrainPose(machine, new Zx200JointPose(0, 0, -1, 0, 0), .02f);
+                Assert.That(withdrawal.arm, Is.EqualTo(-1).Within(.001), "Do not lock an escape direction.");
+                var boomPivot = new GameObject("boom withdrawal pivot");
+                boomPivot.transform.SetParent(rig.transform);
+                boomPivot.transform.position = bucket.transform.position + Vector3.forward;
+                machine.boomJoint = boomPivot.AddComponent<ArticulationBody>();
+                machine.boomJoint.matchAnchors = false;
+                machine.boomJoint.anchorRotation = Quaternion.identity;
+                machine.boomJoint.anchorPosition = Vector3.zero;
+                var mixed = resistance.ConstrainPose(machine, new Zx200JointPose(0, .5f, 1, 0, 0), .02f);
+                Assert.That(mixed.boom, Is.GreaterThan(.45f), "An unsafe arm input must not erase the safe boom withdrawal.");
+                Assert.That(mixed.arm, Is.LessThan(1), "The penetrating component still needs limiting.");
+                Assert.That(soil.RecalculateRemovedVolumeM3(), Is.Zero, "The shell guard must not excavate on behalf of the blade.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(bucket);
+                Object.DestroyImmediate(rig);
+                Object.DestroyImmediate(ground);
+                Object.DestroyImmediate(data);
+            }
+        }
+
         /// <summary>Faster measured closing motion must move the floor-braking trigger farther from the floor.</summary>
         [Test]
         public void VelocityBrakeTriggerClearance_IncreasesWithMeasuredTipClosingSpeed()

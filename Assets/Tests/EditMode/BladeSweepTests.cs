@@ -97,6 +97,53 @@ namespace ExcavatorControls.Tests
             Assert.That(source.GetHeight(16, 16), Is.EqualTo(1f));
         }
 
+        /// <summary>Catch scan-order allocation that digs the left side while leaving the symmetric right side high.</summary>
+        [Test]
+        public void LimitedCapacityCutsSymmetricBladeFootprintOnBothSides()
+        {
+            Vector3[] box = Box(new Vector3(2, .6f, 2), new Vector3(.75f, .1f, .75f), Quaternion.identity);
+
+            double removed = Cut(box, box, .03f);
+            float leftDepth = source.GetHeight(13, 16) - Data.GetHeight(13, 16);
+            float rightDepth = source.GetHeight(19, 16) - Data.GetHeight(19, 16);
+
+            Assert.That(removed, Is.GreaterThan(0).And.LessThanOrEqualTo(.0300001));
+            Assert.That(leftDepth, Is.GreaterThan(.001f));
+            Assert.That(rightDepth, Is.GreaterThan(.001f));
+            Assert.That(Mathf.Abs(leftDepth - rightDepth), Is.LessThan(.01f));
+        }
+
+        /// <summary>Catch a narrow diagonal blade crossing cells without hitting projected heightmap vertices.</summary>
+        [Test]
+        public void DiagonalSubGridBladeDoesNotLeaveAnUncutCenterline()
+        {
+            Vector3[] box = Box(new Vector3(2.0625f, .6f, 2f),
+                new Vector3(.6f, .1f, .04f), Quaternion.Euler(0f, 45f, 0f));
+
+            Assert.That(Cut(box, box, 10f), Is.GreaterThan(0));
+            for (int x = 14; x <= 19; x++)
+                Assert.That(Data.GetHeight(x, 33 - x), Is.LessThan(.99f),
+                    $"Diagonal blade must not leave a high column at ({x},{33 - x}).");
+            Assert.That(Data.GetHeight(16, 20), Is.EqualTo(source.GetHeight(16, 20)));
+        }
+
+        /// <summary>Guard read-back volume, the effective floor, and unchanged terrain outside the blade footprint.</summary>
+        [Test]
+        public void BladeCutConservesReadbackVolumeWithoutLoweringFloorOrDistantVertices()
+        {
+            soil.floorHeight = .9f;
+            Vector3[] box = Box(new Vector3(2f, .4f, 2f),
+                new Vector3(.5f, .1f, .5f), Quaternion.identity);
+
+            double removed = Cut(box, box, .04f);
+
+            Assert.That(removed, Is.GreaterThan(0).And.LessThanOrEqualTo(.0400001));
+            Assert.That(removed, Is.EqualTo(IndependentRemovedVolume()).Within(1e-8));
+            Assert.That(Data.GetHeight(16, 16), Is.GreaterThanOrEqualTo(.9f - 1e-4f));
+            Assert.That(Data.GetHeight(8, 8), Is.EqualTo(source.GetHeight(8, 8)));
+            Assert.That(source.GetHeight(16, 16), Is.EqualTo(1f));
+        }
+
         /// <summary>Catch repeated excavation, malformed corners, and invalid capacity mutating terrain.</summary>
         [Test]
         public void RepeatedAndInvalidSweepsReturnZeroWithoutExtraTerrainChange()

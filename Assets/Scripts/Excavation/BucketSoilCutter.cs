@@ -128,15 +128,18 @@ public sealed class BucketSoilCutter : MonoBehaviour
         }
         Vector3 current = TipWorldPosition;
         Vector3[] corners = GetBladeWorldCorners();
+        Vector3 bladeCenter = (corners[0] + corners[7]) * .5f;
         if (!hasPrevious)
         {
-            previous = current; lastObserved = current; previousBlade = corners;
+            previous = current; lastObserved = bladeCenter; previousBlade = corners;
             hasPrevious = true; UpdateFill(); return 0;
         }
-        Vector3 movement = current - previous;
-        Vector3 frameMovement = current - lastObserved;
-        lastObserved = current;
-        float travel = movement.magnitude;
+        // A curling edge has real travel even when its tooth marker barely translates.
+        // Measure the steel proxy's center rather than rejecting every fixed-tip rotation.
+        Vector3 movement = bladeCenter - (previousBlade[0] + previousBlade[7]) * .5f;
+        Vector3 frameMovement = bladeCenter - lastObserved;
+        lastObserved = bladeCenter;
+        float travel = (current - previous).magnitude;
         for (int i = 0; i < 8; i++) travel = Mathf.Max(travel, (corners[i] - previousBlade[i]).magnitude);
         Status = "等待刃口有效行程";
         if (travel > maximumTravelPerSample || current.y < soil.GetFloorWorldY(current))
@@ -207,7 +210,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
     /// <summary>Check steel-edge movement, without imposing a horizontal intake or mouth-up angle gate.</summary>
     /// <param name="worldMovement">Actual or predicted world blade displacement.</param>
     /// <param name="reason">Specific rejection or acceptance description.</param>
-    /// <returns>True for downward tooth entry or inward cutting; false for lift-only, back or lateral scraping.</returns>
+    /// <returns>True for downward entry or inward cutting, including rising scoop arcs; false for lift-only, back or lateral scraping.</returns>
     public bool CanCutMovement(Vector3 worldMovement, out string reason)
     {
         reason = "有效刃口切削";
@@ -216,10 +219,15 @@ public sealed class BucketSoilCutter : MonoBehaviour
         Vector3 direction = worldMovement.normalized;
         if (Mathf.Abs(Vector3.Dot(direction, transform.right)) > maximumSidewaysFraction)
         { reason = "侧向擦土：请沿刃口切入"; return false; }
-        if (worldMovement.y > allowedUpwardTravel && direction.y > .35f)
+        float inward = Vector3.Dot(direction, transform.TransformDirection(cutDirectionLocal).normalized);
+        // Retracting/curling through soil often raises the edge. Only a predominantly
+        // vertical withdrawal without a meaningful inward component is a lift-only move.
+        float horizontalFraction = new Vector2(direction.x, direction.z).magnitude;
+        if (worldMovement.y > allowedUpwardTravel && direction.y > .35f &&
+            (inward < .25f || horizontalFraction < .49f))
         { reason = "抬升退出：不补挖"; return false; }
         if (direction.y < -.2f) return true;
-        if (Vector3.Dot(direction, transform.TransformDirection(cutDirectionLocal).normalized) < -.1f)
+        if (inward < -.1f)
         { reason = "斗背回擦：不切削"; return false; }
         return true;
     }

@@ -37,6 +37,8 @@ public sealed class BucketSoilResistance : MonoBehaviour
     public int VelocityFloorBrakeCount { get; private set; }
     /// <summary>Measured cutting-edge velocity in world units per second from the latest physics step.</summary>
     public Vector3 TipVelocity { get; private set; }
+    /// <summary>Largest sampled manual bucket-shell depth below the live Terrain surface, in metres.</summary>
+    public float ShellPenetrationM => shellGuard != null ? shellGuard.MaximumDepth : 0;
     private BucketSoilCutter cutter;
     private ArticulationBody body;
     private Vector3 previous;
@@ -44,6 +46,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
     private bool floorMomentumBrakeActive;
     private bool allowManualSlopeRelief;
     private bool full, atFloor, tooDeep;
+    private BucketShellTerrainGuard shellGuard;
     private readonly System.Collections.Generic.Dictionary<ArticulationBody, float> holds =
         new System.Collections.Generic.Dictionary<ArticulationBody, float>();
 
@@ -135,16 +138,37 @@ public sealed class BucketSoilResistance : MonoBehaviour
     {
         EvaluateContact();
         allowManualSlopeRelief = machine != null && !machine.IsBusy;
-        if (!isActiveAndEnabled || machine == null || !IsContacting || deltaSeconds <= 0)
+        if (!isActiveAndEnabled || machine == null || deltaSeconds <= 0)
         { holds.Clear(); floorMomentumBrakeActive = false; return requested; }
         var actual = machine.ReadActualPose();
-        if (ApplyFloorMomentumBrake(machine, actual, ref requested, deltaSeconds)) return requested;
+        if (!IsContacting)
+        {
+            holds.Clear();
+            floorMomentumBrakeActive = false;
+            return GuardManualShell(machine, actual, requested);
+        }
+        if (ApplyFloorMomentumBrake(machine, actual, ref requested, deltaSeconds))
+            return GuardManualShell(machine, actual, requested);
         requested.swing = GuardJoint(machine.swingJoint, actual.swing, requested.swing, deltaSeconds);
         requested.boom = GuardJoint(machine.boomJoint, actual.boom, requested.boom, deltaSeconds);
         requested.arm = GuardJoint(machine.armJoint, actual.arm, requested.arm, deltaSeconds);
         requested.bucket = GuardJoint(machine.bucketJoint, actual.bucket, requested.bucket, deltaSeconds);
         requested = ConstrainCombinedFloorCrossing(machine, actual, requested);
-        return requested;
+        return GuardManualShell(machine, actual, requested);
+    }
+
+    private Zx200JointPose GuardManualShell(Zx200DigController machine, Zx200JointPose actual, Zx200JointPose requested)
+    {
+        // Keep the autonomous controller's validated trajectories unchanged in this manual-focused change.
+        if (machine.IsBusy) return requested;
+        if (shellGuard == null) shellGuard = new BucketShellTerrainGuard();
+        var result = shellGuard.Constrain(cutter, machine, actual, requested, out bool limited);
+        if (limited)
+        {
+            IsBlocked = true;
+            BlockReason = "斗体接触未切土：限制深入，允许退出";
+        }
+        return result;
     }
 
     private bool ApplyFloorMomentumBrake(
@@ -429,6 +453,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
 
     private void OnDisable()
     {
+        shellGuard = null;
         holds.Clear();
         hasPrevious = false;
         floorMomentumBrakeActive = false;

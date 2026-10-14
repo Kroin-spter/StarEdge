@@ -13,6 +13,158 @@ namespace ExcavatorControls.Tests
     {
         private static bool loadedLegacyTerrain;
 
+        /// <summary>Verify a relatively open manual mouth can enter and collect using coordinated hand controls.</summary>
+        /// <returns>Real manual motion through the saved mound.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator SavedPreviewManualOpenAngleCollects() => ManualAngledScoop(25);
+
+        /// <summary>Verify a more curled manual mouth can also collect without teleporting or injected soil.</summary>
+        /// <returns>Real manual motion through the saved mound.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator SavedPreviewManualCurledAngleCollects() => ManualAngledScoop(45);
+
+        private static IEnumerator ManualAngledScoop(float bucketAngle)
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                var machine = automatic.machine;
+                var cutter = automatic.cutter;
+                var resistance = cutter.GetComponent<BucketSoilResistance>();
+                float maximumShellDepth = 0;
+                Camera camera = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
+                    .First(candidate => candidate.CompareTag("MainCamera"));
+                for (int i = 0; i < 300; i++)
+                {
+                    float difference = Mathf.DeltaAngle(machine.ReadActualPose().bucket, bucketAngle);
+                    if (Mathf.Abs(difference) < 1) break;
+                    machine.AdjustManualPose(0, 0, 0, Mathf.Clamp(difference, -.25f, .25f));
+                    yield return new WaitForFixedUpdate();
+                }
+                for (int i = 0; i < 300; i++)
+                {
+                    Vector3 tip = cutter.TipWorldPosition;
+                    float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+                    if (tip.y <= surface - .08f) break;
+                    machine.AdjustManualPose(0, 6 * Time.fixedDeltaTime, 0, 0);
+                    yield return new WaitForFixedUpdate();
+                    maximumShellDepth = Mathf.Max(maximumShellDepth, resistance.ShellPenetrationM);
+                }
+                BladeMainSceneTests.CaptureClose(cutter, camera, false, $"manual-angle-{bucketAngle}-entry");
+                for (int i = 0; i < 250 && cutter.VolumeM3 < .08; i++)
+                {
+                    machine.AdjustManualPose(0, 0, 6 * Time.fixedDeltaTime, 4 * Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                    maximumShellDepth = Mathf.Max(maximumShellDepth, resistance.ShellPenetrationM);
+                }
+                Debug.Log($"多角度手挖 {bucketAngle}°：切除={cutter.ExcavatedVolumeM3:F5}，进斗={cutter.VolumeM3:F5}，斗壳最大穿入={maximumShellDepth:F4}m，{cutter.Status}，{resistance.BlockReason}");
+                BladeMainSceneTests.CaptureClose(cutter, camera, false, $"manual-angle-{bucketAngle}-curl");
+                Assert.That(cutter.ExcavatedVolumeM3, Is.GreaterThan(.01), cutter.Status + " / " + resistance.BlockReason);
+                Assert.That(cutter.VolumeM3, Is.GreaterThan(.01), "Changing the manual bucket angle must still allow actual intake.");
+                Assert.That(maximumShellDepth, Is.LessThan(.15f), "Do not pay for intake by burying the shell.");
+                float beforeWithdrawal = cutter.TipWorldPosition.y;
+                for (int i = 0; i < 150; i++)
+                {
+                    machine.AdjustManualPose(0, -10 * Time.fixedDeltaTime, 0, 0);
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(cutter.TipWorldPosition.y, Is.GreaterThan(beforeWithdrawal + .3f));
+                ManualSoilTestMotion.AssertBalanceIncludingPiles(cutter, 0, 2e-5);
+            }
+            finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
+        }
+
+        /// <summary>Exercise manual keys through contact, curl and withdrawal in the unchanged preview scene.</summary>
+        /// <returns>Real joint steps, soil accounting, screenshots and cleanup.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator SavedPreviewManualCutCurlAndWithdraw()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                var machine = automatic.machine;
+                var cutter = automatic.cutter;
+                var resistance = cutter.GetComponent<BucketSoilResistance>();
+                machine.AdjustManualPose(0, 0, .1f, 0);
+                float maximumShellDepth = 0;
+                yield return ManualSoilTestMotion.Scoop(machine, cutter, .04,
+                    () => maximumShellDepth = Mathf.Max(maximumShellDepth, resistance.ShellPenetrationM));
+                // The legacy helper closes to about 84 degrees before pressing down. A real
+                // shell can contact first at this posture. Back out and reopen using only keys.
+                if (cutter.VolumeM3 < .01)
+                {
+                    Assert.That(maximumShellDepth, Is.LessThan(.15f), "Closed-bucket pushing must stop, not tunnel.");
+                    for (int i = 0; i < 120; i++)
+                    {
+                        machine.AdjustManualPose(0, -10 * Time.fixedDeltaTime, 0, 0);
+                        yield return new WaitForFixedUpdate();
+                    }
+                    for (int i = 0; i < 300; i++)
+                    {
+                        float difference = Mathf.DeltaAngle(machine.ReadActualPose().bucket, 25);
+                        if (Mathf.Abs(difference) < 1) break;
+                        machine.AdjustManualPose(0, 0, 0, Mathf.Clamp(difference, -.25f, .25f));
+                        yield return new WaitForFixedUpdate();
+                    }
+                    for (int i = 0; i < 300; i++)
+                    {
+                        Vector3 tip = cutter.TipWorldPosition;
+                        float surface = cutter.soil.Terrain.SampleHeight(tip) + cutter.soil.transform.position.y;
+                        if (tip.y <= surface - .08f) break;
+                        machine.AdjustManualPose(0, 6 * Time.fixedDeltaTime, 0, 0);
+                        yield return new WaitForFixedUpdate();
+                        maximumShellDepth = Mathf.Max(maximumShellDepth, resistance.ShellPenetrationM);
+                    }
+                    for (int i = 0; i < 250 && cutter.VolumeM3 < .04; i++)
+                    {
+                        machine.AdjustManualPose(0, 0, 6 * Time.fixedDeltaTime, 4 * Time.fixedDeltaTime);
+                        yield return new WaitForFixedUpdate();
+                        maximumShellDepth = Mathf.Max(maximumShellDepth, resistance.ShellPenetrationM);
+                    }
+                }
+                Debug.Log($"手动切削：切除={cutter.ExcavatedVolumeM3:F5}，进斗={cutter.VolumeM3:F5}，{cutter.Status}，{resistance.BlockReason}");
+                Camera camera = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
+                    .First(candidate => candidate.CompareTag("MainCamera"));
+                BladeMainSceneTests.CaptureClose(cutter, camera, false, "manual-improved-entry");
+                Assert.That(cutter.ExcavatedVolumeM3, Is.GreaterThan(.01), cutter.Status + " / " + resistance.BlockReason);
+                Assert.That(cutter.VolumeM3, Is.GreaterThan(.01), "Real manual input must collect soil, not just displace it.");
+                for (int i = 0; i < 100; i++)
+                {
+                    machine.AdjustManualPose(0, 0, 5 * Time.fixedDeltaTime, 8 * Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                    maximumShellDepth = Mathf.Max(maximumShellDepth, resistance.ShellPenetrationM);
+                }
+                BladeMainSceneTests.CaptureClose(cutter, camera, false, "manual-improved-curl");
+                Debug.Log($"手动斗壳最大穿入={maximumShellDepth:F4}m，当前={resistance.ShellPenetrationM:F4}m，{resistance.BlockReason}");
+                Assert.That(maximumShellDepth, Is.LessThan(.15f), "The physical shell must not ratchet into uncut ground.");
+                float entryY = cutter.TipWorldPosition.y;
+                for (int i = 0; i < 150; i++)
+                {
+                    machine.AdjustManualPose(0, -10 * Time.fixedDeltaTime, 0, 0);
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(cutter.TipWorldPosition.y, Is.GreaterThan(entryY + .3f), resistance.BlockReason);
+                ManualSoilTestMotion.AssertBalanceIncludingPiles(cutter, 0, 2e-5);
+                Debug.Log($"手动退出完成：上升={cutter.TipWorldPosition.y-entryY:F3}m，切除={cutter.ExcavatedVolumeM3:F5}，进斗={cutter.VolumeM3:F5}");
+            }
+            finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
+        }
+
         /// <summary>Entry soil must remain a valid load even when the later scoop cannot remove more soil.</summary>
         /// <returns>Real entry, interrupted cutting, transfer and cleanup.</returns>
         [UnityTest]
