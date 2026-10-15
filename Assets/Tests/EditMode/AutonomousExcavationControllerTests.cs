@@ -7,6 +7,52 @@ namespace ExcavatorControls.Tests
     /// <summary>Validates autonomous boundaries and geometric collision predictions without loading Cesium.</summary>
     public class AutonomousExcavationControllerTests
     {
+        /// <summary>Plan an open-bucket landing from a dig direction well outside the old local ±35° search.</summary>
+        /// <param name="truckAngle">Truck bearing around the vertical slew axis in degrees.</param>
+        [TestCase(120f)]
+        [TestCase(-120f)]
+        [TestCase(175f)]
+        public void OpenDumpPlanFindsTruckBeforeSlewing(float truckAngle)
+        {
+            var root = new GameObject("far truck planning");
+            root.SetActive(false);
+            try
+            {
+                var machine = root.AddComponent<Zx200DigController>();
+                var swingObject = new GameObject("slew");
+                swingObject.transform.SetParent(root.transform);
+                var swing = swingObject.AddComponent<ArticulationBody>();
+                swing.anchorRotation = Quaternion.FromToRotation(Vector3.right, Vector3.up);
+                ArticulationDrive drive = swing.xDrive;
+                drive.lowerLimit = -180f;
+                drive.upperLimit = 180f;
+                swing.xDrive = drive;
+                machine.swingJoint = swing;
+                var bedObject = new GameObject("receiving bed");
+                bedObject.transform.SetParent(root.transform);
+                bedObject.transform.rotation = Quaternion.AngleAxis(truckAngle, Vector3.up);
+                bedObject.transform.position = bedObject.transform.forward * 5f;
+                var receiver = bedObject.AddComponent<SoilReceivingZone>();
+                receiver.size = new Vector2(2.4f, 4f);
+                var cutter = root.AddComponent<BucketSoilCutter>();
+                var controller = root.AddComponent<AutonomousExcavationController>();
+                controller.machine = machine;
+                controller.receiver = receiver;
+                controller.cutter = cutter;
+                var plan = typeof(AutonomousExcavationController).GetMethod("ComputeDumpSwingTarget",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(plan, Is.Not.Null);
+                Vector3 projectedOpenTip = Vector3.forward * 5f;
+                float result = (float)plan.Invoke(controller, new object[] { true, projectedOpenTip });
+                Vector3 landing = Quaternion.AngleAxis(result, Vector3.up) * projectedOpenTip;
+                Vector3 local = receiver.transform.InverseTransformPoint(landing);
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(result, truckAngle)), Is.LessThan(3f));
+                Assert.That(Mathf.Abs(local.x), Is.LessThan(.2f), "提前规划必须落在车厢内部。");
+                Assert.That(Mathf.Abs(local.z), Is.LessThan(.3f));
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
         /// <summary>Old residual soil must not qualify a new cut, but newly collected entry soil must count.</summary>
         [TestCase(.008, .008, false)]
         [TestCase(.008, .032, true)]

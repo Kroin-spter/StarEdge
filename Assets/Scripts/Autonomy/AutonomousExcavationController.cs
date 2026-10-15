@@ -1689,6 +1689,18 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private IEnumerator AlignDumpSwing()
     {
         stageSucceeded = false;
+        // Plan the open-bucket landing before slewing, so extending the arm does not
+        // invalidate a separately completed azimuth alignment over the bed.
+        if (TryPlanDumpDeployment(machine.ReadActualPose(), out Zx200JointPose transfer))
+        {
+            transfer.duration = Mathf.Max(transfer.duration,
+                CalculateSlewDuration(machine.ReadActualPose().swing, transfer.swing));
+            yield return MoveCoordinatedPose(transfer, "携土联合回转定位超时",
+                AutonomousMotionAxis.BoomArmBucket);
+            if (!IsRunning || !stageSucceeded) yield break;
+            dumpSwingTarget = machine.ReadActualPose().swing;
+            yield break;
+        }
         for (int attempt = 0; IsRunning && attempt < 4; attempt++)
         {
             dumpSwingTarget = ComputeDumpSwingTarget();
@@ -1929,76 +1941,105 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private IEnumerator RaiseToDumpClearance()
     {
         stageSucceeded = false;
-        ArticulationDrive boomDrive = machine.boomJoint.xDrive;
-        ArticulationDrive bucketDrive = machine.bucketJoint.xDrive;
         BucketSoilResistance resistance = machine.bucketJoint.GetComponent<BucketSoilResistance>();
-        bool cutterWasEnabled = cutter != null && cutter.enabled;
-        bool wasCuttingSuppressed = cutter != null && cutter.IsCuttingSuppressed;
+        bool wasCuttingSuppressed = cutter.IsCuttingSuppressed;
         bool resistanceWasEnabled = resistance != null && resistance.enabled;
-        if (cutterWasEnabled) cutter.SetCuttingSuppressed(true);
+        cutter.SetCuttingSuppressed(true);
         if (resistanceWasEnabled) resistance.enabled = false;
         try
         {
-            // Only clear the immediate soil contact before the coordinated carry motion.
-            Zx200JointPose initialLift = machine.ReadActualPose();
-            Vector3 boomAxis = machine.boomJoint.transform.TransformDirection(
-                machine.boomJoint.anchorRotation * Vector3.right).normalized;
-            Vector3 boomPivot = machine.boomJoint.transform.TransformPoint(machine.boomJoint.anchorPosition);
-            float liftSign = GetHeightImprovingRotationSign(boomAxis, cutter.TipWorldPosition - boomPivot);
-            initialLift.boom = Zx200DigController.ClampTarget(initialLift.boom + liftSign * 8f,
-                boomDrive.lowerLimit, boomDrive.upperLimit);
-            initialLift.duration = Mathf.Max(1.2f, machine.liftPose.duration);
-            yield return MoveToPose(initialLift, "满斗离开切削面超时");
-            if (!IsRunning || !stageSucceeded) yield break;
-
-            Zx200JointPose waypoint = machine.carryPose;
-            waypoint.swing = machine.ReadActualPose().swing;
-            waypoint.boom = Zx200DigController.ClampTarget(
-                waypoint.boom, boomDrive.lowerLimit, boomDrive.upperLimit);
-            waypoint.arm = Zx200DigController.ClampTarget(
-                waypoint.arm, machine.armJoint.xDrive.lowerLimit, machine.armJoint.xDrive.upperLimit);
-            // Preserve the measured closed-bucket angle while tucking the arm and setting carry height.
-            waypoint.bucket = machine.ReadActualPose().bucket;
-            waypoint.duration = Mathf.Max(2.2f, waypoint.duration);
-            yield return MoveCoordinatedPose(waypoint, "挖后携土姿态超时", AutonomousMotionAxis.BoomArmBucket);
-            if (!IsRunning || !stageSucceeded) yield break;
-
-            // The arm change can lower the tip; revalidate and raise again before slewing toward the bed.
-            yield return RaiseBoomUntilTruckClearance("斗杆伸展后恢复车厢净空超时");
-            if (!IsRunning || !stageSucceeded) yield break;
-
-            BucketSoilUnloader mouth = cutter.GetComponent<BucketSoilUnloader>();
-            if (mouth != null)
+            Zx200JointPose actual = machine.ReadActualPose();
+            if (!TryPlanCarryClearance(actual, out Zx200JointPose clearance))
             {
-                Zx200JointPose actual = machine.ReadActualPose();
-                Vector3 worldMouth = mouth.transform.TransformDirection(mouth.openingNormalLocal).normalized;
-                Vector3 bucketAxis = machine.bucketJoint.transform.TransformDirection(
-                    machine.bucketJoint.anchorRotation * Vector3.right).normalized;
-                float carryBucketAngle = CalculateBucketAngleForUpwardMouth(
-                    worldMouth, bucketAxis, actual.bucket,
-                    bucketDrive.lowerLimit, bucketDrive.upperLimit);
-                if (Mathf.Abs(Mathf.DeltaAngle(actual.bucket, carryBucketAngle)) > .5f)
+                EnterFault("当前携土姿态没有找到不向土内回收的安全抬升路径");
+                yield break;
+            }
+            yield return MoveCoordinatedPose(clearance, "自适应携土抬升超时",
+                AutonomousMotionAxis.BoomArmBucket);
+            if (!IsRunning || !stageSucceeded) yield break;
+            // Recheck the measured path after articulation tracking; allow one bounded recovery.
+            float swing = ComputeDumpSwingTarget(true);
+            if (!HasPredictedTruckSwingClearance(swing))
+            {
+                actual = machine.ReadActualPose();
+                if (!TryPlanCarryClearance(actual, out clearance))
                 {
-                    actual.bucket = carryBucketAngle;
-                    actual.duration = 1.1f;
-                    yield return MoveCoordinatedPose(actual, "携土斗口校平超时", AutonomousMotionAxis.Bucket);
-                    if (!IsRunning || !stageSucceeded) yield break;
-                }
-
-                float mouthUpDot = Vector3.Dot(
-                    mouth.transform.TransformDirection(mouth.openingNormalLocal).normalized, Vector3.up);
-                if (mouthUpDot < Mathf.Cos(20f * Mathf.Deg2Rad))
-                {
-                    EnterFault($"携土姿态无法把斗口收至水平保土范围；斗口上向度={mouthUpDot:F2}");
+                    EnterFault("携土抬升后实际回转净空不足");
                     yield break;
                 }
+                yield return MoveCoordinatedPose(clearance, "携土净空修正超时",
+                    AutonomousMotionAxis.BoomArmBucket);
             }
         }
         finally
         {
             if (resistanceWasEnabled && resistance != null) resistance.enabled = true;
-            if (cutterWasEnabled && cutter != null) cutter.SetCuttingSuppressed(wasCuttingSuppressed);
+            if (cutter != null) cutter.SetCuttingSuppressed(wasCuttingSuppressed);
         }
+    }
+
+    // Preserve the current reach unless a small arm adjustment is needed. Each candidate
+    // lifts away from the cut and reserves clearance for the entire loaded slew.
+    private bool TryPlanCarryClearance(Zx200JointPose actual, out Zx200JointPose best)
+    {
+        best = actual;
+        float bestScore = float.PositiveInfinity;
+        Vector3 tip = cutter.TipWorldPosition;
+        Vector3 boomAxis = machine.boomJoint.transform.TransformDirection(
+            machine.boomJoint.anchorRotation * Vector3.right).normalized;
+        float sign = GetHeightImprovingRotationSign(boomAxis, tip - JointPivot(machine.boomJoint));
+        float swingTarget = ComputeDumpSwingTarget(true);
+        float requiredHeight = GetTruckSwingStartHeight() + .15f;
+        float[] armOffsets = { 0f, -8f, 8f, -16f, 16f };
+        foreach (float armOffset in armOffsets)
+        for (int step = 0; step <= 30; step++)
+        {
+            Zx200JointPose candidate = actual;
+            candidate.boom = Zx200DigController.ClampTarget(actual.boom + sign * step * 2f,
+                machine.boomJoint.xDrive.lowerLimit, machine.boomJoint.xDrive.upperLimit);
+            candidate.arm = Zx200DigController.ClampTarget(actual.arm + armOffset,
+                machine.armJoint.xDrive.lowerLimit, machine.armJoint.xDrive.upperLimit);
+            candidate = KeepMouthUp(actual, candidate);
+            var prediction = new BucketPosePrediction(machine, actual, candidate);
+            Vector3 raisedTip = prediction.Point(tip);
+            if (raisedTip.y < requiredHeight) continue;
+            bool clear = true;
+            // A safe endpoint must not tuck the bowl down into the cut on the way there.
+            for (int sample = 1; sample <= 12 && clear; sample++)
+            {
+                float t = sample / 12f;
+                var midway = new Zx200JointPose(actual.swing,
+                    Mathf.Lerp(actual.boom, candidate.boom, t),
+                    Mathf.Lerp(actual.arm, candidate.arm, t),
+                    Mathf.Lerp(actual.bucket, candidate.bucket, t), 0);
+                clear = new BucketPosePrediction(machine, actual, midway).Point(tip).y >= tip.y - .02f;
+                var slewed = candidate;
+                slewed.swing = Mathf.Lerp(actual.swing, swingTarget, t);
+                clear &= new BucketPosePrediction(machine, actual, slewed).Point(tip).y >= requiredHeight;
+            }
+            if (!clear) continue;
+            Vector3 mouth = prediction.rotation * unloader.transform.TransformDirection(unloader.openingNormalLocal);
+            if (Vector3.Dot(mouth.normalized, Vector3.up) < Mathf.Cos(20f * Mathf.Deg2Rad)) continue;
+            candidate.duration = Mathf.Max(.6f, GetDumpMotionDuration(actual, candidate));
+            float score = candidate.duration + Mathf.Abs(armOffset) * .08f +
+                Mathf.Max(0, raisedTip.y - requiredHeight) * .3f;
+            if (score >= bestScore || !IsPredictedBucketPathClear(actual, actual, candidate)) continue;
+            bestScore = score;
+            best = candidate;
+        }
+        return !float.IsPositiveInfinity(bestScore);
+    }
+
+    private Zx200JointPose KeepMouthUp(Zx200JointPose measured, Zx200JointPose candidate)
+    {
+        var prediction = new BucketPosePrediction(machine, measured, candidate);
+        Vector3 mouth = prediction.rotation *
+            unloader.transform.TransformDirection(unloader.openingNormalLocal).normalized;
+        Vector3 axis = prediction.rotation * machine.bucketJoint.transform.TransformDirection(
+            machine.bucketJoint.anchorRotation * Vector3.right).normalized;
+        candidate.bucket = CalculateBucketAngleForUpwardMouth(mouth, axis, candidate.bucket,
+            machine.bucketJoint.xDrive.lowerLimit, machine.bucketJoint.xDrive.upperLimit);
+        return candidate;
     }
 
     private IEnumerator MoveCoordinatedPose(
@@ -2006,6 +2047,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     {
         stageSucceeded = false;
         CurrentMotionAxis = motionAxis;
+        float motionStarted = Time.time;
         try
         {
             float startDeadline = Time.realtimeSinceStartup + stageTimeoutSeconds;
@@ -2037,6 +2079,18 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     EnterFault("挖后协同动作与矿车实体发生穿透：" + penetration);
                     yield break;
                 }
+                // The receiving volume, not an exact encoder angle, defines successful
+                // positioning. Stop chasing sub-degree residuals once the full opening is safe.
+                if ((State == AutonomousExcavationState.SwingToTruck ||
+                     State == AutonomousExcavationState.PrepareDump) &&
+                    machine.IsPoseWithinTolerance(target, 3f) &&
+                    IsProjectedDumpApproachSafe() && IsBucketOpeningSweepClear())
+                {
+                    machine.StopAutomaticMotion();
+                    stageSucceeded = true;
+                    Debug.Log($"携土定位完成：{State}，耗时={Time.time - motionStarted:F2}s，接料范围已满足", this);
+                    yield break;
+                }
                 yield return new WaitForFixedUpdate();
             }
             if (!IsRunning) yield break;
@@ -2052,6 +2106,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 yield break;
             }
             stageSucceeded = true;
+            Debug.Log($"协同姿态完成：{State}，耗时={Time.time - motionStarted:F2}s，目标=" +
+                $"({target.swing:F1},{target.boom:F1},{target.arm:F1},{target.bucket:F1})", this);
         }
         finally
         {
@@ -2337,8 +2393,8 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         float clearance = GetTruckClearanceY() + dumpClearanceMarginMeters;
         // Joint-space candidates are evaluated without touching the physical robot. A single
         // target includes reach, height and slew, so one correction cannot invalidate another.
-        for (int boomStep = -4; boomStep <= 4; boomStep++)
-        for (int step = -12; step <= 12; step++)
+        for (int boomStep = -8; boomStep <= 8; boomStep++)
+        for (int step = -20; step <= 20; step++)
         {
             float boom = Zx200DigController.ClampTarget(actual.boom + boomStep * 4f,
                 machine.boomJoint.xDrive.lowerLimit, machine.boomJoint.xDrive.upperLimit);
@@ -2356,13 +2412,17 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             Vector3 closed = swingPivot + slew * (closedTip - swingPivot);
             Vector3 local = receiver.transform.InverseTransformPoint(predicted);
             if (!HasSafeDumpLanding(local, receiver.size, cutter.innerMouthHalfWidth + .04f) ||
+                Mathf.Abs(local.x) > .2f || Mathf.Abs(local.z) > receiver.size.y * .5f - .6f ||
                 closed.y < clearance + .04f || !receiver.TryGetLanding(predicted, MaximumDumpDropMeters, out _)) continue;
             Zx200JointPose candidate = actual;
             candidate.arm = arm;
             candidate.boom = boom;
             candidate.swing = angle;
+            candidate = KeepMouthUp(actual, candidate);
+            var closedPrediction = new BucketPosePrediction(machine, actual, candidate);
+            if (closedPrediction.Point(cutter.TipWorldPosition).y < clearance + .15f) continue;
             candidate.duration = GetDumpMotionDuration(actual, candidate);
-            float score = candidate.duration + Mathf.Abs(local.x) * .2f + Mathf.Abs(local.z) * .02f;
+            float score = candidate.duration + Mathf.Abs(local.x) * 2f + Mathf.Abs(local.z) * .25f;
             candidates.Add(new KeyValuePair<float, Zx200JointPose>(score, candidate));
         }
         candidates.Sort((a, b) => a.Key.CompareTo(b.Key));
@@ -3098,17 +3158,30 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             float bestOpenScore = float.PositiveInfinity;
             float bestAngle = 0f;
             ArticulationDrive drive = joint.xDrive;
+            // Search around the truck direction, not the current slew. A local ±35°
+            // search cannot plan a loaded transfer from a dig point 100° away.
+            Vector3 radial = Vector3.ProjectOnPlane(landingTip - pivot, axis);
+            Vector3 truckRadial = Vector3.ProjectOnPlane(receiver.transform.position - pivot, axis);
+            float centerDelta = Vector3.SignedAngle(radial, truckRadial, axis);
             for (int step = -70; step <= 70; step++)
             {
-                float delta = step * .5f;
+                float delta = centerDelta + step * .5f;
                 float candidateAngle = actual.swing + delta;
+                if (candidateAngle > drive.upperLimit && candidateAngle - 360f >= drive.lowerLimit)
+                    candidateAngle -= 360f;
+                if (candidateAngle < drive.lowerLimit && candidateAngle + 360f <= drive.upperLimit)
+                    candidateAngle += 360f;
                 if (candidateAngle < drive.lowerLimit || candidateAngle > drive.upperLimit) continue;
                 Vector3 tip = pivot + Quaternion.AngleAxis(delta, axis) * (landingTip - pivot);
                 Vector3 local = receiver.transform.InverseTransformPoint(tip);
-                float score = local.x * local.x + .1f * local.z * local.z + .0001f * delta * delta;
+                float searchOffset = delta - centerDelta;
+                float score = 4f * local.x * local.x + .1f * local.z * local.z +
+                    .0001f * searchOffset * searchOffset;
                 // Use the same centered landing corridor as the final guard; being merely
                 // inside the bed is not sufficient when the open bucket is close to a side wall.
-                if (!HasSafeDumpLanding(local, receiver.size, cutter.innerMouthHalfWidth)) score += 100f;
+                if (!HasSafeDumpLanding(local, receiver.size, cutter.innerMouthHalfWidth) ||
+                    Mathf.Abs(local.x) > .2f || Mathf.Abs(local.z) > receiver.size.y * .5f - .6f)
+                    score += 100f;
                 if (score >= bestOpenScore) continue;
                 bestOpenScore = score;
                 bestAngle = candidateAngle;

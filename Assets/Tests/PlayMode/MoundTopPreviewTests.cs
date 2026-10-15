@@ -587,8 +587,22 @@ namespace ExcavatorControls.Tests
                 float deadline = Time.realtimeSinceStartup + 480f;
                 int observedCycles = 0;
                 double lastReceipt = initial;
+                AutonomousExcavationState previousStage = automatic.State;
+                float stageStarted = Time.time;
                 while (automatic.IsRunning && automatic.CompletedCycles < 3 && Time.realtimeSinceStartup < deadline)
                 {
+                    if (automatic.State != previousStage)
+                    {
+                        float elapsed = Time.time - stageStarted;
+                        Debug.Log($"连续搬运阶段：{previousStage}，耗时={elapsed:F2}s");
+                        if (previousStage == AutonomousExcavationState.Lift)
+                            Assert.That(elapsed, Is.LessThan(8f), "携土抬升不能在固定姿态处悬停等待。");
+                        if (automatic.State == AutonomousExcavationState.Dump)
+                            Assert.That(automatic.DumpDeploymentAttempts, Is.LessThanOrEqualTo(1),
+                                "回转已规划卸料落点，到车旁最多允许一次实际偏差修正。");
+                        previousStage = automatic.State;
+                        stageStarted = Time.time;
+                    }
                     if (automatic.CompletedCycles > observedCycles)
                     {
                         Assert.That(automatic.receiver.VolumeM3, Is.GreaterThan(lastReceipt + .005),
