@@ -437,8 +437,14 @@ namespace ExcavatorControls.Tests
             Assert.That(predictedArm, Is.GreaterThan(nearFullArm));
             Assert.That(earlyCurl, Is.LessThan(predictedCurl));
             Assert.That(predictedCurl, Is.LessThanOrEqualTo(nearFullCurl));
-            Assert.That(nearFullArm, Is.Zero);
+            Assert.That(nearFullArm, Is.GreaterThanOrEqualTo(.12f));
             Assert.That(nearFullCurl, Is.InRange(1f, 1.25f));
+            var full = AutonomousExcavationController.CalculateAdaptiveScoopMotionCommand(1f, 1.5f);
+            Assert.That(full.armAdvanceScale, Is.EqualTo(.12f).Within(.0001f),
+                "满斗仍允许小幅切削，超出容量的土由侧落处理。");
+            var predictedFull = AutonomousExcavationController.CalculateAdaptiveScoopMotionCommand(.3f, 1.5f);
+            Assert.That(predictedFull.armAdvanceScale, Is.EqualTo(predictedArm).Within(.0001f),
+                "预测进土不能在实际进斗前锁住小臂。");
         }
 
         /// <summary>Choose a bucket joint angle that points the real mouth normal upward.</summary>

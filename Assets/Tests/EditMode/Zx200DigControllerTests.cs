@@ -58,6 +58,29 @@ namespace ExcavatorControls.Tests
         [TearDown]
         public void TearDown() => Object.DestroyImmediate(root);
 
+        /// <summary>A normal phase handoff preserves drive continuity; a safety stop still clears it immediately.</summary>
+        [Test]
+        public void NormalContinuousHandoffPreservesDriveTargetsAndSmoothingVelocity()
+        {
+            Assert.That(controller.PrepareForPhysics(), Is.True);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var active = typeof(Zx200DigController).GetField("continuousPoseControlActive", flags);
+            var velocity = typeof(Zx200DigController).GetField("targetVelocities", flags);
+            active.SetValue(controller, true);
+            velocity.SetValue(controller, Vector4.one);
+            ArticulationDrive drive = controller.boomJoint.xDrive;
+            drive.target = -30f;
+            controller.boomJoint.xDrive = drive;
+            controller.StopContinuousPoseControl(true, false);
+            Assert.That(controller.boomJoint.xDrive.target, Is.EqualTo(-30f));
+            Assert.That((Vector4)velocity.GetValue(controller), Is.EqualTo(Vector4.one));
+            Assert.That(controller.LastAutomaticMotionSucceeded, Is.True);
+            active.SetValue(controller, true);
+            controller.StopContinuousPoseControl(false);
+            Assert.That((Vector4)velocity.GetValue(controller), Is.EqualTo(Vector4.zero));
+            Assert.That(controller.LastAutomaticMotionSucceeded, Is.False);
+        }
+
         /// <summary>Manual cutting remains disabled during site preparation, but works outside work-ready once ready.</summary>
         /// <param name="sitePreparing">Whether an actual construction-site component is still unready.</param>
         [TestCase(false)]

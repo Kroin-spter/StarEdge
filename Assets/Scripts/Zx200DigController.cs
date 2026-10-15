@@ -279,9 +279,10 @@ public class Zx200DigController : MonoBehaviour
         return true;
     }
 
-    /// <summary>Finish feedback-driven pose control while retaining the actual articulation pose.</summary>
+    /// <summary>Finish feedback-driven control with an immediate safety hold or a damped phase handoff.</summary>
     /// <param name="succeeded">Whether the owner reached its required motion condition.</param>
-    public void StopContinuousPoseControl(bool succeeded)
+    /// <param name="immediate">True for safety/manual stops; false for a normal, damped handoff to the next automatic motion.</param>
+    public void StopContinuousPoseControl(bool succeeded, bool immediate = true)
     {
         if (!continuousPoseControlActive) return;
 
@@ -289,7 +290,13 @@ public class Zx200DigController : MonoBehaviour
         automaticMotionCancellationRequested = false;
         LastAutomaticMotionSucceeded = succeeded;
         IsBusy = false;
-        HoldActualPose();
+        if (immediate) HoldActualPose();
+        else
+        {
+            // Preserve the solver velocity and current drive targets. FixedUpdate damps
+            // toward this measured pose until the next phase supplies its smooth target.
+            requestedPose = ClampPoseToDriveLimits(ReadActualPose());
+        }
     }
 
     /// <summary>

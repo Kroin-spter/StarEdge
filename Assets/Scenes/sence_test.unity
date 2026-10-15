@@ -440,7 +440,7 @@ MonoBehaviour:
   detailedAppearance: 1
   weathering: 0.4
   surfaceDetail: 0.7
-  addMechanicalDetails: 1
+  addMechanicalDetails: 0
 --- !u!4 &40524783 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
@@ -1141,7 +1141,7 @@ MonoBehaviour:
   siteReadinessSource: {fileID: 471781301}
   targetVolumeM3: 1
   minimumLoadVolumeM3: 0.005
-  targetBucketFillFraction: 0.85
+  targetBucketFillFraction: 0.95
   minimumTransferVolumeM3: 0.005
   siteReadyTimeoutSeconds: 40
   stageTimeoutSeconds: 12

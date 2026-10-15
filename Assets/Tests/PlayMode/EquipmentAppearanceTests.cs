@@ -28,7 +28,9 @@ namespace ExcavatorControls.Tests
                 Assert.That(robot.GetComponentsInChildren<Collider>(true).Length, Is.EqualTo(colliders));
                 CollectionAssert.AreEqual(bodies,robot.GetComponentsInChildren<ArticulationBody>(true));
                 CollectionAssert.AreEqual(mass,bodies.Select(body => body.mass).ToArray());
-                Assert.That(robot.GetComponentsInChildren<MeshRenderer>(true).Length, Is.EqualTo(renderers.Length+4));
+                Assert.That(appearance.addMechanicalDetails, Is.False);
+                Assert.That(robot.GetComponentsInChildren<MeshRenderer>(true).Length, Is.EqualTo(renderers.Length),
+                    "材质升级不应重新生成装饰液压管和关节附件。");
                 int meshes = robot.GetComponentsInChildren<MeshFilter>(true).Length;
                 var ownedMaterials = robot.GetComponentsInChildren<MeshRenderer>(true)
                     .SelectMany(renderer => renderer.sharedMaterials)

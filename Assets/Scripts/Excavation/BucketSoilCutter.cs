@@ -303,13 +303,13 @@ public sealed class BucketSoilCutter : MonoBehaviour
         var flight = GetComponent<SoilFlightTransport>();
         if (flight == null) flight = gameObject.AddComponent<SoilFlightTransport>();
         displacedParcels.Clear();
-        // Route rejected soil beside the tooth span at the local ground surface. This is a bounded
-        // spoil displacement approximation, not a claim to solve the underground failure wedge.
+        // Buried cuts displace spoil to the surface beside the cutting edge. Once the
+        // edge is exposed, preserve its outlet height so overflow falls from the bucket.
         for (int side = -1; side <= 1; side += 2)
         {
             Vector3 position = tip + transform.right * (side * (bladeHalfWidth * Mathf.Abs(transform.lossyScale.x) + .08f));
             float surface = soil.Terrain.SampleHeight(position) + soil.transform.position.y;
-            position.y = surface + .03f;
+            position.y = Mathf.Max(position.y, surface + .03f);
             displacedParcels.Add(new SoilFlightTransport.Emission(volume * .5, position,
                 transform.right * (side * .12f)));
         }

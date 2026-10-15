@@ -516,6 +516,8 @@ namespace ExcavatorControls.Tests
                 float deadline = Time.realtimeSinceStartup + 480f;
                 int cycles = 0;
                 double receipt = initial;
+                double peakBucketLoad = 0;
+                double lastSideSpill = automatic.cutter.DisplacedVolumeM3;
                 var fill = automatic.cutter.fillVisual.GetComponent<BucketSoilFill>();
                 Vector3 previousSurface = fill.SurfaceNormalLocal;
                 double previousLoad = 0;
@@ -524,6 +526,7 @@ namespace ExcavatorControls.Tests
                 float stateStarted = Time.time;
                 while (automatic.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
+                    peakBucketLoad = System.Math.Max(peakBucketLoad, automatic.cutter.VolumeM3);
                     if (previousLoad > .001 && automatic.cutter.VolumeM3 > .001)
                         maximumSurfaceStep = Mathf.Max(maximumSurfaceStep,
                             Vector3.Angle(previousSurface, fill.SurfaceNormalLocal));
@@ -543,6 +546,10 @@ namespace ExcavatorControls.Tests
                         cycles = automatic.CompletedCycles;
                         receipt = automatic.receiver.VolumeM3;
                         Debug.Log($"完整持续装车：斗数={cycles}，车厢增量={receipt - initial:F5}m³");
+                        Debug.Log($"单斗填充与侧落：峰值={peakBucketLoad:F5}/{automatic.cutter.EffectiveCapacityM3:F5}m³，" +
+                            $"侧落增量={automatic.cutter.DisplacedVolumeM3 - lastSideSpill:F5}m³");
+                        peakBucketLoad = 0;
+                        lastSideSpill = automatic.cutter.DisplacedVolumeM3;
                     }
                     yield return new WaitForFixedUpdate();
                 }

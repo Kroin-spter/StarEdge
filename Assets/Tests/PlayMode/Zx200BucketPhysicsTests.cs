@@ -10,6 +10,29 @@ namespace ExcavatorControls.Tests
     {
         private const string PrefabPath = "Assets/Robotics/zx200_description/Prefabs/zx200.prefab";
 
+        /// <summary>Normal phase transitions retain measured solver velocity, while emergency cancellation zeros it.</summary>
+        /// <returns>A frame for the actual articulated prefab to initialize.</returns>
+        [UnityTest]
+        public IEnumerator NormalHandoffPreservesPhysicalJointVelocityButEmergencyStopDoesNot()
+        {
+            GameObject robot = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath));
+            try
+            {
+                yield return null;
+                var machine = robot.GetComponent<Zx200DigController>();
+                machine.StopAutomaticMotion();
+                Assert.That(machine.StartContinuousPoseControl(machine.ReadActualPose()), Is.True);
+                machine.bucketJoint.jointVelocity = new ArticulationReducedSpace(.4f);
+                machine.StopContinuousPoseControl(true, false);
+                Assert.That(machine.bucketJoint.jointVelocity[0], Is.EqualTo(.4f).Within(.0001f),
+                    "正常切削结束不能直接清零求解器速度。");
+                machine.StopAutomaticMotion();
+                Assert.That(machine.bucketJoint.jointVelocity[0], Is.Zero.Within(.0001f),
+                    "人工接管和紧急取消仍必须立即停止。");
+            }
+            finally { Object.DestroyImmediate(robot); }
+        }
+
         /// <summary>Verifies that the bucket's visible cavity does not contain solid collision.</summary>
         /// <returns>One frame to initialize the imported articulation.</returns>
         [UnityTest]

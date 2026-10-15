@@ -102,7 +102,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     [Header("Job Settings")]
     [Min(.001f)] public float targetVolumeM3 = 1f;
     [Min(.0001f)] public float minimumLoadVolumeM3 = .005f;
-    [Range(.1f, .95f)] public float targetBucketFillFraction = .85f;
+    [Range(.1f, .95f)] public float targetBucketFillFraction = .95f;
     [Min(.0001f)] public float minimumTransferVolumeM3 = .005f;
     [Min(1f)] public float siteReadyTimeoutSeconds = 40f;
     [Min(1f)] public float stageTimeoutSeconds = 12f;
@@ -265,12 +265,14 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         float current = IsFinite(currentFillFraction) ? Mathf.Clamp01(currentFillFraction) : 0f;
         float predicted = IsFinite(predictedFillFraction) ? Mathf.Clamp(predictedFillFraction, 0f, 1.5f) : current;
         float projected = Mathf.Max(current, predicted);
-        float armProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.35f, .88f, projected));
+        // Predicted inflow should help close the mouth, not stop excavation before
+        // that soil has actually entered. Keep a small cutting advance even when full.
+        float armProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.15f, .98f, current));
         float curlProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.15f, .88f, projected));
         float liftProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.55f, .88f, projected));
         return new AdaptiveScoopMotionCommand
         {
-            armAdvanceScale = 1f - armProgress,
+            armAdvanceScale = Mathf.Lerp(1f, .12f, armProgress),
             bucketCurlScale = Mathf.Lerp(.2f, 1.2f, curlProgress),
             boomLiftScale = liftProgress * .35f,
             projectedFillFraction = projected
@@ -1164,7 +1166,11 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     bucketRate * 1.1f);
                 AdaptiveScoopMotionCommand command = CalculateAdaptiveScoopMotionCommand(
                     currentFill, predictedFill);
-                if (currentVolume >= targetLoad) command.armAdvanceScale = 0f;
+                // One continuous cut may briefly displace surplus soil while finishing
+                // closure. Bucket capacity limits collection, never blade movement.
+                if (now + Time.fixedDeltaTime * 2f >= deadline && inflowRate > .001 &&
+                    currentVolume < targetLoad)
+                    deadline = Mathf.Min(startTime + cutTimeoutSeconds + 2f, deadline + .25f);
 
                 // Ease both joints as the tooth approaches the prepared floor. A thin layer
                 // has little vertical travel left, so the same nominal scoop rate would coast
@@ -1230,7 +1236,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                     : actual.bucket <= minimumCurlDegrees;
                 if (currentVolume >= targetLoad && bucketMostlyCurled)
                 {
-                    machine.StopContinuousPoseControl(true);
+                    FinishCuttingMotion(true);
                     stageSucceeded = true;
                     yield break;
                 }
@@ -1249,7 +1255,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 if (now - lastProgressTime >= ScoopNoProgressTimeoutSeconds &&
                     now - startTime >= ScoopNoProgressTimeoutSeconds)
                 {
-                    machine.StopContinuousPoseControl(false);
+                    FinishCuttingMotion(false);
                     if (!bucketMostlyCurled && currentVolume >= capacity - .0001)
                     {
                         yield return FinishFullBucketCurl(minimumCurlDegrees, target.bucket);
@@ -1275,7 +1281,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             }
 
             if (!IsRunning) yield break;
-            if (machine.IsBusy) machine.StopContinuousPoseControl(false);
+            if (machine.IsBusy) FinishCuttingMotion(false);
             Zx200JointPose cutEnd = machine.ReadActualPose();
             bool curlComplete = target.bucket >= actual.bucket
                 ? cutEnd.bucket >= minimumCurlDegrees
@@ -1310,6 +1316,13 @@ public sealed class AutonomousExcavationController : MonoBehaviour
             if (floorGuard != null) floorGuard.cuttingSpeedDegrees = originalCuttingSpeed;
             CurrentMotionAxis = AutonomousMotionAxis.None;
         }
+    }
+
+    private void FinishCuttingMotion(bool succeeded)
+    {
+        float floorClearance = cutter.TipWorldPosition.y - cutter.soil.GetFloorWorldY(cutter.TipWorldPosition);
+        bool safetyStop = !IsRunning || floorClearance <= soilFloorMargin + .15f;
+        machine.StopContinuousPoseControl(succeeded, safetyStop);
     }
 
     private string GetCutResistanceStatus()

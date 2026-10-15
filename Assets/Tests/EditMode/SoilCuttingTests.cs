@@ -253,6 +253,57 @@ namespace ExcavatorControls.Tests
             Assert.That(Cut(new Vector3(1, .6f, 2), new Vector3(3, .6f, 2), .4f, 10f), Is.LessThan(1e-5));
         }
 
+        /// <summary>Once full, the same blade keeps removing real soil and accounts for the excess as side spill.</summary>
+        [Test]
+        public void FullBucketContinuesCuttingAndConservesOverflow()
+        {
+            bucket = new GameObject("full cutting bucket");
+            var cutter = bucket.AddComponent<BucketSoilCutter>();
+            cutter.soil = (DeformableSoilTerrain)soil;
+            cutter.capacityM3 = .001f;
+            cutter.tipLocalPosition = Vector3.zero;
+            cutter.cutDirectionLocal = Vector3.forward;
+            bucket.transform.position = new Vector3(2, .6f, 1);
+            cutter.SamplePose();
+            bucket.transform.position += Vector3.forward * .3f;
+            cutter.SamplePose();
+            Assert.That(cutter.VolumeM3, Is.EqualTo(cutter.EffectiveCapacityM3).Within(1e-8));
+            double removed = cutter.ExcavatedVolumeM3;
+            double spill = cutter.DisplacedVolumeM3;
+            bucket.transform.position += Vector3.forward * .3f;
+            cutter.SamplePose();
+            Assert.That(cutter.ExcavatedVolumeM3, Is.GreaterThan(removed));
+            Assert.That(cutter.DisplacedVolumeM3, Is.GreaterThan(spill));
+            Assert.That(cutter.VolumeM3, Is.EqualTo(cutter.EffectiveCapacityM3).Within(1e-8));
+            Assert.That(cutter.VolumeM3 + cutter.DisplacedVolumeM3,
+                Is.EqualTo(cutter.ExcavatedVolumeM3).Within(1e-8));
+        }
+
+        /// <summary>Exposed overflow falls from the bucket; buried spoil emerges at the neighbouring soil surface.</summary>
+        /// <param name="tipHeight">World height of the cutting edge.</param>
+        [TestCase(.4f)]
+        [TestCase(2f)]
+        public void SideSpillPreservesExposedOutletHeight(float tipHeight)
+        {
+            bucket = new GameObject("overflow outlet");
+            var cutter = bucket.AddComponent<BucketSoilCutter>();
+            cutter.soil = (DeformableSoilTerrain)soil;
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(BucketSoilCutter).GetMethod("ReleaseDisplacedSoil", flags)
+                .Invoke(cutter, new object[] { .001, new Vector3(2f, tipHeight, 2f) });
+            var flight = bucket.GetComponent<SoilFlightTransport>();
+            var parcels = (System.Collections.IEnumerable)typeof(SoilFlightTransport)
+                .GetField("parcels", flags).GetValue(flight);
+            Assert.That(flight.ParcelCount, Is.EqualTo(2));
+            foreach (object parcel in parcels)
+            {
+                Vector3 position = (Vector3)parcel.GetType().GetField("position", flags).GetValue(parcel);
+                float surface = ground.GetComponent<Terrain>().SampleHeight(position) + ground.transform.position.y;
+                Assert.That(position.y, Is.EqualTo(Mathf.Max(tipHeight, surface + .03f)).Within(.0001f));
+            }
+            Assert.That(flight.AirborneVolumeM3, Is.EqualTo(.001).Within(1e-8));
+        }
+
         [Test]
         public void BoundaryAndFloor_RejectOutsideSweep_AndNeverCutBelowFloor()
         {

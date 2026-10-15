@@ -11,7 +11,7 @@ public sealed class ExcavatorAppearance : MonoBehaviour
     public bool detailedAppearance = true;
     [Range(0,1)] public float weathering = .4f;
     [Range(0,1)] public float surfaceDetail = .7f;
-    public bool addMechanicalDetails = true;
+    public bool addMechanicalDetails = false;
 
     /// <summary>True while upgraded materials and optional mechanical details are applied.</summary>
     public bool IsDetailed { get; private set; }
