@@ -18,6 +18,29 @@ namespace ExcavatorControls.Tests
             Object.DestroyImmediate(bucket);
         }
 
+        /// <summary>Distant excavation must not force pending loose-soil visuals to rebuild.</summary>
+        /// <returns>Frames around an accumulated ground deposit and a distant cutting query.</returns>
+        [UnityTest]
+        public IEnumerator DistantLooseCutsDoNotFlushPendingGroundMesh()
+        {
+            receiver = new GameObject("distant loose soil");
+            var zone = receiver.AddComponent<SoilReceivingZone>();
+            zone.isGroundPile = true;
+            bucket = new GameObject("receipt source");
+            var cutter = bucket.AddComponent<BucketSoilCutter>();
+            cutter.enabled = false;
+            Accept(zone, cutter, .002);
+            yield return null;
+            var filter = receiver.GetComponent<MeshFilter>();
+            var before = filter.sharedMesh.vertices;
+            Accept(zone, cutter, .002);
+            Assert.That(zone.ExcavateLoose(new Vector3(100, 0, 100), Vector3.forward, .001), Is.Zero);
+            CollectionAssert.AreEqual(before, filter.sharedMesh.vertices,
+                "A distant cutting query must not force a dirty pile to rebuild before LateUpdate.");
+            yield return null;
+            Assert.That(Volume(filter.sharedMesh), Is.EqualTo(.004).Within(1e-6));
+        }
+
         /// <summary>Catch per-parcel mesh rebuilds without allowing deferred landing or accounting.</summary>
         /// <returns>Frames in which the receiver must publish accumulated deposits.</returns>
         [UnityTest]

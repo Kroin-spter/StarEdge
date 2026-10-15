@@ -573,9 +573,9 @@ public class Zx200DigController : MonoBehaviour
         if (soilResistance != null && soilResistance.isActiveAndEnabled)
         {
             Zx200JointPose constrained = soilResistance.ConstrainPose(this, requestedPose, Time.fixedDeltaTime);
-            // Only ordinary cutting-speed reductions may remain smooth. A floor/shell
-            // correction can be safe relative to the actual pose while the old drive is unsafe.
-            bool smoothContactAdvance = !IsBusy && !soilResistance.IsBlocked;
+            // Ordinary cutting and measured soft-soil yielding keep their acceleration.
+            // Floor limits and non-yielding shell corrections still stop unsafe targets immediately.
+            bool smoothContactAdvance = !IsBusy && (!soilResistance.IsBlocked || soilResistance.IsYieldingSoil);
             // Cancel accumulated target error on a constrained joint so holding a key cannot build a later lurch.
             ApplyConstrainedTarget(swingJoint, requestedPose.swing, constrained.swing, ref targetVelocities.x, smoothContactAdvance);
             ApplyConstrainedTarget(boomJoint, requestedPose.boom, constrained.boom, ref targetVelocities.y, smoothContactAdvance);

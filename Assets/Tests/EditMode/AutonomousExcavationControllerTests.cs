@@ -7,6 +7,41 @@ namespace ExcavatorControls.Tests
     /// <summary>Validates autonomous boundaries and geometric collision predictions without loading Cesium.</summary>
     public class AutonomousExcavationControllerTests
     {
+        /// <summary>Landing must intersect the actual bed plane, including its inclination.</summary>
+        /// <param name="slope">Plane rise per metre along X.</param>
+        /// <param name="expectedTime">Independently solved positive root of t² + slope*t - 2 = 0.</param>
+        [TestCase(0f, 1.41421356f)]
+        [TestCase(.5f, 1.18614066f)]
+        public void DumpLandingIncludesGravityAndBedInclination(float slope, float expectedTime)
+        {
+            var method = typeof(AutonomousExcavationController).GetMethod("TryPredictDumpLanding");
+            Assert.That(method, Is.Not.Null);
+            object[] args = { new Vector3(0, 2, 0), Vector3.right, new Vector3(0, -2, 0),
+                Vector3.zero, new Vector3(-slope, 1, 0).normalized, Vector3.zero, 0f };
+            Assert.That((bool)method.Invoke(null, args), Is.True);
+            Vector3 point = (Vector3)args[5];
+            Assert.That((float)args[6], Is.EqualTo(expectedTime).Within(.00001f));
+            Assert.That(point.x, Is.EqualTo(expectedTime).Within(.00001f));
+            Assert.That(point.y, Is.EqualTo(expectedTime * slope).Within(.00001f));
+        }
+
+        /// <summary>A forward mouth must discharge without forcing the bucket to its end stop.</summary>
+        [Test]
+        public void DumpOpeningStopsAtForwardTiltWithinJointLimits()
+        {
+            var method = typeof(AutonomousExcavationController).GetMethod("CalculateDumpBucketAngle",
+                BindingFlags.Static | BindingFlags.Public);
+            Assert.That(method, Is.Not.Null, "Automatic dumping needs a pose-dependent limited opening.");
+            float angle = (float)method.Invoke(null, new object[] { Vector3.up, Vector3.right, 100f, -25f, 120f });
+            Vector3 mouth = Quaternion.AngleAxis(angle - 100f, Vector3.right) * Vector3.up;
+            Assert.That(Vector3.Angle(mouth, Vector3.down), Is.EqualTo(85f).Within(.6f));
+            Assert.That(angle, Is.GreaterThan(-20f), "Do not continue to the full-open stop.");
+            float constrained = (float)method.Invoke(null, new object[] { Vector3.up, Vector3.right, 100f, 40f, 120f });
+            Assert.That(constrained, Is.InRange(40f, 120f));
+            Assert.That(Vector3.Angle(Quaternion.AngleAxis(constrained - 100f, Vector3.right) * Vector3.up,
+                Vector3.down), Is.EqualTo(120f).Within(.6f));
+        }
+
         /// <summary>Plan an open-bucket landing from a dig direction well outside the old local ±35° search.</summary>
         /// <param name="truckAngle">Truck bearing around the vertical slew axis in degrees.</param>
         [TestCase(120f)]
@@ -443,6 +478,8 @@ namespace ExcavatorControls.Tests
             Assert.That(full.armAdvanceScale, Is.EqualTo(.12f).Within(.0001f),
                 "满斗仍允许小幅切削，超出容量的土由侧落处理。");
             var predictedFull = AutonomousExcavationController.CalculateAdaptiveScoopMotionCommand(.3f, 1.5f);
+            Assert.That(predictedFull.boomLiftScale, Is.Zero,
+                "预测满斗只能提前收斗，不能在实际进土前竖直拔出。");
             Assert.That(predictedFull.armAdvanceScale, Is.EqualTo(predictedArm).Within(.0001f),
                 "预测进土不能在实际进斗前锁住小臂。");
         }

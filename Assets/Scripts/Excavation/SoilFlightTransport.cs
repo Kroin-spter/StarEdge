@@ -6,17 +6,20 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class SoilFlightTransport : MonoBehaviour
 {
+    private static readonly Unity.Profiling.ProfilerMarker FlightMarker = new Unity.Profiling.ProfilerMarker("Soil.Flight");
     internal readonly struct Emission
     {
         internal readonly double volume;
         internal readonly Vector3 position;
         internal readonly Vector3 velocity;
+        internal readonly bool keepLoose;
 
-        internal Emission(double volume, Vector3 position, Vector3 velocity)
+        internal Emission(double volume, Vector3 position, Vector3 velocity, bool keepLoose = false)
         {
             this.volume = volume;
             this.position = position;
             this.velocity = velocity;
+            this.keepLoose = keepLoose;
         }
     }
 
@@ -35,10 +38,14 @@ public sealed class SoilFlightTransport : MonoBehaviour
         internal Vector3 position, velocity;
         internal double volume;
         internal float idleSeconds;
+        internal bool keepLoose;
     }
     private readonly List<Parcel> parcels = new List<Parcel>();
     private readonly List<Parcel> deposits = new List<Parcel>();
     private readonly List<SoilReceivingZone> piles = new List<SoilReceivingZone>();
+    private readonly Dictionary<SoilReceivingZone, float> pileLastDisturbed = new Dictionary<SoilReceivingZone, float>();
+    private float settlingClock, nextSettlingTime;
+    private int settlingCursor;
     private BucketSoilCutter cutter;
     private GameObject visual;
     private Mesh mesh;
@@ -64,7 +71,7 @@ public sealed class SoilFlightTransport : MonoBehaviour
             for (int j = parcels.Count - 1; j >= Mathf.Max(0, parcels.Count - 64); j--)
             {
                 Parcel candidate = parcels[j];
-                if (candidate.volume + emission.volume > .008 ||
+                if (candidate.keepLoose != emission.keepLoose || candidate.volume + emission.volume > .008 ||
                     (candidate.position - emission.position).sqrMagnitude > .0036f ||
                     (candidate.velocity - emission.velocity).sqrMagnitude > .04f) continue;
                 double total = candidate.volume + emission.volume;
@@ -80,7 +87,8 @@ public sealed class SoilFlightTransport : MonoBehaviour
             {
                 volume = emission.volume,
                 position = emission.position,
-                velocity = emission.velocity
+                velocity = emission.velocity,
+                keepLoose = emission.keepLoose
             });
         }
         RequestVisualRefresh();
@@ -109,6 +117,7 @@ public sealed class SoilFlightTransport : MonoBehaviour
 
     internal void Advance(float deltaSeconds, SoilReceivingZone[] receivers, LayerMask mask)
     {
+        using var profile = FlightMarker.Auto();
         if (!float.IsFinite(deltaSeconds) || deltaSeconds <= 0) return;
         if (cutter == null) cutter = GetComponent<BucketSoilCutter>();
         // Sweeps prevent tunnelling, and small substeps resolve receiver-plane impacts before the solid floor.
@@ -119,6 +128,8 @@ public sealed class SoilFlightTransport : MonoBehaviour
             for (int i = parcels.Count - 1; i >= 0; i--)
                 if (AdvanceParcel(parcels[i], dt, receivers, mask)) parcels.RemoveAt(i);
         FlushTerrainDeposits(parcels.Count == 0);
+        settlingClock += deltaSeconds;
+        SettleIdlePile();
         RequestVisualRefresh();
     }
 
@@ -130,6 +141,9 @@ public sealed class SoilFlightTransport : MonoBehaviour
         foreach (var pile in piles)
             if (pile != null) DestroyObject(pile.gameObject);
         piles.Clear();
+        pileLastDisturbed.Clear();
+        settlingClock = nextSettlingTime = 0;
+        settlingCursor = 0;
         if (visual != null) visual.SetActive(false);
     }
 
@@ -255,6 +269,10 @@ public sealed class SoilFlightTransport : MonoBehaviour
 
     private void Settle(Parcel parcel, Vector3 point, DeformableSoilTerrain terrain)
     {
+        // Pressure spoil is already loose. Baking a wide mound into the source
+        // heightfield immediately refills nearby shell contacts and creates a recutting loop.
+        if (parcel.keepLoose)
+        { DepositPile(point, parcel.volume); return; }
         // Foreign source terrain stays untouched so per-source resets remain coherent.
         if (terrain != null && terrain == cutter.soil)
         {
@@ -305,8 +323,17 @@ public sealed class SoilFlightTransport : MonoBehaviour
     {
         SoilReceivingZone target = null;
         foreach (var pile in piles)
-            if (pile != null && (pile.transform.position - point).sqrMagnitude < .5f * .5f)
+            if (pile != null && pile.VolumeM3 > 0 && (pile.transform.position - point).sqrMagnitude < .5f * .5f)
             { target = pile; break; }
+        // Reuse only fully excavated piles. Moving a populated pile would teleport soil.
+        if (target == null)
+            foreach (var pile in piles)
+                if (pile != null && pile.VolumeM3 <= 0)
+                {
+                    target = pile;
+                    target.transform.position = point;
+                    break;
+                }
         if (target == null)
         {
             var go = new GameObject("Deposited soil pile (runtime)");
@@ -321,10 +348,32 @@ public sealed class SoilFlightTransport : MonoBehaviour
                 target.GetComponent<Renderer>().sharedMaterial = cutter.fillVisual.GetComponent<Renderer>().sharedMaterial;
             piles.Add(target);
         }
+        pileLastDisturbed[target] = settlingClock;
         double accepted = target.Accept(cutter, volume);
         cutter.RecordLanding(target, accepted);
         if (accepted < volume)
             throw new InvalidOperationException("Ground pile capacity exhausted; soil cannot be discarded.");
+    }
+
+    private void SettleIdlePile()
+    {
+        if (settlingClock < nextSettlingTime || piles.Count == 0 || cutter == null || cutter.soil == null) return;
+        nextSettlingTime = settlingClock + .25f;
+        // Bound both searching and terrain writes: at most one small deposit per tick.
+        // Keep a horizontal exclusion zone even when the bucket is lifted overhead.
+        for (int checkedCount = 0; checkedCount < Mathf.Min(8, piles.Count); checkedCount++)
+        {
+            settlingCursor %= piles.Count;
+            SoilReceivingZone pile = piles[settlingCursor++];
+            if (pile == null || pile.VolumeM3 <= 0) continue;
+            Vector3 offset = pile.transform.position - cutter.TipWorldPosition;
+            if (offset.x * offset.x + offset.z * offset.z < 2.5f * 2.5f)
+            { pileLastDisturbed[pile] = settlingClock; continue; }
+            if (!pileLastDisturbed.TryGetValue(pile, out float disturbed))
+            { pileLastDisturbed[pile] = settlingClock; continue; }
+            if (settlingClock - disturbed < 8f) continue;
+            if (pile.SettleIntoTerrain(cutter.soil, .002) > 0) break;
+        }
     }
 
     private void RefreshVisual()

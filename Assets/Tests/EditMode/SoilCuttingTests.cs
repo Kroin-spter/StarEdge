@@ -36,6 +36,73 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void ShellPressureSpillStaysLooseInsteadOfRefillingTheContactTerrain()
+        {
+            bucket = new GameObject("shell spill source");
+            var cutter = bucket.AddComponent<BucketSoilCutter>();
+            cutter.soil = (DeformableSoilTerrain)soil;
+            cutter.SamplePose();
+            double removed = cutter.DisplacePressedSoil(new Vector3(2.0625f, .97f, 2.0625f), .002f);
+            Assert.That(removed, Is.GreaterThan(.001));
+            var unloader = bucket.AddComponent<BucketSoilUnloader>();
+            for (int i = 0; i < 150; i++) unloader.Step(.02f);
+            Assert.That(cutter.DeliveredVolumeM3, Is.EqualTo(removed).Within(1e-7));
+            Assert.That(((DeformableSoilTerrain)soil).RecalculateRemovedVolumeM3(),
+                Is.EqualTo(removed).Within(1e-7),
+                "Shell spoil must remain a loose pile; a broad terrain deposit can refill the pressure footprint.");
+        }
+
+        [Test]
+        public void ContactSnapshotMatchesNativeTerrainAndRespectsHoles()
+        {
+            var terrain = ground.GetComponent<Terrain>();
+            var heights = terrain.terrainData.GetHeights(0, 0, 33, 33);
+            for (int z = 0; z < 33; z++)
+                for (int x = 0; x < 33; x++) heights[z, x] = .4f + .1f * Mathf.Sin(x * .7f + z * .3f);
+            var floorHeights = new float[33, 33];
+            for (int z = 0; z < 33; z++)
+                for (int x = 0; x < 33; x++) floorHeights[z, x] = .15f + x * .001f + z * .002f;
+            ((DeformableSoilTerrain)soil).PrepareMoundSurface(heights, floorHeights);
+            terrain.terrainData.SetHoles(16, 16, new bool[1, 1]);
+            var capture = soil.GetType().GetMethod("CaptureSurfaceSnapshot", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(capture, Is.Not.Null);
+            object snapshot = capture.Invoke(soil, new object[] { new Bounds(new Vector3(2, 1, 2), new Vector3(2, 2, 2)) });
+            var depth = snapshot.GetType().GetMethod("Depth", BindingFlags.Instance | BindingFlags.NonPublic);
+            var floor = snapshot.GetType().GetMethod("FloorWorldY", BindingFlags.Instance | BindingFlags.NonPublic);
+            for (int i = 0; i < 70; i++)
+            {
+                Vector3 point = new Vector3(.03f + i * .055f, .2f, .09f + i * .047f);
+                if (!((DeformableSoilTerrain)soil).HasSurfaceAt(point)) continue;
+                Assert.That((float)depth.Invoke(snapshot, new object[] { point }),
+                    Is.EqualTo(terrain.SampleHeight(point) - point.y).Within(.00001f), $"sample {point}");
+                Assert.That((float)floor.Invoke(snapshot, new object[] { point }),
+                    Is.EqualTo(((DeformableSoilTerrain)soil).GetFloorWorldY(point)).Within(.00001f));
+            }
+            Assert.That((float)depth.Invoke(snapshot, new object[] { new Vector3(2.03f, 0, 2.03f) }), Is.EqualTo(float.NegativeInfinity));
+        }
+
+        [Test]
+        public void PressedSoilSharesSmallBudgetAcrossContactPatchInsteadOfCuttingOneSpike()
+        {
+            bucket = new GameObject("pressed shell");
+            var cutter = bucket.AddComponent<BucketSoilCutter>();
+            cutter.soil = (DeformableSoilTerrain)soil;
+            cutter.SamplePose();
+            var terrain = ground.GetComponent<Terrain>();
+            float before = terrain.SampleHeight(new Vector3(2, 0, 2));
+            double removed = cutter.DisplacePressedSoil(new Vector3(2.0625f, .97f, 2.0625f), .0002f);
+            Assert.That(removed, Is.GreaterThan(.0001).And.LessThanOrEqualTo(.0002));
+            float[,] heights = terrain.terrainData.GetHeights(16, 16, 2, 2);
+            float min = float.PositiveInfinity, max = float.NegativeInfinity;
+            foreach (float value in heights) { min = Mathf.Min(min, value); max = Mathf.Max(max, value); }
+            Assert.That((max - min) * terrain.terrainData.size.y, Is.LessThan(.001f),
+                "A finite budget must lower the whole pressure footprint evenly, not the first heightmap vertex.");
+            Assert.That(max * terrain.terrainData.size.y, Is.LessThan(before));
+            Assert.That(cutter.DisplacedVolumeM3, Is.EqualTo(removed).Within(1e-9));
+            Assert.That(cutter.VolumeM3, Is.Zero, "Steel shell pressure displaces soil rather than filling the bucket.");
+        }
+
+        [Test]
         public void BucketCannotRelocateLoosePileFromTwelveMetresAway()
         {
             var cutter = CreateLoosePileSource();

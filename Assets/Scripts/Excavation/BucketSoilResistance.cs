@@ -39,6 +39,10 @@ public sealed class BucketSoilResistance : MonoBehaviour
     public Vector3 TipVelocity { get; private set; }
     /// <summary>Largest sampled manual bucket-shell depth below the live Terrain surface, in metres.</summary>
     public float ShellPenetrationM => shellGuard != null ? shellGuard.MaximumDepth : 0;
+    /// <summary>True while measured shell pressure is actually displacing soft soil above the floor.</summary>
+    public bool IsYieldingSoil { get; private set; }
+    /// <summary>On-demand description of the latest shell restriction for scene diagnostics.</summary>
+    public string ShellContactDiagnostics => shellGuard != null ? shellGuard.ContactDiagnostics : string.Empty;
     private BucketSoilCutter cutter;
     private ArticulationBody body;
     private Vector3 previous;
@@ -121,6 +125,7 @@ public sealed class BucketSoilResistance : MonoBehaviour
         IsContacting &= tip.y <= surface + contactMargin;
         IsBlocked = false;
         BlockReason = "空中";
+        full = atFloor = tooDeep = false;
         if (!IsContacting) return;
         full = cutter.EffectiveCapacityM3 - cutter.VolumeM3 <= .00001;
         atFloor = tip.y <= cutter.soil.GetFloorWorldY(tip) + contactMargin;
@@ -133,10 +138,11 @@ public sealed class BucketSoilResistance : MonoBehaviour
     /// <param name="machine">Controller whose four articulation joints own this bucket.</param>
     /// <param name="requested">Requested joint targets in degrees.</param>
     /// <param name="deltaSeconds">Positive physics timestep.</param>
-    /// <returns>Safe targets: retain support when held, permit withdrawal and oblique face cuts, limit cutting speed.</returns>
+    /// <returns>Targets retaining floor/direction/shell protection and withdrawal; ordinary manual advance uses controller smoothing, automatic cutting remains rate-limited.</returns>
     public Zx200JointPose ConstrainPose(Zx200DigController machine, Zx200JointPose requested, float deltaSeconds)
     {
         EvaluateContact();
+        IsYieldingSoil = false;
         allowManualSlopeRelief = machine != null && cutter.ManualSoilControlActive;
         if (!isActiveAndEnabled || machine == null || deltaSeconds <= 0)
         { holds.Clear(); floorMomentumBrakeActive = false; return requested; }
@@ -146,6 +152,13 @@ public sealed class BucketSoilResistance : MonoBehaviour
             holds.Clear();
             floorMomentumBrakeActive = false;
             return GuardManualShell(machine, actual, requested);
+        }
+        // Manual cuts can enter deep soft soil above the floor. Depth alone must not
+        // switch the controller from smooth advance to immediate blocked-target delivery.
+        if (allowManualSlopeRelief && !atFloor)
+        {
+            IsBlocked = false;
+            BlockReason = full ? "满斗切削：多余土侧落" : "切削接触";
         }
         if (ApplyFloorMomentumBrake(machine, actual, ref requested, deltaSeconds))
             return GuardManualShell(machine, actual, requested);
@@ -163,10 +176,11 @@ public sealed class BucketSoilResistance : MonoBehaviour
         if (machine.IsBusy || !cutter.ManualSoilControlActive) return requested;
         if (shellGuard == null) shellGuard = new BucketShellTerrainGuard();
         var result = shellGuard.Constrain(cutter, machine, actual, requested, out bool limited);
+        IsYieldingSoil = shellGuard.YieldedVolumeM3 > 0 && !atFloor && !floorMomentumBrakeActive;
         if (limited)
         {
             IsBlocked = true;
-            BlockReason = "斗体接触未切土：限制深入，允许退出";
+            BlockReason = IsYieldingSoil ? "斗壳压土：持续让位并侧落" : "斗体接触未切土：限制深入，允许退出";
         }
         return result;
     }
@@ -394,16 +408,21 @@ public sealed class BucketSoilResistance : MonoBehaviour
         // Contact limits are independent of another joint's direction rejection in this command.
         // On a mound, overhead height grows during a horizontal cut into its face. It is
         // not a downward plunge. The real arm cuts at about 32 degrees below horizontal;
-        // allow mouth-leading oblique cuts up to about 60 degrees at the restricted cutting speed.
+        // automatic control allows mouth-leading oblique cuts up to about 60 degrees
+        // at restricted speed. Manual entry relies on the floor and shell guards.
         if (atFloor) return Hold(joint, actual);
         float horizontalTravel = new Vector2(movement.x, movement.z).magnitude;
-        if (tooDeep)
+        if (tooDeep && !allowManualSlopeRelief)
         {
             float mouthAlignment = Vector3.Dot(movement.normalized,
                 transform.TransformDirection(cutter.cutDirectionLocal).normalized);
             if (movement.y < -1.7f * horizontalTravel - .00001f || mouthAlignment < 0f)
                 return Hold(joint, actual);
         }
+        // A manual bucket must also open or roll out of soil without collecting it.
+        // The measured shell guard handles displacement, and floor guards run separately.
+        if (allowManualSlopeRelief && joint == body)
+        { holds.Remove(joint); return requested; }
         if (!cutter.CanCutMovement(movement, out string reason))
         {
             IsBlocked = true;
@@ -411,7 +430,9 @@ public sealed class BucketSoilResistance : MonoBehaviour
             return Hold(joint, actual);
         }
         holds.Remove(joint);
-        return Mathf.MoveTowards(allowManualSlopeRelief ? reference : actual, requested, cuttingSpeedDegrees * dt);
+        // Avoid rate-limiting manual advance before the controller smooths it again.
+        return allowManualSlopeRelief ? requested :
+            Mathf.MoveTowards(actual, requested, cuttingSpeedDegrees * dt);
     }
 
     private bool ImprovesFloorClearance(Vector3 current, Vector3 next)

@@ -25,6 +25,8 @@ public sealed class BucketSoilUnloader : MonoBehaviour
     public double AirborneMassKg => AirborneVolumeM3 * (cutter != null ? cutter.SoilDensityKgPerM3 : 0);
     public double SurfacePendingVolumeM3 => flight != null ? flight.SurfacePendingVolumeM3 : 0;
     public double RetainedVolumeM3 { get; private set; }
+    /// <summary>Measured angle between the world-space mouth normal and downward gravity, in degrees.</summary>
+    public float MouthAngleFromDown { get; private set; }
     [HideInInspector] public LineRenderer soilStream; // Replaced by independent airborne clumps.
     private BucketSoilCutter cutter;
     private SoilFlightTransport flight;
@@ -64,22 +66,25 @@ public sealed class BucketSoilUnloader : MonoBehaviour
         if (cutter.VolumeM3 <= 0)
         { ResetGate(); State = UnloadingState.Empty; Status = AirborneVolumeM3 > 0 ? "空斗，土方下落中" : "空斗"; return 0; }
         float angle = Vector3.Angle(transform.TransformDirection(openingNormalLocal), Physics.gravity);
+        MouthAngleFromDown = angle;
         var fill = cutter.fillVisual != null ? cutter.fillVisual.GetComponent<BucketSoilFill>() : null;
         double geometricRetention = fill != null ? fill.RetainedCapacityM3(fill.SurfaceNormalLocal) : 0;
         // The repose surface can still intersect the cavity while its mouth faces down.
         // Fade that retention away for a deliberate full dump, including autonomous unloading.
         float retentionFraction = Mathf.InverseLerp(30f, 60f, angle);
         geometricRetention *= retentionFraction;
-        // Blend out geometric spilling over the mild-tilt band rather than latching the
-        // entire inventory. At 75 degrees with the default 65-degree threshold, carry is protected.
+        // Legacy buckets without cavity geometry retain the old approximate angle gate.
+        // A calibrated cavity already accounts for its floor, lips and repose surface:
+        // overriding its zero retention with an angle latch leaves soil hanging in air.
         float carryAngle = Mathf.Min(89f, enterAngleFromDown + 10f);
         float carryProtection = angle >= carryAngle ? 1f
             : Mathf.SmoothStep(0, 1, Mathf.InverseLerp(enterAngleFromDown, carryAngle, angle));
         RetainedVolumeM3 = System.Math.Min(cutter.VolumeM3, geometricRetention);
-        RetainedVolumeM3 += (cutter.VolumeM3 - RetainedVolumeM3) * carryProtection;
+        if (fill == null)
+            RetainedVolumeM3 += (cutter.VolumeM3 - RetainedVolumeM3) * carryProtection;
         double excess = System.Math.Max(0, cutter.VolumeM3 - RetainedVolumeM3);
         if (excess <= 0 || (RetainedVolumeM3 > 0 && excess <= 1e-7))
-        { dwell = 0; State = UnloadingState.Loaded; Status = "斗内保土"; return 0; }
+        { dwell = 0; State = UnloadingState.Loaded; Status = $"斗内保土，斗口 {angle:F0}°，可保留 {RetainedVolumeM3:F3} m³"; return 0; }
         State = UnloadingState.ReadyToDump;
         Status = "土体滑向斗口";
         float before = dwell;

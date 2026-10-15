@@ -44,6 +44,113 @@ namespace ExcavatorControls.Tests
         }
 
         [Test]
+        public void EmptyLandedPilesAreReusedWhenDiggingMovesAcrossTheSite()
+        {
+            var flight = bucket.GetComponent<SoilFlightTransport>();
+            if (flight == null) flight = bucket.AddComponent<SoilFlightTransport>();
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic;
+            typeof(SoilFlightTransport).GetField("cutter", flags).SetValue(flight, cutter);
+            var deposit = typeof(SoilFlightTransport).GetMethod("DepositPile", flags);
+            for (int i = 0; i < 50; i++)
+            {
+                Vector3 anchor = new Vector3(10 + i, 0, 10);
+                deposit.Invoke(flight, new object[] { anchor, .01 });
+                var piles = (System.Collections.Generic.List<SoilReceivingZone>)
+                    typeof(SoilFlightTransport).GetField("piles", flags).GetValue(flight);
+                var active = piles.Find(pile => pile.VolumeM3 > 0);
+                Assert.That(active.transform.position, Is.EqualTo(anchor));
+                Assert.That(active.ExcavateLoose(anchor + new Vector3(.4f, .01f, 0),
+                    Vector3.right * .8f, .01), Is.EqualTo(.01).Within(1e-9));
+                Assert.That(piles.Count, Is.EqualTo(1), "Empty soil objects must be reused, not accumulate.");
+            }
+        }
+
+        [Test]
+        public void LoosePileSettlesOnlyAcceptedVolumeWithoutCountingDeliveryTwice()
+        {
+            var pile = CreateLoosePile();
+            double delivered = cutter.DeliveredVolumeM3;
+            double terrainRemovedBefore = cutter.soil.RecalculateRemovedVolumeM3();
+            var settle = typeof(SoilReceivingZone).GetMethod("SettleIntoTerrain",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(settle, Is.Not.Null);
+            double moved = (double)settle.Invoke(pile, new object[] { cutter.soil, .005 });
+            Assert.That(moved, Is.GreaterThan(0).And.LessThanOrEqualTo(.005));
+            Assert.That(pile.VolumeM3 + moved, Is.EqualTo(.02).Within(1e-8));
+            Assert.That(pile.Records[0].VolumeM3, Is.EqualTo(pile.VolumeM3).Within(1e-8));
+            Assert.That(cutter.DeliveredVolumeM3, Is.EqualTo(delivered));
+            Assert.That(terrainRemovedBefore - cutter.soil.RecalculateRemovedVolumeM3(),
+                Is.EqualTo(moved).Within(1e-6), "减少的松土必须真实进入地形。");
+            Assert.That((double)settle.Invoke(pile, new object[] { null, .005 }), Is.Zero);
+            pile.isGroundPile = false;
+            Assert.That((double)settle.Invoke(pile, new object[] { cutter.soil, .005 }), Is.Zero,
+                "矿车内的土不能使用地面松土沉积路径。");
+        }
+
+        [Test]
+        public void LoosePileWaitsUntilBucketHasLeftBeforeSettling()
+        {
+            var flight = bucket.GetComponent<SoilFlightTransport>() ?? bucket.AddComponent<SoilFlightTransport>();
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic;
+            typeof(SoilFlightTransport).GetField("cutter", flags).SetValue(flight, cutter);
+            typeof(SoilFlightTransport).GetMethod("DepositPile", flags).Invoke(flight,
+                new object[] { new Vector3(2, 1, 2), .02 });
+            var piles = (System.Collections.Generic.List<SoilReceivingZone>)
+                typeof(SoilFlightTransport).GetField("piles", flags).GetValue(flight);
+            var advance = typeof(SoilFlightTransport).GetMethod("Advance", flags);
+            for (int i = 0; i < 60; i++)
+                advance.Invoke(flight, new object[] { .25f, null, (LayerMask)0 });
+            Assert.That(piles[0].VolumeM3, Is.EqualTo(.02).Within(1e-9));
+            bucket.transform.position = new Vector3(8, 4, 8);
+            for (int i = 0; i < 28; i++)
+                advance.Invoke(flight, new object[] { .25f, null, (LayerMask)0 });
+            Assert.That(piles[0].VolumeM3, Is.EqualTo(.02).Within(1e-9));
+            for (int i = 0; i < 8; i++)
+                advance.Invoke(flight, new object[] { .25f, null, (LayerMask)0 });
+            Assert.That(piles[0].VolumeM3, Is.GreaterThan(0).And.LessThan(.02));
+        }
+
+        [Test]
+        public void ElevatedLoosePileCannotAssimilateIntoTerrainBelowIt()
+        {
+            var pile = CreateLoosePile();
+            pile.transform.position += Vector3.up;
+            var settle = typeof(SoilReceivingZone).GetMethod("SettleIntoTerrain",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            double before = cutter.soil.RecalculateRemovedVolumeM3();
+            Assert.That((double)settle.Invoke(pile, new object[] { cutter.soil, .005 }), Is.Zero);
+            Assert.That(pile.VolumeM3, Is.EqualTo(.02).Within(1e-9));
+            Assert.That(cutter.soil.RecalculateRemovedVolumeM3(), Is.EqualTo(before).Within(1e-9));
+        }
+
+        [Test]
+        public void RepeatedGroundReceiptsDoNotGrowWithParticleCount()
+        {
+            var pile = CreateLoosePile();
+            for (int i = 0; i < 1000; i++)
+                Assert.That(cutter.TransferTo(pile, .00001), Is.EqualTo(.00001).Within(1e-9));
+            Assert.That(pile.VolumeM3, Is.EqualTo(.03).Within(1e-9));
+            Assert.That(pile.Records.Count, Is.EqualTo(1),
+                "Ground soil needs remaining inventory per source, not one receipt per particle.");
+        }
+
+        [Test]
+        public void RemovingUnrelatedSourceDoesNotRestoreReexcavatedGroundSoil()
+        {
+            var pile = CreateLoosePile();
+            Vector3 end = pile.transform.position + new Vector3(.6f, .03f, 0);
+            Assert.That(pile.ExcavateLoose(end, Vector3.right * 1.2f, .005),
+                Is.EqualTo(.005).Within(1e-9));
+            typeof(SoilReceivingZone).GetMethod("RemoveSource",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(pile, new object[] { null, null });
+            Assert.That(pile.VolumeM3, Is.EqualTo(.015).Within(1e-9));
+            Assert.That(pile.MassKg, Is.EqualTo(.015 * cutter.SoilDensityKgPerM3).Within(1e-6));
+        }
+
+        [Test]
         public void LoosePileCannotBeExcavatedFromDistantBucketPosition()
         {
             var pile = CreateLoosePile();

@@ -7,6 +7,7 @@ using UnityEngine;
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public sealed class SoilReceivingZone : MonoBehaviour
 {
+    private static readonly Unity.Profiling.ProfilerMarker MeshMarker = new Unity.Profiling.ProfilerMarker("Soil.ReceivingMesh");
     private static readonly List<SoilReceivingZone> activeZones = new List<SoilReceivingZone>();
     private static readonly IReadOnlyList<SoilReceivingZone> activeZoneView = activeZones.AsReadOnly();
     // Non-ExecuteAlways components do not reliably receive registry callbacks in Edit Mode.
@@ -26,6 +27,9 @@ public sealed class SoilReceivingZone : MonoBehaviour
     public IReadOnlyList<TransferRecord> Records => records.AsReadOnly();
     private readonly List<TransferRecord> records = new List<TransferRecord>();
     private Mesh mesh;
+    private Vector3[] pileVertices;
+    private int[] pileTriangles;
+    private Bounds looseBounds;
     private Mesh surfaceMesh;
     private MeshRenderer surfaceRenderer;
     private bool meshDirty;
@@ -40,8 +44,13 @@ public sealed class SoilReceivingZone : MonoBehaviour
     public double ExcavateLoose(Vector3 tooth, Vector3 sweep, double requested)
     {
         if (!CanExcavate(requested) || !Finite(tooth) || !Finite(sweep) || sweep.sqrMagnitude < 1e-10f) return 0;
-        if (!TouchesPile(transform.InverseTransformPoint(tooth - sweep),
-            transform.InverseTransformPoint(tooth), mesh.vertices, mesh.triangles)) return 0;
+        Vector3 start = transform.InverseTransformPoint(tooth - sweep);
+        Vector3 end = transform.InverseTransformPoint(tooth);
+        var bounds = new Bounds(start, Vector3.zero);
+        bounds.Encapsulate(end);
+        if (CanUseLooseBounds() && !bounds.Intersects(looseBounds)) return 0;
+        if (meshDirty) RefreshMesh();
+        if (!TouchesPile(start, end, pileVertices, pileTriangles)) return 0;
         return RemoveLooseVolume(requested);
     }
 
@@ -61,9 +70,11 @@ public sealed class SoilReceivingZone : MonoBehaviour
             sweptBounds.Encapsulate(transform.InverseTransformPoint(previousBlade[i]));
             sweptBounds.Encapsulate(transform.InverseTransformPoint(currentBlade[i]));
         }
+        if (CanUseLooseBounds() && !sweptBounds.Intersects(looseBounds)) return 0;
+        if (meshDirty) RefreshMesh();
         if (!sweptBounds.Intersects(mesh.bounds)) return 0;
-        Vector3[] vertices = mesh.vertices;
-        int[] triangles = mesh.triangles;
+        Vector3[] vertices = pileVertices;
+        int[] triangles = pileTriangles;
         // The box corner ordering uses bit 0 for width. Probe each moving edge
         // across its width so narrow piles between the corner markers are not missed.
         for (int edge = 0; edge < 8; edge += 2)
@@ -88,15 +99,54 @@ public sealed class SoilReceivingZone : MonoBehaviour
     {
         if (!isGroundPile || !isActiveAndEnabled || !double.IsFinite(requested) ||
             requested <= 0 || VolumeM3 <= 0) return false;
-        // Cutting must see deposits from earlier in this frame, before the visual flush.
-        if (meshDirty) RefreshMesh();
-        return mesh != null;
+        return true;
+    }
+
+    private bool CanUseLooseBounds()
+    {
+        // Terrain conformation adjusts world Y. Tilt/scale can move its local X/Z,
+        // so those uncommon piles use their refreshed mesh's exact bounds instead.
+        return Vector3.Dot(transform.up, Vector3.up) > .99999f &&
+            (transform.lossyScale - Vector3.one).sqrMagnitude < .000001f;
+    }
+
+    // Move only inventory belonging to this terrain. Deposit reports the actual
+    // quantized addition; debit exactly that amount, without minting a second delivery.
+    internal double SettleIntoTerrain(DeformableSoilTerrain terrain, double budget)
+    {
+        if (!CanExcavate(budget) || terrain == null || !terrain.HasSurfaceAt(transform.position)) return 0;
+        float surface = terrain.Terrain.SampleHeight(transform.position) + terrain.transform.position.y;
+        // A pile on a vehicle/platform, or suspended over a new cut, must not
+        // transfer inventory through the intervening air/solid into Terrain below.
+        if (Mathf.Abs(surface - transform.position.y) > .1f ||
+            !Physics.Raycast(transform.position + Vector3.up * .1f, Vector3.down, out RaycastHit support,
+                .25f, ~0, QueryTriggerInteraction.Ignore) || support.collider != terrain.SoilCollider) return 0;
+        foreach (var record in records)
+            if (record.Source != terrain) return 0;
+        double added = terrain.Deposit(transform.position, .75f,
+            Math.Min(budget, VolumeM3), Mathf.Cos(32f * Mathf.Deg2Rad));
+        if (added > 0)
+        {
+            Vector3 anchor = transform.position;
+            anchor.y = terrain.Terrain.SampleHeight(anchor) + terrain.transform.position.y;
+            transform.position = anchor;
+            RemoveLooseVolume(added);
+        }
+        return added;
     }
 
     private double RemoveLooseVolume(double requested)
     {
         double density = MassKg / VolumeM3;
         double removed = Math.Min(requested, VolumeM3);
+        // Loose material is mixed: debit each source proportionally so a later reset
+        // cannot reconstruct already excavated inventory from historical receipts.
+        double remainingFraction = (VolumeM3 - removed) / VolumeM3;
+        if (remainingFraction <= 0) records.Clear();
+        else
+            for (int i = 0; i < records.Count; i++)
+                records[i] = records[i].WithInventory(records[i].VolumeM3 * remainingFraction,
+                    records[i].MassKg * remainingFraction);
         VolumeM3 -= removed;
         MassKg = Math.Max(0, MassKg - removed * density);
         RequestMeshRefresh();
@@ -172,6 +222,19 @@ public sealed class SoilReceivingZone : MonoBehaviour
             MassKg = volume * bucket.SoilDensityKgPerM3;
             LocalLanding = localLanding;
         }
+
+        private TransferRecord(TransferRecord original, double volume, double mass)
+        {
+            TimeSeconds = original.TimeSeconds;
+            Bucket = original.Bucket;
+            Source = original.Source;
+            VolumeM3 = volume;
+            MassKg = mass;
+            LocalLanding = original.LocalLanding;
+        }
+
+        internal TransferRecord WithInventory(double volume, double mass)
+            => new TransferRecord(this, volume, mass);
     }
 
     /// <summary>Find the rendered receiving surface vertically beneath a discharge point.</summary>
@@ -223,7 +286,18 @@ public sealed class SoilReceivingZone : MonoBehaviour
         local.x = Mathf.Clamp(local.x, -size.x * .5f, size.x * .5f);
         local.z = Mathf.Clamp(local.z, -size.y * .5f, size.y * .5f);
         var receipt = new TransferRecord(bucket, accepted, local);
-        records.Add(receipt);
+        // Ground piles need source inventory, not particle landing history. Truck
+        // receipts remain individual because their positions reconstruct the heap.
+        int sourceIndex = isGroundPile
+            ? records.FindIndex(record => record.Bucket == receipt.Bucket && record.Source == receipt.Source)
+            : -1;
+        if (sourceIndex >= 0)
+        {
+            TransferRecord previous = records[sourceIndex];
+            records[sourceIndex] = previous.WithInventory(previous.VolumeM3 + accepted,
+                previous.MassKg + receipt.MassKg);
+        }
+        else records.Add(receipt);
         VolumeM3 += accepted;
         MassKg += receipt.MassKg;
         if (!isGroundPile)
@@ -267,6 +341,17 @@ public sealed class SoilReceivingZone : MonoBehaviour
     private void RequestMeshRefresh()
     {
         meshDirty = true;
+        if (isGroundPile && VolumeM3 > 0)
+        {
+            const int sides = 24;
+            float slope = Mathf.Tan(32 * Mathf.Deg2Rad);
+            float polygonFactor = sides * Mathf.Sin(2 * Mathf.PI / sides) * .5f;
+            float radius = Mathf.Pow((float)(VolumeM3 * 3 / (polygonFactor * slope)), 1f / 3);
+            // Includes the conformed rim's allowed vertical displacement. This bound
+            // is current immediately, without forcing a mesh rebuild for distant cuts.
+            looseBounds = new Bounds(Vector3.zero, new Vector3(radius,
+                radius * slope + .125f, radius) * 2);
+        }
         if (VolumeM3 <= 0)
         {
             GetComponent<MeshRenderer>().enabled = false;
@@ -297,6 +382,7 @@ public sealed class SoilReceivingZone : MonoBehaviour
 
     private void RefreshMesh()
     {
+        using var profile = MeshMarker.Auto();
         meshDirty = false;
         var renderer = GetComponent<MeshRenderer>();
         renderer.enabled = isGroundPile && VolumeM3 > 0;
@@ -333,9 +419,13 @@ public sealed class SoilReceivingZone : MonoBehaviour
             }
             mesh.vertices = vertices;
             mesh.triangles = triangles;
+            // Mesh getters allocate copies; retain the authoritative arrays for repeated cuts.
+            pileVertices = vertices;
+            pileTriangles = triangles;
             mesh.uv = uv;
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
+            looseBounds = mesh.bounds;
             return;
         }
         heap?.Build(mesh);

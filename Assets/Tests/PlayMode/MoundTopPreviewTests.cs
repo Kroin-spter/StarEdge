@@ -13,6 +13,90 @@ namespace ExcavatorControls.Tests
     {
         private static bool loadedLegacyTerrain;
 
+        /// <summary>Check manual discharge using the real bucket transform after an actual scoop.</summary>
+        /// <returns>Manual scoop, lift, measured opening and gravitational discharge.</returns>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator SavedPreviewManualForwardTiltReleasesSoil()
+        {
+            const string path = "Assets/Scenes/sence_test.unity";
+            ExpectLegacyTerrainMessages();
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
+            Scene scene = SceneManager.GetSceneByPath(path);
+            try
+            {
+                yield return ManualSoilTestMotion.WaitForSiteReady(scene);
+                var automatic = scene.GetRootGameObjects().SelectMany(root =>
+                    root.GetComponentsInChildren<AutonomousExcavationController>(true)).Single();
+                var machine = automatic.machine;
+                var cutter = automatic.cutter;
+                var unloader = cutter.GetComponent<BucketSoilUnloader>();
+                // Acquire real soil while isolating the later measured release posture.
+                // No volume is injected; the same hold is used during automatic transport.
+                unloader.enabled = false;
+                machine.ApplyWorkReadyPose();
+                for (int i = 0; i < 400 && !cutter.StartupReady; i++) yield return new WaitForFixedUpdate();
+                for (int i = 0; i < 400; i++)
+                {
+                    var actual = machine.ReadActualPose();
+                    var target = machine.approachPose;
+                    float boom = Mathf.DeltaAngle(actual.boom, target.boom);
+                    float arm = Mathf.DeltaAngle(actual.arm, target.arm);
+                    float bucket = Mathf.DeltaAngle(actual.bucket, target.bucket);
+                    if (Mathf.Abs(boom) < .5f && Mathf.Abs(arm) < .5f && Mathf.Abs(bucket) < .5f) break;
+                    machine.AdjustManualPose(0, Mathf.Clamp(boom, -.3f, .3f),
+                        Mathf.Clamp(arm, -.3f, .3f), Mathf.Clamp(bucket, -.3f, .3f));
+                    yield return new WaitForFixedUpdate();
+                }
+                for (int i = 0; i < 250 && cutter.VolumeM3 < .015; i++)
+                {
+                    machine.AdjustManualPose(0, 10 * Time.fixedDeltaTime, 0, 0);
+                    yield return new WaitForFixedUpdate();
+                }
+                for (int i = 0; i < 180 && cutter.VolumeM3 < .015; i++)
+                {
+                    machine.AdjustManualPose(0, 0, 10 * Time.fixedDeltaTime, 5 * Time.fixedDeltaTime);
+                    yield return new WaitForFixedUpdate();
+                }
+                Assert.That(cutter.VolumeM3, Is.GreaterThan(.005), "The test must dig a real load first.");
+                for (int i = 0; i < 130; i++)
+                {
+                    machine.AdjustManualPose(0, -7.5f * Time.fixedDeltaTime, 0, .3f);
+                    yield return new WaitForFixedUpdate();
+                }
+                for (int i = 0; i < 400; i++)
+                {
+                    Vector3 mouth = unloader.transform.TransformDirection(unloader.openingNormalLocal);
+                    float angle = Vector3.Angle(mouth, Vector3.down);
+                    if (Mathf.Abs(angle - 85f) < .3f) break;
+                    Vector3 axis = machine.bucketJoint.transform.TransformDirection(
+                        machine.bucketJoint.anchorRotation * Vector3.right);
+                    float sign = Vector3.Angle(Quaternion.AngleAxis(.2f, axis) * mouth, Vector3.down) < angle ? 1f : -1f;
+                    if (angle < 85f) sign = -sign;
+                    machine.AdjustManualPose(0, 0, 0, sign * .2f);
+                    yield return new WaitForFixedUpdate();
+                }
+                float measured = Vector3.Angle(unloader.transform.TransformDirection(unloader.openingNormalLocal), Vector3.down);
+                double before = cutter.VolumeM3;
+                Assert.That(measured, Is.InRange(80f, 85.5f), "Observe a forward tilt, not a fully inverted bucket.");
+                Assert.That(before, Is.GreaterThan(.005), "The measured opening must still contain the dug soil.");
+                var fill = cutter.fillVisual.GetComponent<BucketSoilFill>();
+                Debug.Log($"MANUAL TILT GEOMETRY angle={measured:F2}, geometric={fill.RetainedCapacityM3(fill.SurfaceNormalLocal):F6}, " +
+                    $"mouth={unloader.transform.TransformDirection(unloader.openingNormalLocal).normalized}, " +
+                    $"localUp={fill.transform.InverseTransformDirection(Vector3.up)}, load={before:F6}");
+                unloader.enabled = true;
+                var camera = machine.GetComponent<Zx200CameraController>().targetCamera;
+                BladeMainSceneTests.CaptureClose(cutter, camera, false, "manual-forward-tilt-before");
+                for (int i = 0; i < 300; i++) yield return new WaitForFixedUpdate();
+                Debug.Log($"MANUAL TILT angle={measured:F2}, before={before:F6}, after={cutter.VolumeM3:F6}, " +
+                    $"retained={unloader.RetainedVolumeM3:F6}, status={unloader.Status}, pose={machine.ReadActualPose().bucket:F2}");
+                BladeMainSceneTests.CaptureClose(cutter, camera, false, "manual-forward-tilt-after");
+                Assert.That(cutter.VolumeM3, Is.LessThan(.001), "A forward-open real bucket must not latch the whole inventory.");
+                ManualSoilTestMotion.AssertBalanceIncludingPiles(cutter, 0, 2e-5);
+            }
+            finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
+        }
+
         /// <summary>Verify a relatively open manual mouth can enter and collect using coordinated hand controls.</summary>
         /// <returns>Real manual motion through the saved mound.</returns>
         [UnityTest]
@@ -33,6 +117,8 @@ namespace ExcavatorControls.Tests
 
         private static IEnumerator ManualAngledScoop(float bucketAngle)
         {
+            string[] markerNames = { "Soil.ShellGuard", "Soil.BladeSweep", "Soil.PressureYield", "Soil.Flight", "Soil.ReceivingMesh" };
+            var recorders = new Unity.Profiling.ProfilerRecorder[markerNames.Length];
             const string path = "Assets/Scenes/sence_test.unity";
             ExpectLegacyTerrainMessages();
             yield return EditorSceneManager.LoadSceneAsyncInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Additive));
@@ -45,6 +131,8 @@ namespace ExcavatorControls.Tests
                 var machine = automatic.machine;
                 var cutter = automatic.cutter;
                 var resistance = cutter.GetComponent<BucketSoilResistance>();
+                for (int marker = 0; marker < markerNames.Length; marker++)
+                    recorders[marker] = Unity.Profiling.ProfilerRecorder.StartNew(Unity.Profiling.ProfilerCategory.Scripts, markerNames[marker], 65536);
                 float maximumShellDepth = 0;
                 Camera camera = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true))
                     .First(candidate => candidate.CompareTag("MainCamera"));
@@ -77,9 +165,11 @@ namespace ExcavatorControls.Tests
                     {
                         var pose = machine.ReadActualPose();
                         Debug.Log($"steep-step={i} arm={pose.arm:F3}/{machine.armJoint.xDrive.target:F3} bucket={pose.bucket:F3}/{machine.bucketJoint.xDrive.target:F3} tipDepth={resistance.PenetrationM:F4} shell={resistance.ShellPenetrationM:F4} reason={resistance.BlockReason}");
+                        Debug.Log($"SHELL DETAILS {resistance.ShellContactDiagnostics}");
                     }
                 }
-                Debug.Log($"多角度手挖 {bucketAngle}°：切除={cutter.ExcavatedVolumeM3:F5}，进斗={cutter.VolumeM3:F5}，斗壳最大穿入={maximumShellDepth:F4}m，{cutter.Status}，{resistance.BlockReason}");
+                Debug.Log($"多角度手挖 {bucketAngle}°：切除={cutter.ExcavatedVolumeM3:F5}，进斗={cutter.VolumeM3:F5}，" +
+                    $"净移除={cutter.soil.RecalculateRemovedVolumeM3():F5}，斗壳最大穿入={maximumShellDepth:F4}m，{cutter.Status}，{resistance.BlockReason}");
                 BladeMainSceneTests.CaptureClose(cutter, camera, false, $"manual-angle-{bucketAngle}-curl");
                 Assert.That(cutter.ExcavatedVolumeM3, Is.GreaterThan(.01), cutter.Status + " / " + resistance.BlockReason);
                 Assert.That(cutter.VolumeM3, Is.GreaterThan(.01), "Changing the manual bucket angle must still allow actual intake.");
@@ -93,7 +183,34 @@ namespace ExcavatorControls.Tests
                 Assert.That(cutter.TipWorldPosition.y, Is.GreaterThan(beforeWithdrawal + .3f));
                 ManualSoilTestMotion.AssertBalanceIncludingPiles(cutter, 0, 2e-5);
             }
-            finally { if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene); }
+            finally
+            {
+                for (int marker = 0; marker < recorders.Length; marker++)
+                {
+                    var recorder = recorders[marker];
+                    if (recorder.Valid)
+                    {
+                        recorder.Stop();
+                        var samples = new double[recorder.Count];
+                        long calls = 0;
+                        double totalMs = 0;
+                        var active = new System.Collections.Generic.List<double>();
+                        for (int sample = 0; sample < samples.Length; sample++)
+                        {
+                            var measured = recorder.GetSample(sample);
+                            samples[sample] = measured.Value / 1e6;
+                            calls += measured.Count;
+                            totalMs += samples[sample];
+                            if (measured.Count > 0) active.Add(samples[sample] / measured.Count);
+                        }
+                        System.Array.Sort(samples);
+                        active.Sort();
+                        if (samples.Length > 0 && calls > 0) Debug.Log($"SOIL PROFILE {markerNames[marker]} frames={samples.Length} calls={calls} perCall={totalMs / calls:F3}ms activeP95={active[(int)((active.Count - 1) * .95)]:F3}ms frameMax={samples[samples.Length - 1]:F3}ms");
+                        recorder.Dispose();
+                    }
+                }
+                if (scene.IsValid() && scene.isLoaded) SceneManager.UnloadSceneAsync(scene);
+            }
         }
 
         /// <summary>Exercise manual keys through contact, curl and withdrawal in the unchanged preview scene.</summary>
@@ -524,6 +641,9 @@ namespace ExcavatorControls.Tests
                 float maximumSurfaceStep = 0;
                 AutonomousExcavationState measuredState = automatic.State;
                 float stateStarted = Time.time;
+                Zx200JointPose dumpStart = default;
+                double dumpLoad = 0;
+                double dumpReceipt = initial;
                 while (automatic.IsRunning && Time.realtimeSinceStartup < deadline)
                 {
                     peakBucketLoad = System.Math.Max(peakBucketLoad, automatic.cutter.VolumeM3);
@@ -537,9 +657,49 @@ namespace ExcavatorControls.Tests
                         Debug.Log($"阶段耗时：斗数={cycles}，阶段={measuredState}，模拟秒={Time.time - stateStarted:F2}");
                         measuredState = automatic.State;
                         stateStarted = Time.time;
+                        if (measuredState == AutonomousExcavationState.Dump)
+                        {
+                            dumpStart = automatic.machine.ReadActualPose();
+                            dumpLoad = automatic.cutter.VolumeM3;
+                            dumpReceipt = automatic.receiver.VolumeM3;
+                            float armHeight = automatic.machine.armJoint.transform.TransformPoint(
+                                automatic.machine.armJoint.anchorPosition).y;
+                            float bucketHeight = automatic.machine.bucketJoint.transform.TransformPoint(
+                                automatic.machine.bucketJoint.anchorPosition).y;
+                            float tipDrop = automatic.cutter.TipWorldPosition.y - automatic.receiver.SurfaceY;
+                            Debug.Log($"卸料姿态：大臂={dumpStart.boom:F1}°，小臂={dumpStart.arm:F1}°，" +
+                                $"铲斗={dumpStart.bucket:F1}°，小臂关节高={armHeight:F2}m，斗关节高={bucketHeight:F2}m，" +
+                                $"斗尖距车厢面={tipDrop:F2}m");
+                            Assert.That(armHeight - bucketHeight, Is.GreaterThan(.5f),
+                                "卸料小臂应明显下垂，不能水平伸直。");
+                            Assert.That(tipDrop, Is.LessThan(1.5f),
+                                "卸料斗应贴近车厢，不能从高处形成长落料柱。");
+                            if (cycles == 0 && SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+                            {
+                                Camera camera = scene.GetRootGameObjects().SelectMany(root =>
+                                    root.GetComponentsInChildren<Camera>(true)).First(root => root.CompareTag("MainCamera"));
+                                var site = scene.GetRootGameObjects().SelectMany(root =>
+                                    root.GetComponentsInChildren<CesiumMoundSite>(true)).Single();
+                                Capture(camera, site.bakedSite.machinePosition + new Vector3(-9f, 5f, -10f),
+                                    (site.bakedSite.machinePosition + site.truck.position) * .5f + Vector3.up,
+                                    "Diagnostics/low-dump-preposition.png");
+                            }
+                        }
+                    }
+                    if (automatic.State == AutonomousExcavationState.Dump)
+                    {
+                        var actual = automatic.machine.ReadActualPose();
+                        Assert.That(Mathf.Abs(actual.boom - dumpStart.boom), Is.LessThan(3f),
+                            "Hold the boom while opening; do not compensate during discharge.");
+                        Assert.That(Mathf.Abs(actual.arm - dumpStart.arm), Is.LessThan(3f),
+                            "Hold the arm while opening; pre-position it before flow.");
+                        Assert.That(automatic.CurrentMotionAxis, Is.EqualTo(AutonomousMotionAxis.Bucket).Or.EqualTo(AutonomousMotionAxis.None),
+                            "Discharge must not command repeated boom/arm corrections.");
                     }
                     if (automatic.CompletedCycles > cycles)
                     {
+                        Assert.That(automatic.receiver.VolumeM3 - dumpReceipt, Is.GreaterThanOrEqualTo(dumpLoad * .98),
+                            "Opening motion must deposit the actual load inside the bed, not beside it.");
                         Assert.That(automatic.DumpDeploymentAttempts, Is.LessThanOrEqualTo(2),
                             "每斗只允许一次联合定位及一次测量修正，不能重复试探卸料。");
                         Assert.That(automatic.receiver.VolumeM3, Is.GreaterThan(receipt + .005), "每斗都必须实际装入车厢。");

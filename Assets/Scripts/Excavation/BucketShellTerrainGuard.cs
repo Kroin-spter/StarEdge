@@ -4,21 +4,34 @@ using UnityEngine;
 /// <summary>Conservative manual target guard for the steel shell, independent of the tooth contact test.</summary>
 internal sealed class BucketShellTerrainGuard
 {
+    private static readonly Unity.Profiling.ProfilerMarker GuardMarker = new Unity.Profiling.ProfilerMarker("Soil.ShellGuard");
     private readonly List<Vector3> localSamples = new List<Vector3>();
     private readonly HashSet<Vector3Int> sampleCells = new HashSet<Vector3Int>();
     private Vector3[] worldSamples;
     private float[] permittedDepth;
+    private float[] currentDepths, nextDepths, nextFloors;
+    private Vector3[] nextSamples;
+    private float overlapSum, overlapMaximum;
     private BucketSoilCutter activeCutter;
     private float lastPressureTime = float.NegativeInfinity;
-    private readonly List<int> pressingSamples = new List<int>();
-    private float[] pressureDepths;
+    private readonly List<Vector3> pressingContacts = new List<Vector3>();
     private bool prepared;
+    private DeformableSoilTerrain.SurfaceSnapshot surfaceSnapshot;
+    private Bounds samplingBounds;
     internal float MaximumDepth { get; private set; }
+    internal double YieldedVolumeM3 { get; private set; }
+    private Vector3 blockingPoint;
+    private float blockingDepth, blockingAllowed, blockingFloorGap;
+    internal string ContactDiagnostics => $"point={blockingPoint}, nextDepth={blockingDepth:F4}, " +
+        $"allowed={blockingAllowed:F4}, floorGap={blockingFloorGap:F4}, " +
+        $"contacts={pressingContacts.Count}, yielded={YieldedVolumeM3:F6}";
 
     internal Zx200JointPose Constrain(BucketSoilCutter cutter, Zx200DigController machine,
         Zx200JointPose actual, Zx200JointPose requested, out bool limited)
     {
+        using var profile = GuardMarker.Auto();
         limited = false;
+        YieldedVolumeM3 = 0;
         if (!prepared) Prepare(cutter);
         if (localSamples.Count == 0 || cutter.soil == null) return requested;
         activeCutter = cutter;
@@ -26,11 +39,21 @@ internal sealed class BucketShellTerrainGuard
         for (int i = 0; i < localSamples.Count; i++)
         {
             worldSamples[i] = cutter.transform.TransformPoint(localSamples[i]);
-            MaximumDepth = Mathf.Max(MaximumDepth, Depth(cutter.soil, worldSamples[i]));
+            if (i == 0) samplingBounds = new Bounds(worldSamples[i], Vector3.zero);
+            else samplingBounds.Encapsulate(worldSamples[i]);
+        }
+        samplingBounds.Expand(2f);
+        surfaceSnapshot = cutter.soil.CaptureSurfaceSnapshot(samplingBounds);
+        for (int i = 0; i < localSamples.Count; i++)
+        {
+            float depth = Depth(cutter.soil, worldSamples[i]);
+            currentDepths[i] = depth;
+            MaximumDepth = Mathf.Max(MaximumDepth, depth);
             // Stop at the surface to reserve room for physical actuator lag. An already
             // embedded shell may retreat, but never gets a fresh allowance to burrow farther.
-            permittedDepth[i] = Mathf.Max(0f, Depth(cutter.soil, worldSamples[i]));
+            permittedDepth[i] = Mathf.Max(0f, depth);
         }
+        RefreshOverlapTotals();
         // Drive-to-actual error includes the spring deflection supporting the heavy arm.
         // Guard only the NEW requested drive increment; clamping to actual each frame
         // removes that support and ratchets the shell downward under gravity.
@@ -68,40 +91,37 @@ internal sealed class BucketShellTerrainGuard
             !cutter.StartupReady || Time.fixedTime <= lastPressureTime) return;
         lastPressureTime = Time.fixedTime;
         Matrix4x4 motion = Motion(machine, actual, WithDriveIncrement(actual, drive, requested));
-        float budget = .06f * Time.fixedDeltaTime;
-        pressingSamples.Clear();
+        float budget = .18f * Time.fixedDeltaTime;
+        pressingContacts.Clear();
         for (int i = 0; i < worldSamples.Length; i++)
         {
             Vector3 contact = worldSamples[i];
             Vector3 next = motion.MultiplyPoint3x4(contact);
             Vector3 movement = next - contact;
             float depth = Depth(cutter.soil, contact);
-            if (depth < .015f || movement.sqrMagnitude < 1e-8f ||
-                Mathf.Abs(Vector3.Dot(movement.normalized, cutter.transform.right)) > .7f ||
-                Depth(cutter.soil, next) <= depth + .0001f) continue;
-            pressureDepths[i] = depth;
-            pressingSamples.Add(i);
+            if (depth < -.005f || movement.sqrMagnitude < 1e-8f ||
+                next.y <= Floor(cutter.soil, next) + .02f ||
+                Depth(cutter.soil, next) <= Mathf.Max(depth, 0) + .0001f) continue;
+            pressingContacts.Add(contact);
         }
-        // Spend the finite pressure budget on the deepest contacts first, not the
-        // imported mesh's vertex order, which can starve the actually blocking wall.
-        pressingSamples.Sort((a, b) => pressureDepths[b].CompareTo(pressureDepths[a]));
-        int patches = 0;
-        foreach (int index in pressingSamples)
-        {
-            if (budget <= .00001f || patches >= 8) break;
-            double removed = cutter.DisplacePressedSoil(worldSamples[index], budget);
-            if (removed > 0) { budget -= (float)removed; patches++; }
-        }
+        // One shared update yields the full measured contact footprint. Sequential
+        // small cuts starved neighboring contacts and repeatedly rebuilt the collider.
+        YieldedVolumeM3 = cutter.DisplacePressedSoil(pressingContacts, budget);
+        if (YieldedVolumeM3 > 0) surfaceSnapshot = cutter.soil.CaptureSurfaceSnapshot(samplingBounds);
         // Limits must use the newly yielded surface, not stale depths from before the pressure step.
         for (int i = 0; i < worldSamples.Length; i++)
-            permittedDepth[i] = Mathf.Max(0, Depth(cutter.soil, worldSamples[i]));
+        {
+            currentDepths[i] = Depth(cutter.soil, worldSamples[i]);
+            permittedDepth[i] = Mathf.Max(0, currentDepths[i]);
+        }
+        RefreshOverlapTotals();
     }
 
     private static Zx200JointPose WithAxis(Zx200JointPose pose, Zx200JointPose requested, int axis)
     {
         if (axis == 0) pose.boom = requested.boom;
-        else if (axis == 1) pose.arm = requested.arm;
-        else if (axis == 2) pose.bucket = requested.bucket;
+        else if (axis == 1) pose.bucket = requested.bucket;
+        else if (axis == 2) pose.arm = requested.arm;
         else pose.swing = requested.swing;
         return pose;
     }
@@ -163,7 +183,10 @@ internal sealed class BucketShellTerrainGuard
         }
         worldSamples = new Vector3[localSamples.Count];
         permittedDepth = new float[localSamples.Count];
-        pressureDepths = new float[localSamples.Count];
+        currentDepths = new float[localSamples.Count];
+        nextDepths = new float[localSamples.Count];
+        nextFloors = new float[localSamples.Count];
+        nextSamples = new Vector3[localSamples.Count];
     }
 
     private void Add(BucketSoilCutter cutter, Vector3 world)
@@ -178,26 +201,30 @@ internal sealed class BucketShellTerrainGuard
 
     private bool IsSafe(DeformableSoilTerrain soil, Matrix4x4 motion)
     {
+        // Opening an embedded bucket exchanges contact between different parts of
+        // the shell. Requiring every individual point to retreat can lock a rotation
+        // that decreases overall overlap. Accept that escape if the worst depth does
+        // not increase and no steel point crosses the prepared floor.
+        if (RelievesShellOverlap(soil, motion)) return true;
         Vector3 tip = activeCutter.TipWorldPosition;
         Vector3 nextTip = motion.MultiplyPoint3x4(tip);
         float toothDepth = Depth(soil, tip);
         // Give actual tooth-led cuts a small deformable contact band. Never grant
         // this to an airborne edge, side/back scraping, or motion below the soil floor.
-        bool yielding = toothDepth >= -.02f && soil.HasSurfaceAt(nextTip) &&
-            nextTip.y > soil.GetFloorWorldY(nextTip) + .03f &&
+        bool yielding = toothDepth >= -.02f && float.IsFinite(Depth(soil, nextTip)) &&
+            nextTip.y > Floor(soil, nextTip) + .03f &&
             activeCutter.CanCutMovement(nextTip - tip, out _);
         for (int i = 0; i < worldSamples.Length; i++)
         {
             float allowed = permittedDepth[i];
             Vector3 point = worldSamples[i];
-            Vector3 next = motion.MultiplyPoint3x4(point);
+            Vector3 next = nextSamples[i];
             Vector3 displacement = next - point;
-            float depth = Depth(soil, point);
-            float nextDepth = Depth(soil, next);
+            float depth = currentDepths[i];
+            float nextDepth = nextDepths[i];
             bool pressingContact = depth >= -.005f && nextDepth > depth + .0001f &&
                 displacement.sqrMagnitude > 1e-8f &&
-                Mathf.Abs(Vector3.Dot(displacement.normalized, activeCutter.transform.right)) <= .7f &&
-                next.y > soil.GetFloorWorldY(next) + .015f;
+                next.y > NextFloor(soil, i) + .015f;
             // Absolute depth cap, not a new per-frame allowance: holding an input
             // cannot ratchet the shell indefinitely into uncut ground.
             if (yielding && pressingContact) allowed = Mathf.Max(allowed, .045f);
@@ -206,13 +233,61 @@ internal sealed class BucketShellTerrainGuard
             if (Application.isPlaying && activeCutter.StartupReady &&
                 lastPressureTime == Time.fixedTime && pressingContact)
                 allowed = Mathf.Max(allowed, .025f);
-            if (nextDepth > allowed + .0001f) return false;
+            if (nextDepth > allowed + .0001f)
+            {
+                blockingPoint = point;
+                blockingDepth = nextDepth;
+                blockingAllowed = allowed;
+                blockingFloorGap = next.y - NextFloor(soil, i);
+                return false;
+            }
         }
         return true;
     }
 
-    private static float Depth(DeformableSoilTerrain soil, Vector3 point) => soil.HasSurfaceAt(point)
-        ? soil.Terrain.SampleHeight(point) + soil.transform.position.y - point.y : float.NegativeInfinity;
+    private bool RelievesShellOverlap(DeformableSoilTerrain soil, Matrix4x4 motion)
+    {
+        float afterSum = 0, afterMax = 0;
+        bool floorSafe = true;
+        for (int i = 0; i < worldSamples.Length; i++)
+        {
+            Vector3 point = worldSamples[i];
+            Vector3 next = motion.MultiplyPoint3x4(point);
+            nextSamples[i] = next;
+            nextDepths[i] = Depth(soil, next);
+            nextFloors[i] = float.NaN;
+            if (float.IsFinite(nextDepths[i]) && next.y < point.y - .0001f &&
+                next.y < NextFloor(soil, i) + .015f) floorSafe = false;
+            float after = Mathf.Max(0, nextDepths[i]);
+            afterSum += after;
+            afterMax = Mathf.Max(afterMax, after);
+        }
+        return floorSafe && overlapSum > .001f && afterSum < overlapSum - .0001f && afterMax <= overlapMaximum + .0001f;
+    }
+
+    private void RefreshOverlapTotals()
+    {
+        overlapSum = overlapMaximum = 0;
+        foreach (float depth in currentDepths)
+        {
+            float positive = Mathf.Max(0, depth);
+            overlapSum += positive;
+            overlapMaximum = Mathf.Max(overlapMaximum, positive);
+        }
+    }
+
+    private float NextFloor(DeformableSoilTerrain soil, int index)
+    {
+        if (float.IsNaN(nextFloors[index])) nextFloors[index] = Floor(soil, nextSamples[index]);
+        return nextFloors[index];
+    }
+
+    private float Depth(DeformableSoilTerrain soil, Vector3 point) => surfaceSnapshot != null
+        ? surfaceSnapshot.Depth(point)
+        : soil.HasSurfaceAt(point) ? soil.Terrain.SampleHeight(point) + soil.transform.position.y - point.y : float.NegativeInfinity;
+
+    private float Floor(DeformableSoilTerrain soil, Vector3 point) => surfaceSnapshot != null
+        ? surfaceSnapshot.FloorWorldY(point) : soil.GetFloorWorldY(point);
 
     private static Matrix4x4 Motion(Zx200DigController machine, Zx200JointPose actual, Zx200JointPose target)
     {

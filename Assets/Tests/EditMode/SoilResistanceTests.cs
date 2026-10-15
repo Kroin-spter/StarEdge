@@ -5,6 +5,181 @@ namespace ExcavatorControls.Tests
 {
     public class SoilResistanceTests
     {
+        /// <summary>Opening a manual bucket is a valid soil displacement, even without tooth inflow.</summary>
+        /// <param name="ownership">Manual or autonomous ownership of the same measured contact.</param>
+        [TestCase(0)]
+        [TestCase(1)]
+        public void ManualBucketRotationDoesNotRequireCollectionDirection(int ownership)
+        {
+            using (var fixture = new ContactOwnershipFixture(ownership, .9f))
+            {
+                fixture.Cutter.tipLocalPosition = Vector3.right;
+                fixture.Machine.bucketJoint.matchAnchors = false;
+                fixture.Machine.bucketJoint.anchorRotation = Quaternion.Euler(0, 0, 90);
+                var result = fixture.Resistance.ConstrainPose(fixture.Machine,
+                    new Zx200JointPose(0, 0, 0, .2f, 0), .02f);
+                Assert.That(result.bucket, Is.EqualTo(ownership == 0 ? .2f : 0f).Within(.001f),
+                    "Manual opening is guarded by the shell and floor, not by a requirement to collect soil.");
+            }
+        }
+
+        /// <summary>Only manual contact delegates ordinary advance to the controller's existing smoothing.</summary>
+        /// <param name="ownership">Zero for manual, one for a busy joint controller, two for a running autonomous job.</param>
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void ContactOwnershipControlsCuttingRate(int ownership)
+        {
+            using (var fixture = new ContactOwnershipFixture(ownership, .9f))
+            {
+                var drive = fixture.Machine.armJoint.xDrive;
+                drive.target = .5f;
+                fixture.Machine.armJoint.xDrive = drive;
+                var result = fixture.Resistance.ConstrainPose(fixture.Machine,
+                    new Zx200JointPose(0, 0, 1f, 0, 0), .02f);
+
+                Assert.That(result.arm, Is.EqualTo(ownership == 0 ? 1f : .12f).Within(.001f),
+                    "Manual cutting must preserve the requested advance; automatic cutting retains its measured-pose rate limit.");
+                Assert.That(fixture.Resistance.IsBlocked, Is.False);
+                Assert.That(fixture.Soil.RecalculateRemovedVolumeM3(), Is.Zero);
+            }
+        }
+
+        /// <summary>Deep tooth entry above the floor is allowed manually while automatic depth holds remain intact.</summary>
+        /// <param name="ownership">Zero for manual, one for a busy joint controller, two for a running autonomous job.</param>
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void ContactOwnershipControlsDepthVeto(int ownership)
+        {
+            using (var fixture = new ContactOwnershipFixture(ownership, .7f))
+            {
+                var result = fixture.Resistance.ConstrainPose(fixture.Machine,
+                    new Zx200JointPose(0, 0, 1f, 0, 0), .02f);
+
+                Assert.That(fixture.Resistance.PenetrationM, Is.GreaterThan(.18f));
+                Assert.That(result.arm, Is.EqualTo(ownership == 0 ? 1f : 0f).Within(.001f));
+                Assert.That(fixture.Resistance.IsBlocked, Is.EqualTo(ownership != 0),
+                    "Depth alone must not switch accepted manual contact into immediate blocked-target delivery.");
+            }
+        }
+
+        /// <summary>An allowed deep face cut must not report a manual hard block merely from overhead soil depth.</summary>
+        /// <param name="ownership">Zero for manual, one for a busy joint controller, two for a running autonomous job.</param>
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void ContactOwnershipControlsDepthOnlyBlockedFeedback(int ownership)
+        {
+            using (var fixture = new ContactOwnershipFixture(ownership, .7f))
+            {
+                Vector3 tip = fixture.Cutter.TipWorldPosition;
+                fixture.Machine.armJoint.transform.position = tip - Vector3.up;
+                // Moving the parent pivot must not move the tooth into the protected floor.
+                fixture.Cutter.transform.position = tip;
+                Assert.That(fixture.Cutter.TipWorldPosition.y, Is.EqualTo(.7f).Within(.001f));
+                var result = fixture.Resistance.ConstrainPose(fixture.Machine,
+                    new Zx200JointPose(0, 0, .1f, 0, 0), .02f);
+
+                Assert.That(result.arm, Is.EqualTo(.1f).Within(.001f), "This face cut is safe for either owner.");
+                Assert.That(fixture.Resistance.IsBlocked, Is.EqualTo(ownership != 0));
+            }
+        }
+
+        /// <summary>Manual simplification cannot bypass a floor hold or the floor check on an advancing target.</summary>
+        /// <param name="tipY">Tooth height above the fixture's 0.4 m prepared floor.</param>
+        [TestCase(.42f)]
+        [TestCase(.44f)]
+        public void ManualContactStillProtectsPreparedFloor(float tipY)
+        {
+            using (var fixture = new ContactOwnershipFixture(0, tipY))
+            {
+                // Isolate floor protection: an excess-depth hold must not make this test pass accidentally.
+                fixture.Resistance.maximumPenetration = 2f;
+                var result = fixture.Resistance.ConstrainPose(fixture.Machine,
+                    new Zx200JointPose(0, 0, 5f, 0, 0), .02f);
+                float predictedY = tipY - Mathf.Sin(result.arm * Mathf.Deg2Rad);
+
+                Assert.That(result.arm, Is.LessThan(5f), "The unguarded request would cross the prepared floor.");
+                Assert.That(predictedY, Is.GreaterThanOrEqualTo(Mathf.Min(tipY, .43f) - .0002f));
+                if (tipY < .43f)
+                {
+                    Assert.That(result.arm, Is.Zero.Within(.001f));
+                    Assert.That(fixture.Resistance.IsBlocked, Is.True);
+                }
+                var withdrawal = fixture.Resistance.ConstrainPose(fixture.Machine,
+                    new Zx200JointPose(0, 0, -1f, 0, 0), .02f);
+                Assert.That(withdrawal.arm, Is.EqualTo(-1f).Within(.001f), "A floor hold must permit escape.");
+                Assert.That(fixture.Soil.RecalculateRemovedVolumeM3(), Is.Zero);
+            }
+        }
+
+        private sealed class ContactOwnershipFixture : System.IDisposable
+        {
+            internal readonly Zx200DigController Machine;
+            internal readonly BucketSoilCutter Cutter;
+            internal readonly BucketSoilResistance Resistance;
+            internal readonly DeformableSoilTerrain Soil;
+            private readonly TerrainData data;
+            private readonly GameObject ground;
+            private readonly GameObject rig;
+
+            internal ContactOwnershipFixture(int ownership, float tipY)
+            {
+                data = new TerrainData { heightmapResolution = 33, size = new Vector3(4, 2, 4) };
+                var surface = new float[33, 33];
+                var floor = new float[33, 33];
+                for (int z = 0; z < 33; z++) for (int x = 0; x < 33; x++)
+                { surface[z, x] = .5f; floor[z, x] = .2f; }
+                data.SetHeights(0, 0, surface);
+                ground = Terrain.CreateTerrainGameObject(data);
+                Soil = ground.AddComponent<DeformableSoilTerrain>();
+                Soil.PrepareMoundSurface(surface, floor);
+                rig = new GameObject("contact ownership fixture");
+                Machine = rig.AddComponent<Zx200DigController>();
+                // OnEnable checks all four drive limits when deciding whether the machine is ready.
+                var swing = new GameObject("swing pivot");
+                swing.transform.SetParent(rig.transform);
+                Machine.swingJoint = swing.AddComponent<ArticulationBody>();
+                var boom = new GameObject("boom pivot");
+                boom.transform.SetParent(swing.transform);
+                Machine.boomJoint = boom.AddComponent<ArticulationBody>();
+                var arm = new GameObject("arm pivot");
+                arm.transform.SetParent(boom.transform);
+                arm.transform.position = new Vector3(2, tipY, 1);
+                Machine.armJoint = arm.AddComponent<ArticulationBody>();
+                Machine.armJoint.matchAnchors = false;
+                Machine.armJoint.anchorPosition = Vector3.zero;
+                Machine.armJoint.anchorRotation = Quaternion.identity;
+                var bucket = new GameObject("owned tooth");
+                // Ownership lookup must traverse the real parent chain, including during OnEnable.
+                bucket.transform.SetParent(arm.transform);
+                bucket.transform.position = new Vector3(2, tipY, 2);
+                Machine.bucketJoint = bucket.AddComponent<ArticulationBody>();
+                Cutter = bucket.AddComponent<BucketSoilCutter>();
+                Cutter.soil = Soil;
+                Cutter.tipLocalPosition = Vector3.zero;
+                Cutter.cutDirectionLocal = Vector3.forward;
+                Resistance = bucket.AddComponent<BucketSoilResistance>();
+                if (ownership == 1)
+                    typeof(Zx200DigController).GetProperty("IsBusy").SetValue(Machine, true);
+                else if (ownership == 2)
+                {
+                    var automatic = rig.AddComponent<AutonomousExcavationController>();
+                    automatic.machine = Machine;
+                    typeof(AutonomousExcavationController).GetProperty("IsRunning").SetValue(automatic, true);
+                }
+            }
+
+            /// <summary>Destroy the owned hierarchy and temporary terrain data after each contact case.</summary>
+            public void Dispose()
+            {
+                Object.DestroyImmediate(rig);
+                Object.DestroyImmediate(ground);
+                Object.DestroyImmediate(data);
+            }
+        }
+
         /// <summary>Tooth-led contact in soft soil gets finite advance instead of a zero-motion deadlock.</summary>
         [Test]
         public void ManualToothContactCanAdvanceWithShallowShellContact()
@@ -159,11 +334,13 @@ namespace ExcavatorControls.Tests
                 var result = resistance.ConstrainPose(machine, request, .02f);
                 Assert.That(result.arm, Is.GreaterThan(.05f), "A forward, nearly level tooth sweep must remain possible");
                 if (rejectedSwing) Assert.That(result.swing, Is.Zero, "Back scraping is still rejected independently");
-                // Downward motion must still be held once already too deep.
+                // Preserve the automatic depth hold; manual entry is covered by the ownership tests.
+                bucket.transform.SetParent(rig.transform, true);
+                typeof(Zx200DigController).GetProperty("IsBusy").SetValue(machine, true);
                 bucket.transform.position = new Vector3(2,.808f,2);
                 arm.transform.position = bucket.transform.position - Vector3.forward;
                 result = resistance.ConstrainPose(machine, request, .02f);
-                Assert.That(result.arm, Is.Zero, "Existing excess depth cannot authorize further downward penetration");
+                Assert.That(result.arm, Is.Zero, "Existing excess depth cannot authorize further downward penetration during automatic control");
             }
             finally
             {

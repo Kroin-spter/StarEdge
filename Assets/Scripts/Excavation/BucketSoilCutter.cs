@@ -278,27 +278,48 @@ public sealed class BucketSoilCutter : MonoBehaviour
     /// <param name="budgetM3">Maximum real displaced volume for this pressure step.</param>
     /// <returns>Read-back Terrain volume displaced and routed to the existing soil transport ledger.</returns>
     public double DisplacePressedSoil(Vector3 contact, float budgetM3)
+        => DisplacePressedSoil(new[] { contact }, budgetM3);
+
+    /// <summary>Yield a shallow measured shell footprint and route its conserved volume to side spill.</summary>
+    /// <param name="contacts">Actively pressed shell surface points in world coordinates.</param>
+    /// <param name="budgetM3">Maximum displaced volume for this physics step.</param>
+    /// <returns>Actual displaced cubic metres; no soil is credited as bucket intake.</returns>
+    public double DisplacePressedSoil(IReadOnlyList<Vector3> contacts, float budgetM3)
     {
         if (soil == null || !startupReady || cuttingSuppressed || !float.IsFinite(budgetM3) || budgetM3 <= 0 ||
-            !soil.HasSurfaceAt(contact)) return 0;
+            contacts == null || contacts.Count == 0) return 0;
         soil.Initialize(soil.GetComponent<Terrain>());
-        float surface = soil.Terrain.SampleHeight(contact) + soil.transform.position.y;
-        if (contact.y >= surface - .015f) return 0;
-        Vector3 target = contact;
-        target.y = Mathf.Max(contact.y, surface - .04f);
+        pressureTargets.Clear();
+        Vector3 center = Vector3.zero;
+        foreach (Vector3 contact in contacts)
+        {
+            if (!soil.HasSurfaceAt(contact)) continue;
+            float surface = soil.Terrain.SampleHeight(contact) + soil.transform.position.y;
+            if (contact.y > surface + .005f) continue;
+            Vector3 target = contact;
+            target.y = Mathf.Max(contact.y - .02f, surface - .06f);
+            pressureTargets.Add(target);
+            center += contact;
+        }
+        if (pressureTargets.Count == 0) return 0;
+        center /= pressureTargets.Count;
         var data = soil.Terrain.terrainData;
         float cell = Mathf.Max(data.size.x, data.size.z) / (data.heightmapResolution - 1);
-        double removed = soil.CutSweep(target, target, Mathf.Clamp(cell * .75f, .1f, .2f), budgetM3);
+        double removed = soil.YieldContacts(pressureTargets, Mathf.Max(cell * 1.1f, .1f), budgetM3);
         if (removed <= 0) return 0;
         if (capturedDensity <= 0) capturedDensity = Mathf.Max(1, densityKgPerM3);
         ExcavatedVolumeM3 += removed;
         DisplacedVolumeM3 += removed;
-        ReleaseDisplacedSoil(removed, contact);
+        EmitDisplacedSoil(removed, center, true);
         Status = "斗壳压土：松土让位并侧落";
         return removed;
     }
 
-    private void ReleaseDisplacedSoil(double volume, Vector3 tip)
+    private readonly List<Vector3> pressureTargets = new List<Vector3>();
+
+    private void ReleaseDisplacedSoil(double volume, Vector3 tip) => EmitDisplacedSoil(volume, tip, false);
+
+    private void EmitDisplacedSoil(double volume, Vector3 tip, bool keepLoose)
     {
         var flight = GetComponent<SoilFlightTransport>();
         if (flight == null) flight = gameObject.AddComponent<SoilFlightTransport>();
@@ -311,7 +332,7 @@ public sealed class BucketSoilCutter : MonoBehaviour
             float surface = soil.Terrain.SampleHeight(position) + soil.transform.position.y;
             position.y = Mathf.Max(position.y, surface + .03f);
             displacedParcels.Add(new SoilFlightTransport.Emission(volume * .5, position,
-                transform.right * (side * .12f)));
+                transform.right * (side * .12f), keepLoose));
         }
         EmittedVolumeM3 += volume;
         flight.EmitBatch(displacedParcels);

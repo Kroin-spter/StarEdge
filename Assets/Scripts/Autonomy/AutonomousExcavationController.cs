@@ -49,8 +49,10 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     // Traverse adjacent work-face sectors, then reverse without a large wrap-around swing.
     private static readonly float[] DigPointSwingOffsetsDegrees =
         { -24f, -16f, -8f, 0f, 8f, 16f, 24f, 16f, 8f, 0f, -8f, -16f };
-    // The validated high-clearance dump pose may be up to 7 m above the receiver; wall clearance is checked separately.
+    // Absolute landing safety bound; normal discharge stays close to the bed.
     private const float MaximumDumpDropMeters = 7f;
+    private const float MaximumDumpTipDropMeters = 1.5f;
+    private const float MinimumDumpArmDropMeters = .5f;
     private const float DumpLandingInsetMeters = .25f;
     private const float TruckSwingClearanceReserveMeters = .05f;
     private const float TruckSwingStartReserveMeters = .7f;
@@ -269,12 +271,14 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         // that soil has actually entered. Keep a small cutting advance even when full.
         float armProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.15f, .98f, current));
         float curlProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.15f, .88f, projected));
-        float liftProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.55f, .88f, projected));
+        // Anticipated inflow closes the bucket, but must not pull it out of the
+        // cut. Only an actually near-full bucket starts a gentle exit arc.
+        float liftProgress = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.9f, 1f, current));
         return new AdaptiveScoopMotionCommand
         {
             armAdvanceScale = Mathf.Lerp(1f, .12f, armProgress),
             bucketCurlScale = Mathf.Lerp(.2f, 1.2f, curlProgress),
-            boomLiftScale = liftProgress * .35f,
+            boomLiftScale = liftProgress * .15f,
             projectedFillFraction = projected
         };
     }
@@ -726,7 +730,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
                 cycleReceiverStartVolumeM3 = receiver.VolumeM3;
                 cycleDumpStartLoadM3 = cutter.VolumeM3;
                 Zx200JointPose dump = machine.ReadActualPose();
-                dump.bucket = machine.dumpPose.bucket;
+                dump.bucket = GetDumpBucketAngle(dump, dump);
                 dump.duration = Mathf.Max(1.2f, machine.dumpPose.duration);
                 unloader.enabled = true;
                 yield return MoveToPose(dump, "卸料姿态超时");
@@ -2335,14 +2339,71 @@ public sealed class AutonomousExcavationController : MonoBehaviour
     private bool IsProjectedDumpApproachSafe()
     {
         return IsProjectedDumpCentered() &&
-            cutter.TipWorldPosition.y >= GetTruckClearanceY() + dumpClearanceMarginMeters;
+            cutter.TipWorldPosition.y >= GetTruckClearanceY() + dumpClearanceMarginMeters &&
+            cutter.TipWorldPosition.y - receiver.SurfaceY <= MaximumDumpTipDropMeters &&
+            JointPivot(machine.armJoint).y - JointPivot(machine.bucketJoint).y >= MinimumDumpArmDropMeters;
     }
 
     private bool IsProjectedDumpCentered()
     {
         if (!IsProjectedDumpOverReceiver()) return false;
-        Vector3 local = receiver.transform.InverseTransformPoint(GetPredictedOpenTip());
-        return HasSafeDumpLanding(local, receiver.size, cutter.innerMouthHalfWidth);
+        Zx200JointPose actual = machine.ReadActualPose();
+        return IsDumpFlowInsideBed(actual, actual);
+    }
+
+    private bool IsDumpFlowInsideBed(Zx200JointPose measured, Zx200JointPose start)
+    {
+        float open = GetDumpBucketAngle(measured, start);
+        // Check all outlets along the opening arc before moving. The arm then stays
+        // still during discharge; no in-flight correction or artificial soil redirection.
+        for (int step = 0; step <= 12; step++)
+        {
+            Zx200JointPose pose = start;
+            pose.bucket = Mathf.Lerp(start.bucket, open, step / 12f);
+            var prediction = new BucketPosePrediction(machine, measured, pose);
+            Vector3 tip = prediction.Point(cutter.TipWorldPosition);
+            Vector3 lateral = prediction.rotation * unloader.transform.right.normalized;
+            Vector3 velocity = prediction.rotation * unloader.transform.TransformDirection(unloader.openingNormalLocal).normalized * .162f;
+            float halfWidth = cutter.innerMouthHalfWidth * Mathf.Abs(unloader.transform.lossyScale.x);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Vector3 origin = tip + lateral * (halfWidth * side);
+                Vector3 plane = receiver.transform.TransformPoint(Vector3.up * receiver.SurfaceLocalY);
+                if (!TryPredictDumpLanding(origin, velocity, Physics.gravity, plane, receiver.transform.up,
+                    out Vector3 landing, out float fallTime)) return false;
+                Vector3 local = receiver.transform.InverseTransformPoint(landing);
+                float margin = .10f + .025f * fallTime;
+                if (Mathf.Abs(local.x) > receiver.size.x * .5f - margin ||
+                    Mathf.Abs(local.z) > receiver.size.y * .5f - margin) return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Intersect a freely falling outlet parcel with the receiving bed plane.</summary>
+    /// <param name="origin">World-space parcel origin.</param>
+    /// <param name="velocity">World-space initial velocity in metres per second.</param>
+    /// <param name="gravity">World-space acceleration in metres per second squared.</param>
+    /// <param name="planePoint">A point on the receiving plane.</param>
+    /// <param name="planeNormal">Upward receiving plane normal.</param>
+    /// <param name="landing">Predicted world-space landing point on success.</param>
+    /// <param name="seconds">Positive flight time on success.</param>
+    /// <returns>False if the origin is below the plane or gravity does not point into it.</returns>
+    public static bool TryPredictDumpLanding(Vector3 origin, Vector3 velocity, Vector3 gravity,
+        Vector3 planePoint, Vector3 planeNormal, out Vector3 landing, out float seconds)
+    {
+        landing = origin;
+        seconds = 0f;
+        Vector3 normal = planeNormal.normalized;
+        float height = Vector3.Dot(origin - planePoint, normal);
+        float speed = Vector3.Dot(velocity, normal);
+        float acceleration = -Vector3.Dot(gravity, normal);
+        if (!IsFinite(height) || !IsFinite(speed) || !IsFinite(acceleration) || height < 0 || acceleration <= 1e-6f)
+            return false;
+        seconds = (speed + Mathf.Sqrt(speed * speed + 2f * acceleration * height)) / acceleration;
+        if (!IsFinite(seconds) || seconds <= 0) return false;
+        landing = origin + velocity * seconds + gravity * (.5f * seconds * seconds);
+        return IsFinite(landing.x) && IsFinite(landing.y) && IsFinite(landing.z);
     }
 
     /// <summary>Test the landing corridor, reserving bucket-mouth width and a wall margin.</summary>
@@ -2378,8 +2439,51 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         ArticulationBody joint = machine.bucketJoint;
         Vector3 axis = joint.transform.TransformDirection(joint.anchorRotation * Vector3.right).normalized;
         Vector3 pivot = joint.transform.TransformPoint(joint.anchorPosition);
-        return pivot + Quaternion.AngleAxis(machine.dumpPose.bucket - actual.bucket, axis) *
+        return pivot + Quaternion.AngleAxis(GetDumpBucketAngle(actual, actual) - actual.bucket, axis) *
             (cutter.TipWorldPosition - pivot);
+    }
+
+    /// <summary>Choose a forward discharge tilt instead of forcing the bucket to its opening stop.</summary>
+    /// <param name="mouth">Measured world-space mouth normal.</param>
+    /// <param name="axis">World-space bucket hinge axis.</param>
+    /// <param name="current">Current bucket joint angle in degrees.</param>
+    /// <param name="lower">Lower joint limit in degrees.</param>
+    /// <param name="upper">Upper joint limit in degrees.</param>
+    /// <returns>In-limit angle nearest an 85-degree mouth-to-down tilt, preferring less travel.</returns>
+    public static float CalculateDumpBucketAngle(Vector3 mouth, Vector3 axis, float current, float lower, float upper)
+        => CalculateBucketAngleForMouthTilt(mouth, axis, current, lower, upper, 85f);
+
+    private static float CalculateBucketAngleForMouthTilt(
+        Vector3 mouth, Vector3 axis, float current, float lower, float upper, float targetTilt)
+    {
+        float best = Mathf.Clamp(current, lower, upper);
+        float score = float.PositiveInfinity;
+        if (mouth.sqrMagnitude < 1e-8f || axis.sqrMagnitude < 1e-8f) return best;
+        int steps = Mathf.Max(1, Mathf.CeilToInt((upper - lower) * 2f));
+        for (int i = 0; i <= steps; i++)
+        {
+            float candidate = Mathf.Lerp(lower, upper, (float)i / steps);
+            float tilt = Vector3.Angle(Quaternion.AngleAxis(candidate - current, axis) * mouth, Vector3.down);
+            float error = Mathf.Abs(tilt - targetTilt) + Mathf.Abs(candidate - current) * .0001f;
+            if (error >= score) continue;
+            score = error;
+            best = candidate;
+        }
+        return best;
+    }
+
+    private float GetDumpBucketAngle(Zx200JointPose measured, Zx200JointPose target)
+    {
+        return GetBucketAngleForDumpTilt(measured, target, 85f);
+    }
+
+    private float GetBucketAngleForDumpTilt(Zx200JointPose measured, Zx200JointPose target, float tilt)
+    {
+        if (unloader == null) return machine.dumpPose.bucket;
+        var prediction = new BucketPosePrediction(machine, measured, target);
+        return CalculateBucketAngleForMouthTilt(prediction.rotation * unloader.transform.TransformDirection(unloader.openingNormalLocal),
+            prediction.rotation * machine.bucketJoint.transform.TransformDirection(machine.bucketJoint.anchorRotation * Vector3.right),
+            target.bucket, machine.bucketJoint.xDrive.lowerLimit, machine.bucketJoint.xDrive.upperLimit, tilt);
     }
 
     private static float GetDumpMotionDuration(Zx200JointPose actual, Zx200JointPose target)
@@ -2402,40 +2506,65 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         Vector3 boomAxis = machine.boomJoint.transform.TransformDirection(machine.boomJoint.anchorRotation * Vector3.right).normalized;
         Vector3 swingPivot = machine.swingJoint.transform.TransformPoint(machine.swingJoint.anchorPosition);
         Vector3 swingAxis = machine.swingJoint.transform.TransformDirection(machine.swingJoint.anchorRotation * Vector3.right).normalized;
-        Vector3 openTip = GetPredictedOpenTip();
         float clearance = GetTruckClearanceY() + dumpClearanceMarginMeters;
         // Joint-space candidates are evaluated without touching the physical robot. A single
         // target includes reach, height and slew, so one correction cannot invalidate another.
-        for (int boomStep = -8; boomStep <= 8; boomStep++)
-        for (int step = -20; step <= 20; step++)
+        for (int boomStep = 0; boomStep <= 30; boomStep++)
+        for (int step = 0; step <= 60; step++)
         {
-            float boom = Zx200DigController.ClampTarget(actual.boom + boomStep * 4f,
-                machine.boomJoint.xDrive.lowerLimit, machine.boomJoint.xDrive.upperLimit);
-            float arm = Zx200DigController.ClampTarget(machine.dumpPreparePose.arm + step * 2f,
-                machine.armJoint.xDrive.lowerLimit, machine.armJoint.xDrive.upperLimit);
+            float boom = Mathf.Lerp(machine.boomJoint.xDrive.lowerLimit,
+                machine.boomJoint.xDrive.upperLimit, boomStep / 30f);
+            float arm = Mathf.Lerp(machine.armJoint.xDrive.lowerLimit,
+                machine.armJoint.xDrive.upperLimit, step / 60f);
+            Zx200JointPose opening = actual;
+            opening.boom = boom;
+            opening.arm = arm;
+            opening.bucket = GetDumpBucketAngle(actual, opening);
+            Vector3 openTip = JointPivot(machine.bucketJoint) +
+                Quaternion.AngleAxis(opening.bucket - actual.bucket,
+                    machine.bucketJoint.transform.TransformDirection(machine.bucketJoint.anchorRotation * Vector3.right)) *
+                (cutter.TipWorldPosition - JointPivot(machine.bucketJoint));
             Quaternion rotation = Quaternion.AngleAxis(arm - actual.arm, armAxis);
             Quaternion raise = Quaternion.AngleAxis(boom - actual.boom, boomAxis);
             Vector3 tip = armPivot + rotation * (openTip - armPivot);
             Vector3 closedTip = armPivot + rotation * (cutter.TipWorldPosition - armPivot);
             tip = boomPivot + raise * (tip - boomPivot);
             closedTip = boomPivot + raise * (closedTip - boomPivot);
-            float angle = ComputeDumpSwingTarget(true, tip);
+            // Centre the opening arc rather than only its final tooth position.
+            Zx200JointPose carry = opening;
+            carry.bucket = GetBucketAngleForDumpTilt(actual, carry, 105f);
+            Vector3 carryTip = new BucketPosePrediction(machine, actual, carry).Point(cutter.TipWorldPosition);
+            float angle = ComputeDumpSwingTarget(true, (tip + carryTip) * .5f);
             Quaternion slew = Quaternion.AngleAxis(angle - actual.swing, swingAxis);
             Vector3 predicted = swingPivot + slew * (tip - swingPivot);
             Vector3 closed = swingPivot + slew * (closedTip - swingPivot);
             Vector3 local = receiver.transform.InverseTransformPoint(predicted);
-            if (!HasSafeDumpLanding(local, receiver.size, cutter.innerMouthHalfWidth + .04f) ||
-                Mathf.Abs(local.x) > .2f || Mathf.Abs(local.z) > receiver.size.y * .5f - .6f ||
-                closed.y < clearance + .04f || !receiver.TryGetLanding(predicted, MaximumDumpDropMeters, out _)) continue;
+            if (closed.y < clearance + .04f) continue;
             Zx200JointPose candidate = actual;
             candidate.arm = arm;
             candidate.boom = boom;
             candidate.swing = angle;
-            candidate = KeepMouthUp(actual, candidate);
+            // Once aligned above the truck, a modest forward-ready bucket angle
+            // brings the outlet into the bed before soil flow is enabled.
+            candidate.bucket = GetBucketAngleForDumpTilt(actual, candidate, 105f);
             var closedPrediction = new BucketPosePrediction(machine, actual, candidate);
             if (closedPrediction.Point(cutter.TipWorldPosition).y < clearance + .15f) continue;
+            if (!IsDumpFlowInsideBed(actual, candidate)) continue;
+            Zx200JointPose final = candidate;
+            final.bucket = GetDumpBucketAngle(actual, candidate);
+            if (!receiver.TryGetLanding(new BucketPosePrediction(machine, actual, final).Point(cutter.TipWorldPosition),
+                MaximumDumpDropMeters, out _)) continue;
+            float tipDrop = closedPrediction.Point(cutter.TipWorldPosition).y - receiver.SurfaceY;
+            Vector3 candidateArmPivot = swingPivot + slew *
+                (boomPivot + raise * (armPivot - boomPivot) - swingPivot);
+            Vector3 candidateBucketPivot = swingPivot + slew *
+                (boomPivot + raise * (armPivot + rotation * (JointPivot(machine.bucketJoint) - armPivot) - boomPivot) - swingPivot);
+            float armDrop = candidateArmPivot.y - candidateBucketPivot.y;
+            if (tipDrop > MaximumDumpTipDropMeters || armDrop < MinimumDumpArmDropMeters) continue;
             candidate.duration = GetDumpMotionDuration(actual, candidate);
-            float score = candidate.duration + Mathf.Abs(local.x) * 2f + Mathf.Abs(local.z) * .25f;
+            float excessHeight = Mathf.Max(0f, tipDrop - .7f);
+            float score = candidate.duration + Mathf.Abs(local.x) * 2f + Mathf.Abs(local.z) * .25f +
+                excessHeight * excessHeight * 3f;
             candidates.Add(new KeyValuePair<float, Zx200JointPose>(score, candidate));
         }
         candidates.Sort((a, b) => a.Key.CompareTo(b.Key));
@@ -2443,7 +2572,7 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         {
             Zx200JointPose candidate = candidates[index].Value;
             Zx200JointPose open = candidate;
-            open.bucket = machine.dumpPose.bucket;
+            open.bucket = GetDumpBucketAngle(actual, candidate);
             if (!IsPredictedBucketPathClear(actual, candidate, open) ||
                 !IsPredictedBucketPathClear(actual, actual, candidate)) continue;
             best = candidate;
@@ -2572,7 +2701,10 @@ public sealed class AutonomousExcavationController : MonoBehaviour
         Quaternion boomRotation = Quaternion.AngleAxis(boomDeltaDegrees, boomAxis);
         pivot = boomPivot + boomRotation * (pivot - boomPivot);
         axis = boomRotation * axis;
-        float delta = machine.dumpPose.bucket - machine.ReadActualPose().bucket;
+        Zx200JointPose measured = machine.ReadActualPose();
+        Zx200JointPose opening = measured;
+        opening.boom += boomDeltaDegrees;
+        float delta = GetDumpBucketAngle(measured, opening) - measured.bucket;
         machineCollisionScratch.Clear();
         truckCollisionScratch.Clear();
         joint.GetComponentsInChildren(true, machineCollisionScratch);

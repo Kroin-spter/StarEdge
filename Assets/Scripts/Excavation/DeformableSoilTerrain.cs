@@ -7,6 +7,8 @@ using UnityEngine;
 [RequireComponent(typeof(Terrain), typeof(TerrainCollider))]
 public sealed class DeformableSoilTerrain : MonoBehaviour
 {
+    private static readonly Unity.Profiling.ProfilerMarker BladeMarker = new Unity.Profiling.ProfilerMarker("Soil.BladeSweep");
+    private static readonly Unity.Profiling.ProfilerMarker PressureMarker = new Unity.Profiling.ProfilerMarker("Soil.PressureYield");
     [Min(0f)] public float floorHeight = .05f;
     [Min(.01f)] public float maximumCutDepth = .8f;
     [Min(.001f)] public float minimumCutDepth = .015f;
@@ -20,6 +22,74 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
     private TerrainData runtime;
     private float[,] initial;
     private float[,] groundFloor;
+
+    // A contact solver may query thousands of candidate points without changing
+    // terrain. Read its small working patch once, then interpolate in managed memory.
+    internal SurfaceSnapshot CaptureSurfaceSnapshot(Bounds bounds) => new SurfaceSnapshot(this, bounds);
+
+    internal sealed class SurfaceSnapshot
+    {
+        private readonly DeformableSoilTerrain owner;
+        private readonly Vector3 origin, size;
+        private readonly int last, x0, z0;
+        private readonly float[,] heights;
+        private readonly bool[,] solid;
+        private readonly bool enabled;
+
+        internal SurfaceSnapshot(DeformableSoilTerrain owner, Bounds bounds)
+        {
+            this.owner = owner;
+            origin = owner.transform.position;
+            TerrainCollider collider = owner.SoilCollider;
+            enabled = owner.gameObject.activeInHierarchy && collider != null && collider.enabled && collider.terrainData != null;
+            if (!enabled) return;
+            TerrainData data = collider.terrainData;
+            size = data.size;
+            last = data.heightmapResolution - 1;
+            x0 = Mathf.Clamp(Mathf.FloorToInt((bounds.min.x - origin.x) / size.x * last), 0, last - 1);
+            z0 = Mathf.Clamp(Mathf.FloorToInt((bounds.min.z - origin.z) / size.z * last), 0, last - 1);
+            int x1 = Mathf.Clamp(Mathf.CeilToInt((bounds.max.x - origin.x) / size.x * last) + 1, x0 + 1, last);
+            int z1 = Mathf.Clamp(Mathf.CeilToInt((bounds.max.z - origin.z) / size.z * last) + 1, z0 + 1, last);
+            heights = data.GetHeights(x0, z0, x1 - x0 + 1, z1 - z0 + 1);
+            solid = data.GetHoles(x0, z0, x1 - x0, z1 - z0);
+        }
+
+        internal float Depth(Vector3 point)
+        {
+            if (!enabled || !Finite(point)) return float.NegativeInfinity;
+            Vector3 local = point - origin;
+            if (local.x < 0 || local.z < 0 || local.x > size.x || local.z > size.z) return float.NegativeInfinity;
+            float x = local.x / size.x * last, z = local.z / size.z * last;
+            int ix = Mathf.Min(last - 1, Mathf.FloorToInt(x));
+            int iz = Mathf.Min(last - 1, Mathf.FloorToInt(z));
+            int px = ix - x0, pz = iz - z0;
+            if (px < 0 || pz < 0 || px >= solid.GetLength(1) || pz >= solid.GetLength(0))
+                return owner.HasSurfaceAt(point) ? owner.Terrain.SampleHeight(point) + origin.y - point.y : float.NegativeInfinity;
+            if (!solid[pz, px]) return float.NegativeInfinity;
+            // SampleHeight follows the Terrain cell's two triangles, not a
+            // bilinear patch. Match its diagonal so contact limits do not change.
+            float u = x - ix, v = z - iz;
+            float a = heights[pz, px], b = heights[pz, px + 1];
+            float c = heights[pz + 1, px], d = heights[pz + 1, px + 1];
+            float height = v >= u ? a + u * (d - c) + v * (c - a)
+                : a + u * (b - a) + v * (d - b);
+            return origin.y + height * size.y - point.y;
+        }
+
+        internal float FloorWorldY(Vector3 point)
+        {
+            if (owner.groundFloor == null || !enabled) return origin.y + owner.floorHeight;
+            Vector3 local = point - origin;
+            float x = Mathf.Clamp01(local.x / size.x) * last, z = Mathf.Clamp01(local.z / size.z) * last;
+            int ix = Mathf.FloorToInt(x), iz = Mathf.FloorToInt(z);
+            int nextX = Mathf.Min(last, ix + 1), nextZ = Mathf.Min(last, iz + 1);
+            return origin.y + Mathf.Lerp(Mathf.Lerp(Floor(ix, iz), Floor(nextX, iz), x - ix),
+                Mathf.Lerp(Floor(ix, nextZ), Floor(nextX, nextZ), x - ix), z - iz);
+        }
+
+        private float Floor(int x, int z) => Mathf.Max(owner.floorHeight, Mathf.Max(
+            owner.initial[z, x] * size.y - owner.maximumCutDepth, owner.groundFloor[z, x] * size.y));
+    }
 
     private void Start()
     {
@@ -134,6 +204,7 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
     /// <remarks>The connecting edge quads linearly approximate rotation between the two endpoint boxes.</remarks>
     public double CutBladeSweep(Vector3[] previousCorners, Vector3[] currentCorners, float availableVolumeM3)
     {
+        using var profile = BladeMarker.Auto();
         if (!ValidCorners(previousCorners) || !ValidCorners(currentCorners) ||
             !float.IsFinite(availableVolumeM3) || availableVolumeM3 <= 0) return 0;
         Initialize(GetComponent<Terrain>());
@@ -283,6 +354,77 @@ public sealed class DeformableSoilTerrain : MonoBehaviour
             runtime.SetHeights(x0, z0, before);
             return 0;
         }
+        return removed;
+    }
+
+    /// <summary>Yield the measured shell contact footprint with one uniformly budgeted heightfield update.</summary>
+    /// <param name="contacts">World-space shallow pressure points; their heights define the local target surface.</param>
+    /// <param name="radius">Horizontal support radius around each contact, in metres.</param>
+    /// <param name="budgetM3">Maximum actual displaced volume, in cubic metres.</param>
+    /// <returns>Read-back removed volume; the original rim, holes and prepared floor remain intact.</returns>
+    public double YieldContacts(System.Collections.Generic.IReadOnlyList<Vector3> contacts, float radius, float budgetM3)
+    {
+        using var profile = PressureMarker.Auto();
+        Initialize(GetComponent<Terrain>());
+        if (contacts == null || contacts.Count == 0 || !float.IsFinite(radius) || radius <= 0 ||
+            !float.IsFinite(budgetM3) || budgetM3 <= 0) return 0;
+        Vector3 size = runtime.size;
+        int n = runtime.heightmapResolution;
+        float dx = size.x / (n - 1), dz = size.z / (n - 1);
+        float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+        float minZ = float.PositiveInfinity, maxZ = float.NegativeInfinity;
+        foreach (Vector3 world in contacts)
+        {
+            if (!Finite(world)) continue;
+            Vector3 point = world - transform.position;
+            minX = Mathf.Min(minX, point.x); maxX = Mathf.Max(maxX, point.x);
+            minZ = Mathf.Min(minZ, point.z); maxZ = Mathf.Max(maxZ, point.z);
+        }
+        if (!float.IsFinite(minX)) return 0;
+        int x0 = Mathf.Clamp(Mathf.CeilToInt((minX - radius) / dx), 1, n - 2);
+        int x1 = Mathf.Clamp(Mathf.FloorToInt((maxX + radius) / dx), 1, n - 2);
+        int z0 = Mathf.Clamp(Mathf.CeilToInt((minZ - radius) / dz), 1, n - 2);
+        int z1 = Mathf.Clamp(Mathf.FloorToInt((maxZ + radius) / dz), 1, n - 2);
+        if (x1 < x0 || z1 < z0) return 0;
+        float[,] before = runtime.GetHeights(x0, z0, x1 - x0 + 1, z1 - z0 + 1);
+        float[,] target = (float[,])before.Clone();
+        foreach (Vector3 world in contacts)
+        {
+            if (!Finite(world)) continue;
+            Vector3 point = world - transform.position;
+            int left = Mathf.Max(x0, Mathf.CeilToInt((point.x - radius) / dx));
+            int right = Mathf.Min(x1, Mathf.FloorToInt((point.x + radius) / dx));
+            int back = Mathf.Max(z0, Mathf.CeilToInt((point.z - radius) / dz));
+            int front = Mathf.Min(z1, Mathf.FloorToInt((point.z + radius) / dz));
+            for (int z = back; z <= front; z++) for (int x = left; x <= right; x++)
+            {
+                float distanceSquared = new Vector2(x * dx - point.x, z * dz - point.z).sqrMagnitude;
+                if (distanceSquared > radius * radius || VertexTouchesHole(x, z)) continue;
+                float y = Mathf.Max(VertexFloor(x, z), point.y + .02f * distanceSquared / (radius * radius));
+                target[z - z0, x - x0] = Mathf.Min(target[z - z0, x - x0], y / size.y);
+            }
+        }
+        double vertexVolume = dx * dz * size.y;
+        double wanted = 0;
+        for (int z = 0; z < target.GetLength(0); z++) for (int x = 0; x < target.GetLength(1); x++)
+            wanted += (before[z, x] - target[z, x]) * vertexVolume;
+        if (wanted <= 0) return 0;
+        float fraction = (float)Math.Min(1, budgetM3 / wanted);
+        const float quantum = 1f / 32766f;
+        // Share insufficient volume across the entire footprint. Row-first spending
+        // creates isolated deep vertices and leaves neighboring shell contacts blocked.
+        for (int z = 0; z < target.GetLength(0); z++) for (int x = 0; x < target.GetLength(1); x++)
+        {
+            float reduction = Mathf.Floor((before[z, x] - target[z, x]) * fraction / quantum) * quantum;
+            target[z, x] = before[z, x] - Mathf.Max(0, reduction);
+        }
+        runtime.SetHeights(x0, z0, target);
+        float[,] actual = runtime.GetHeights(x0, z0, target.GetLength(1), target.GetLength(0));
+        double removed = 0;
+        for (int z = 0; z < actual.GetLength(0); z++) for (int x = 0; x < actual.GetLength(1); x++)
+            removed += (before[z, x] - actual[z, x]) * vertexVolume;
+        if (removed < 0 || removed > budgetM3)
+        { runtime.SetHeights(x0, z0, before); return 0; }
         return removed;
     }
 
