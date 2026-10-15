@@ -1,21 +1,30 @@
-# 矿区画面预设
+# 矿区画面与挖掘机外观
 
-打开 `Assets/Scenes/sence_test.unity`，进入 Play 后默认启用自然画面。按 **F8**，或点击右上角“画面：自然 / 原始”，可以随时对比。切换只调整相机后处理、抗锯齿和阳光阴影强度。
+打开 `Assets/Scenes/sence_test.unity`，进入 Play 后默认启用升级后的挖掘机外观和自然画面。
 
-在 **Main Camera → Mine Visual Preset** 中可调整：
+- **F8 / 右上角“画面”按钮**：切换原始外观与升级外观，同时切换调色、抗锯齿和阴影预设。
+- **F9 / 右上角“展示景深”按钮**：开启或关闭展示景深。默认关闭，正常挖掘操作保持清晰。
 
-- Enhancement Enabled：默认是否启用。
-- Show Toggle：是否显示右上角按钮。
-- Exposure：曝光补偿，默认 0.2。
-- Contrast：对比度，默认 8。
-- Saturation：饱和度，默认 3。
-- Temperature：略暖的色温，默认 2。
-- Shadow Strength Scale：阴影强度相对原值的比例，默认 0.82。
+## 外观升级
 
-参数在启用时读取；如需在 Play 中调参数，先关闭预设、调整参数、再开启。原始灯光与相机设置在关闭预设时恢复。PC 管线已有环境遮蔽，继续沿用；预设不开启泛光、景深、运动模糊、胶片颗粒或色差。
+URDF 关节、碰撞体和控制保持原样。仅替换 `Visuals` 内的渲染材质；铲斗、履带、喷漆、驾驶室玻璃使用不同的粗糙度、金属度、污渍与磨损。新增销轴、固定螺栓和液压管线跟随各自的动臂/斗杆关节，没有额外碰撞体或刚体。信号灯保留原有颜色材质。
 
-`Assets/MineRendering/NaturalMineProfile.asset` 是构建所需的序列化配置，场景中已引用。运行时使用其独立副本，退出 Play 不会把参数写回该资产。通过现有 `Tools/Excavator/导出并更新座舱前端` 菜单导出时，此组件随场景一起进入 WebGL。
+在 **ZX200_Digging_Demo → Excavator Appearance** 中调整 `Weathering`（默认 0.4）、`Surface Detail`（默认 0.7）和 `Add Mechanical Details`。修改后关闭 F8 再开启即可应用。材质使用现有的天空/环境反射图集。如果质量设置启用了实时反射，会在车体上方增加分辨率 128、仅初始化捕捉一次的探针；当前工程的实时反射设置保持关闭。该升级仍使用现有模型轮廓，没有替换为高精度扫描模型。
 
-视觉预设不能改善地图贴图的原始分辨率、拉伸、地形尖刺或物理穿模。调色效果需在 Game/Play 中查看，当前组件不修改编辑模式下的 Scene 视图。
+## 景深与调色
 
-同机位原始/自然截图与本地测试结果保存在验证工程 `/home/sk/Unity/manual-acceptance-5JEDMw/Diagnostics/`。渲染开销测量包含 1280×900 强制渲染及 1 像素 GPU 同步读回，只用于本机比较，不表示浏览器实际帧率。本次没有重新导出或测量前端浏览器。
+在 **Main Camera → Mine Visual Preset** 中可调整曝光、对比度、饱和度和色温。当前默认分别为 0.2、8、3、2，阴影强度比例为 0.82。参数修改后重新开启 F8 生效。关闭后恢复原有相机和灯光设置。
+
+展示模式默认使用 **Bokeh**，光圈 2.8、焦距 85 毫米，自动对焦到挖掘机主体。也可选择开销更低、只模糊远处的 **Gaussian**。Bokeh 模拟焦平面，离焦的车体前后部分也可能变软；近距离展示更容易看到效果。操作时关闭 F9。
+
+自动对焦按相机前向深度计算，并平滑跟随。设备在相机后方、引用缺失，或相机距离主体前向深度不足 3 米时自动关闭景深，保持近距离/驾驶室视角清晰。Scene 中已配置 `Focus Target` 与 `Equipment Appearance`，通常无需重新指定。
+
+PC 渲染管线原有的环境遮蔽继续使用。不开启运动模糊、胶片颗粒、色差或重度泛光。效果在 Game/Play 中查看。
+
+## 导出与验证
+
+场景引用了 `WeatheredEquipment.shader` 与 `NaturalMineProfile.asset`，后者包含景深配置以保留构建所需变体。运行时使用独立材质和配置副本，退出 Play 不会写回原始模型材质。
+
+通过现有 `Tools/Excavator/导出并更新座舱前端` 菜单导出时，外观和景深组件随场景进入 WebGL。本轮没有更新前端或重新打包 Electron。
+
+验证工程 `/home/sk/Unity/manual-acceptance-5JEDMw/Diagnostics/` 中有 `equipment-original.png`、`equipment-upgraded.png`、`equipment-showcase.png` 同机位对比，以及开关/资源释放/挖掘装车测试结果。1280×900 渲染耗时包含 GPU 同步读回，不能直接换算为浏览器帧率。

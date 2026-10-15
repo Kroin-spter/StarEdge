@@ -16,6 +16,7 @@ MonoBehaviour:
   - {fileID: 11400001}
   - {fileID: 11400002}
   - {fileID: 11400003}
+  - {fileID: 11400004}
 --- !u!114 &11400001
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -77,5 +78,33 @@ MonoBehaviour:
     m_OverrideState: 1
     m_Value: 2
   tint:
+    m_OverrideState: 1
+    m_Value: 0
+--- !u!114 &11400004
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c01700fd266d6914ababb731e09af2eb, type: 3}
+  m_Name: DepthOfField
+  m_EditorClassIdentifier:
+  active: 1
+  mode:
+    m_OverrideState: 1
+    m_Value: 1
+  gaussianStart:
+    m_OverrideState: 1
+    m_Value: 13
+  gaussianEnd:
+    m_OverrideState: 1
+    m_Value: 28
+  gaussianMaxRadius:
+    m_OverrideState: 1
+    m_Value: 0.75
+  highQualitySampling:
     m_OverrideState: 1
     m_Value: 0

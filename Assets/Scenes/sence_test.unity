@@ -401,6 +401,9 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 1527798162}
     m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7688634070098757173, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 40524793}
     - targetCorrespondingSourceObject: {fileID: 8749736413370045183, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
       insertIndex: -1
       addedObject: {fileID: 40524788}
@@ -411,6 +414,33 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 40524786}
   m_SourcePrefab: {fileID: 100100000, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+--- !u!1 &40524792 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7688634070098757173, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+  m_PrefabInstance: {fileID: 40524782}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &40524794 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2267995629348204275, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
+  m_PrefabInstance: {fileID: 40524782}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &40524793
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 40524792}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c0c9c7db8ad4c629d4f8c65f7718c47, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  equipmentShader: {fileID: 4800000, guid: 19e2b0e927c74f97a4e2e33551588590, type: 3}
+  detailedAppearance: 1
+  weathering: 0.4
+  surfaceDetail: 0.7
+  addMechanicalDetails: 1
 --- !u!4 &40524783 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2096206747695262421, guid: ca6fb21f50e52f8c88f305a5dfd2fad9, type: 3}
@@ -1697,6 +1727,18 @@ MonoBehaviour:
   enhancementEnabled: 1
   showToggle: 1
   toggleKey: 289
+  presentationEnabled: 0
+  presentationToggleKey: 290
+  presentationMode: 2
+  aperture: 2.8
+  focalLength: 85
+  focusTarget: {fileID: 40524794}
+  equipmentAppearance: {fileID: 40524793}
+  focusSafetyAllowance: 3
+  clearViewDistance: 3
+  focusSmoothTime: 0.35
+  backgroundBlurRange: 12
+  backgroundBlurRadius: 1
   sunlight: {fileID: 1705196282}
   presetProfile: {fileID: 11400000, guid: 6c4f0a0a147347b5ba680a0f6de89ac8, type: 2}
   exposure: 0.2
