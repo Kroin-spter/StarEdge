@@ -22,7 +22,7 @@ Create extension assets separately from the active core asset. The extension is 
 
 Represent the ring with one new 84 m × 84 m Unity Terrain and TerrainCollider. Its center is a hole aligned to the existing 28 m × 28 m core, leaving the current Terrain as the visible and collidable surface there. Use a 1025 × 1025 height field (about 8.2 cm between samples); if Terrain hole texel alignment requires a small overlap, keep it underneath the original Terrain and align its height to the original edge so it cannot create a visible or collidable step.
 
-Add Cesium clipping for the four outer ring regions while keeping the existing irregular core polygon intact. Use the existing single `ConstructionSiteMapClip` lifecycle for both the original footprint and the added regions so tile mesh and matching collider edits are restored together when Cesium unloads tiles. Do not add a second clipper to the same tileset.
+Add Cesium clipping for the four outer ring rectangles while keeping the existing irregular core polygon intact. The current `ConstructionSiteMapClip` accepts one polygon, so extend it to subtract the existing polygon and four new rectangles from each original tile mesh in one pass. Update its broad-phase bounds to cover the combined regions, then assign the same clipped result to matching MeshColliders. Keep the existing single clipper lifecycle so streamed tile edits are restored together when tiles unload or the component disables; do not add a second clipper to the same tileset.
 
 Capture one orthographic 4096 × 4096 map image for the full 84 m footprint during an editor bake. Save it as an extension asset and use it for the added ground with world-aligned texture coordinates. The bake must request detailed Cesium imagery over the complete footprint and reject incomplete coverage rather than stretching a small runtime screenshot over the larger area. The 4K output sets the texture resolution; visible sharpness is limited by the imagery Cesium supplies, so the bake must report when source imagery cannot support the requested detail.
 
@@ -46,6 +46,7 @@ The bake must stop with a clear error if Cesium tiles do not cover the outer foo
 - The saved extension covers the full surrounding ring, extending 28 m outward from each side of the preserved 28 m core; the core remains the visible and collidable surface in its bounds.
 - The outer Terrain boundary follows Cesium and the inner boundary meets the existing Terrain without a visible or collidable gap.
 - Cesium rendering and collision remain outside the combined replacement regions; matching mesh colliders are clipped and restored with their tiles.
+- Clipping checks cover triangles inside each new rectangle, the preserved core polygon, the unmodified central-core corners, and map areas outside the 84 m bounds; collider cleanup restores the original tile meshes.
 - The saved map image is 4096 × 4096 and has complete Cesium coverage; its imported maximum size preserves 4096 resolution.
 - The extension is static ground and does not change excavation volume or soil accounting.
 
