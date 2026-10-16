@@ -8,6 +8,8 @@ Expand the current baked map footprint to 84 m × 84 m around its existing cente
 
 The active baked site is `Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset`. Its work-face center is `(320.28, 351.43)` in world X/Z, and its work-face size is 28 m × 28 m. The current core Terrain starts at `(306.28, -8, 337.43)`. Its existing irregular Cesium replacement polygon, soil data, TerrainData, machine/truck positions, and scene camera transforms are part of the baseline and remain unchanged.
 
+The local `osgb_small_005_004` source contains 318 GLB tiles across LOD levels 17–21. Sixteen L20/L21 tile bounds intersect the proposed 84 m footprint, and their embedded maps include 1024 × 1024 textures. This supports a 4K offline capture, subject to checking the actual rendered coverage and detail before saving.
+
 The expanded footprint is centered at the same X/Z point:
 
 - Overall bounds: X `[278.28, 362.28]`, Z `[309.43, 393.43]`.
