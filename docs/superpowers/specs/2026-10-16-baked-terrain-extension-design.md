@@ -1,61 +1,68 @@
-# 84 m Baked Terrain Extension Design
+# 84 米烘焙地形扩展设计
 
-## Goal
+## 目标
 
-Expand the current baked map footprint to 84 m × 84 m around its existing center while preserving the current 28 m × 28 m baked core, excavation behavior, equipment placement, and camera setup. Bake only the surrounding ground, and give the new map image a 4096 × 4096 output resolution.
+以现有烘焙区域中心为中心，将地图覆盖范围扩展到 84 m × 84 m，同时完整保留现有 28 m × 28 m 烘焙核心、挖掘行为、设备位置和相机设置。只烘焙核心外围地面；新增地图贴图输出分辨率为 4096 × 4096。
 
-## Existing baseline
+## 当前基线
 
-The active baked site is `Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset`. Its work-face center is `(320.28, 351.43)` in world X/Z, and its work-face size is 28 m × 28 m. The current core Terrain starts at `(306.28, -8, 337.43)`. Its existing irregular Cesium replacement polygon, soil data, TerrainData, machine/truck positions, and scene camera transforms are part of the baseline and remain unchanged.
+当前场景使用的烘焙资源是 `Assets/ConstructionSite/Baked/MapFollowingPreview/ConstructionSite.asset`。其作业面中心为世界 X/Z 坐标 `(320.28, 351.43)`，尺寸为 28 m × 28 m。核心 Terrain 的起点为 `(306.28, -8, 337.43)`。现有不规则 Cesium 替换多边形、土层数据、TerrainData、挖掘机和矿车位置，以及场景相机变换均作为现有基线，保持不变。
 
-The local `osgb_small_005_004` source contains 318 GLB tiles across LOD levels 17–21. Sixteen L20/L21 tile bounds intersect the proposed 84 m footprint, and their embedded maps include 1024 × 1024 textures. This supports a 4K offline capture, subject to checking the actual rendered coverage and detail before saving.
+本地 `osgb_small_005_004` 源数据包含 318 个 GLB 瓦片，LOD 范围为 17–21。提议的 84 米范围与其中 16 个 L20/L21 瓦片的包围范围相交；这些瓦片中包含 1024 × 1024 纹理。这说明离线生成 4K 贴图有源数据基础，但保存前仍需检查实际捕获的覆盖范围和细节。
 
-The expanded footprint is centered at the same X/Z point:
+扩展范围以相同的 X/Z 中心为基准：
 
-- Overall bounds: X `[278.28, 362.28]`, Z `[309.43, 393.43]`.
-- Preserved core bounds: X `[306.28, 334.28]`, Z `[337.43, 365.43]`.
-- New coverage: the surrounding ring between those bounds and the 84 m outer bounds.
+- 总范围：X `[278.28, 362.28]`，Z `[309.43, 393.43]`。
+- 保留核心范围：X `[306.28, 334.28]`，Z `[337.43, 365.43]`。
+- 新增范围：总范围扣除核心后的外围区域，核心每侧向外延伸 28 m。
 
-## Design
+## 设计
 
-Create extension assets separately from the active core asset. The extension is static exterior ground for appearance and collision; it does not add to the cuttable soil ledger. Sample its height field from the loaded Cesium surface, align its inner edge against the existing core boundary, and align its outer edge against the Cesium surface. The original core continues to own its existing work-face replacement and excavation.
+所有扩展资源都保存到独立目录，不覆盖现有核心资源。扩展地面用于静态外观和碰撞，不计入可挖土量账本。外围高度从已加载的 Cesium 地表采样；内边界与现有核心地形衔接，外边界与 Cesium 地表衔接。核心仍由现有烘焙资源负责显示和挖掘。
 
-Represent the ring with one new 84 m × 84 m Unity Terrain and TerrainCollider. Its center is a hole aligned to the existing 28 m × 28 m core, leaving the current Terrain as the visible and collidable surface there. Use a 1025 × 1025 height field (about 8.2 cm between samples); if Terrain hole texel alignment requires a small overlap, keep it underneath the original Terrain and align its height to the original edge so it cannot create a visible or collidable step.
+外围使用一份新的 84 m × 84 m Unity Terrain 和对应的 TerrainCollider。它的中心开孔，与现有 28 m × 28 m 核心对齐，让现有 Terrain 继续作为核心范围内可见且可碰撞的地面。新高度场分辨率为 1025 × 1025，采样间距约 8.2 cm。如果 Terrain 洞孔分辨率不能精确对齐核心边缘，允许最多一个洞孔像素宽的地形重叠到原 Terrain 下方；重叠处高度贴合原 Terrain，避免可见接缝或碰撞台阶。
 
-Add Cesium clipping for the four outer ring rectangles while keeping the existing irregular core polygon intact. The current `ConstructionSiteMapClip` accepts one polygon, so extend it to subtract the existing polygon and four new rectangles from each original tile mesh in one pass. Update its broad-phase bounds to cover the combined regions, then assign the same clipped result to matching MeshColliders. Keep the existing single clipper lifecycle so streamed tile edits are restored together when tiles unload or the component disables; do not add a second clipper to the same tileset.
+在保留核心现有不规则裁剪多边形的同时，为外围四个矩形区域增加 Cesium 裁剪：
 
-Capture one orthographic 4096 × 4096 map image for the full 84 m footprint during an editor bake. Save it as an extension asset and use it for the added ground with world-aligned texture coordinates. The bake must request detailed Cesium imagery over the complete footprint and reject incomplete coverage rather than stretching a small runtime screenshot over the larger area. The 4K output sets the texture resolution; visible sharpness is limited by the imagery Cesium supplies, so the bake must report when source imagery cannot support the requested detail.
+- 北侧：X `[278.28, 362.28]`，Z `[365.43, 393.43]`。
+- 南侧：X `[278.28, 362.28]`，Z `[309.43, 337.43]`。
+- 西侧：X `[278.28, 306.28]`，Z `[337.43, 365.43]`。
+- 东侧：X `[334.28, 362.28]`，Z `[337.43, 365.43]`。
 
-The extension bake is repeatable and writes only into a dedicated extension asset folder. It must not rewrite the existing `ConstructionSite.asset`, its referenced TerrainData/material, or scene equipment and camera transforms. Normal play uses the saved texture and Terrain data; it does not capture a map image at runtime.
+当前 `ConstructionSiteMapClip` 只接受一个多边形，因此需要扩展它：对每个原始瓦片网格，在一次处理过程中依次扣除现有核心多边形和新增的四个矩形；扩展粗略包围范围以覆盖全部裁剪区域；将同一裁剪结果赋给匹配的 MeshCollider。继续由同一个裁剪器负责瓦片生命周期，使瓦片卸载或组件禁用时能恢复原始网格和碰撞网格。不要在同一个 Cesium tileset 上再添加第二个裁剪器。
 
-## Bake and runtime flow
+在编辑器烘焙流程中，对整个 84 m × 84 m 范围进行一次正交俯视捕获，生成一张 4096 × 4096 地图贴图。将贴图保存为扩展资源，并用世界坐标对齐方式映射到新增地面。烘焙过程需要请求完整范围的高细节 Cesium 影像；若影像覆盖不完整则拒绝保存，不能把低分辨率运行时截图拉伸到更大区域。4K 只规定输出分辨率，实际清晰度仍受 Cesium 源影像限制；如果源数据细节达不到要求，烘焙过程必须报告。
 
-1. The editor bake reads the approved center and footprint dimensions from the active baked site, requests high-detail Cesium coverage, and samples the outer height field.
-2. It creates new Terrain and map-image assets under a separate 84 m extension folder, checks the core boundary and full image coverage, and records the extension bounds.
-3. The scene loads the saved extension ground alongside the original baked core. The core remains the only cuttable baked soil.
-4. The existing map clipper removes Cesium geometry and its matching collision only in the original work-face polygon and the four extension ring regions.
+扩展烘焙可重复执行，并且只写入专用扩展目录。它不得改写现有 `ConstructionSite.asset`、其引用的 TerrainData 或材质，也不得修改场景中的设备位置或相机变换。正常运行时使用已保存的贴图和 Terrain 数据，不在运行时捕获地图影像。
 
-## Failure handling
+## 烘焙与运行流程
 
-The bake must stop with a clear error if Cesium tiles do not cover the outer footprint, if any required map area is missing, or if sampled heights cannot form a continuous surface. It must not save a partially filled image or silently fall back to a low-resolution runtime capture. If the saved extension assets do not match the active baked site's center or size, startup must leave the extension disabled and report the mismatch.
+1. 编辑器烘焙器从当前核心资源读取已确认的中心和尺寸，请求高细节 Cesium 覆盖，并采样外围高度场。
+2. 烘焙器在独立的 84 米扩展目录中创建 Terrain 和地图贴图资源，检查核心接缝与影像完整覆盖，并记录扩展边界。
+3. 场景加载新增外围地面，同时保留原烘焙核心；原核心仍是唯一可挖掘的烘焙土层。
+4. 现有地图裁剪器只在原核心作业面多边形和外围四个矩形内移除 Cesium 网格及其碰撞。
 
-## Acceptance checks
+## 失败处理
 
-- The active core baked asset and TerrainData remain byte-for-byte unchanged by the extension bake.
-- The original soil volume, work-face polygon, machine and truck transforms, and camera transforms are unchanged.
-- The saved extension covers the full surrounding ring, extending 28 m outward from each side of the preserved 28 m core; the core remains the visible and collidable surface in its bounds.
-- The outer Terrain boundary follows Cesium and the inner boundary meets the existing Terrain without a visible or collidable gap.
-- Cesium rendering and collision remain outside the combined replacement regions; matching mesh colliders are clipped and restored with their tiles.
-- Clipping checks cover triangles inside each new rectangle, the preserved core polygon, the unmodified central-core corners, and map areas outside the 84 m bounds; collider cleanup restores the original tile meshes.
-- The saved map image is 4096 × 4096 and has complete Cesium coverage; its imported maximum size preserves 4096 resolution.
-- The extension is static ground and does not change excavation volume or soil accounting.
+如果 Cesium 瓦片没有覆盖外围范围、地图影像存在缺失，或采样高度无法形成连续地面，烘焙必须停止并给出明确错误。不得保存部分填充的贴图，也不得静默退回低分辨率运行时截图。如果启动时发现扩展资源的中心或尺寸与当前核心不匹配，应禁用扩展并报告原因。
 
-## Alternatives considered
+## 验收标准
 
-- Replacing the full 84 m core Terrain would change the user's existing excavation surface and risk repeating the earlier poor replacement result, so it is excluded.
-- A texture-only overlay would not provide the new terrain collision and would leave the surrounding surface dependent on Cesium geometry, so it does not meet the extension goal.
-- Multiple independent clippers on one Cesium tileset create conflicting ownership of mutable streamed meshes; the existing clipper will own the additional regions instead.
+- 扩展烘焙前后，现有核心烘焙资源和 TerrainData 的文件内容完全不变。
+- 原始土量、作业面多边形、挖掘机和矿车变换，以及相机变换均保持不变。
+- 新地形完整覆盖外围区域，即核心每侧向外延伸 28 m；核心范围内仍由原 Terrain 提供可见地面和碰撞。
+- 外围 Terrain 的外边界贴合 Cesium，内边界与原 Terrain 衔接，没有可见或可碰撞的缺口。
+- 合并后的替换范围内没有 Cesium 渲染或碰撞；对应网格碰撞已裁剪，并能随瓦片生命周期恢复。
+- 裁剪检查覆盖外围每个矩形、原核心多边形、核心内未修改的角落、84 米总范围以外的地图；禁用裁剪器后原瓦片网格均能恢复。
+- 保存的地图贴图尺寸为 4096 × 4096，Cesium 覆盖完整，导入设置保留 4096 最大尺寸。
+- 扩展地面是静态地面，不改变挖掘体积和土量账本。
 
-## Scope
+## 已考虑的方案
 
-This change covers the baked extension, its saved high-resolution image, scene integration, and the Cesium clip regions needed to show the extension. It does not alter excavation controls, haul-truck placement, the active core bake, Cesium source data, or camera framing.
+- 用 84 m Terrain 替换整个核心会改变现有挖掘地形，并有重现之前替换效果不佳的风险，因此不采用。
+- 只在 Cesium 上叠加贴图不能提供新增地面的 Terrain 碰撞，外围地表仍依赖 Cesium 网格，因此不满足扩展要求。
+- 在同一个 Cesium tileset 上放置多个独立裁剪器，会让它们争用可变的流式网格；新增范围由现有裁剪器统一管理。
+
+## 范围
+
+本次设计涵盖外围烘焙地形、高分辨率贴图、场景集成，以及显示扩展地面所需的 Cesium 裁剪。不修改挖掘控制、矿车位置、现有核心烘焙资源、Cesium 源数据或相机取景。
